@@ -1,0 +1,34 @@
+---
+title: "Scala Ators"
+date: 2008-03-06
+---
+<h3><a href="http://lamp.epfl.ch/~phaller/actors.html">Scala Ators</a></h3>
+<h4>Event-Based Programming without Inversion of Control</h4>
+<ul>
+<li>receive の semantics は "never return normaly"<ul>
+<li>戻り値の型を Nothing にしてコンパイラに教える</li>
+<li>例外で抜けるのは OK. 実際これを使う. -&gt; Jetty かよ!</li>
+<li>縛りきつすぎね？ -&gt; そうでもないと主張してるけどねー...</li>
+</ul></li>
+<li>continuation = receive の引数である function object.<ul>
+<li>結局 ruby みたいな brace-style closure があるからできる芸当だよなー...</li>
+</ul></li>
+<li>ブロッキングの扱い: ブロックしてたらスレッドを切り離す</li>
+<li>別の paper に出てくる 受信つき send (?!) は使えないよなこれだと...いや, return するのは closure に戻るのか...</li>
+</ul>
+<h4>Actors that Unify Threads and Events</h4>
+<ul>
+<li>Channel という抽象: 型つき messaging (とか.)<ul>
+<li>複数 channel からの listen を pattern match する: 各 channel は異る型を持つ.</li>
+</ul></li>
+</ul>
+<ul>
+<li><a href="http://en.wikipedia.org/wiki/Actor_model">http://en.wikipedia.org/wiki/Actor_model</a> 日本語もある</li>
+<li><a href="http://theron.ashtonmason.net/">http://theron.ashtonmason.net/</a> C++ による実装. ゴツすぎ.</li>
+</ul>
+<h3>productivity hour</h3>
+<p>今日は外部から automation を叩く路線を試すぜ.</p>
+<h3>VS Automation に挫折</h3>
+<p>DTE.ExecuteCommand の挙動がようわからん. 
+"ClassViewContextMenus.ClassViewProject.Build" してもすぐ返ってきて動いてなかったり.
+んー. automation 路線は思ったより厳しいなあ. </p>

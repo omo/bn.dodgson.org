@@ -1,0 +1,192 @@
+---
+title: "最近みた TechTalks"
+date: 2008-11-02
+---
+<h3>最近みた TechTalks</h3>
+<p>同僚が iPhone 買ったというので, それまで使っていた iPod touch を譲りうけた. 
+(決してふんだくったわけではない.) 動画再生専用機として使っている. 
+驚くことに, PC の画面でみるよりずっと良い. 画面を動かせいのが制約だったとは, 思いもよらなかった. 
+手に持てるのは良いなー. そんなわけで, すっかりご無沙汰だった TechTalks を
+(ジャンクフードを喰いながら|ふとんの中で)鑑賞した. </p>
+<p>せっかくだから Google Techtalks だけでなく, 
+友達の勧めに従い Channel9 や InfoQ のビデオも見てみた. 
+Channel9 の良いところは, 最初から iPod で再生できる mp4 ファイルをダウンロード用に用意してくれていること. 
+雑談メインのせいか, 密度の低めなものが多いけれど, MSDN には現れない開発者の声を聞けるのは楽しい. 
+最近公開された <a href="http://channel9.msdn.com/pdc2008/">PDC</a> の録画は内容も詳しそう. </p>
+<p>InfoQ は, Google TechTalks や Channel9 とはまた一味違うラインナップ. 
+開発プロセスの話が多い. (見てないけど.) 
+ただスライドと連動したウェブのビューアは iPod との相性がいまいちよくない. 
+今はスライドを諦め, FLV だけダウンロードして見ている. 
+ダウンロード用のブックマークレットを書いたので, 興味のある方はご利用ください: 
+<a href='javascript:window.location = Base64.decode(jsclassref);'>flv@infoq</a></p>
+<h4><a href="http://www.youtube.com/watch?v=mrvAqvtWYb4">Getting C++ Thread Right</a></h4>
+<p>C++ の仕様も JVM の実装もマルチスレッド的には腐ってるので気をつけろ, という話. </p>
+<p>JVM の仕様は 2005 年くらいに直ったけれど, 
+C++ の仕様はそもそも並列 aware なメモリモデルみたいのが無いらしく, 
+0x では Java などを参考にメモリモデルをちゃんとする予定だよという話だった. 
+うっかり書きそうなのに間違っている, グロテスクな例が色々紹介される. </p>
+<p>基本的にはメモリフェンスの話なので, そのへんを復習したい人には良いと思う. 
+個人的にはくわばらくわばらというかんじ. </p>
+<h4><a href="http://www.youtube.com/watch?v=3xKZ4KGkQY8">Wuala - a distributed file system</a></h4>
+<p><a href="http://wua.la/">Wuala</a> という P2P(オーバーレイネットワーク) のファイルシステムを作ったぜ, 
+という話...だったと思う. (よく覚えてない.)</p>
+<p>ファイルシステムというと OS の API を実装してるように感じるけれど, 実際は分散ストレージのアプリケーション. 
+そこは言葉の綾ということで. アプリケーションの UI はこの手のやつにしては良くできている. </p>
+<p>技術的も色々ハイテクっぽい. 特に気になったのは (分散) reputation を実装しているということ. 
+講演の中ではアルゴリズムを説明をしなかった(気がする)けれど, 
+<a href="http://wua.la/en/learn/technology">サイト</a>には概要を書いた記事があった.
+("<a href="http://dcg.ethz.ch/publications/netecon06.pdf">Havelaar: A Robust and Efficient Reputation System for Active Peer-to-Peer Systems</a>")
+そこそこシンプルで面白い. 経路情報の交換みたいな雰囲気で評判情報を伝播していく. 
+(記事には堅牢性の分析なんかも載ってるけど読んでない.) </p>
+<p>何より立派なのは, こういう研究志向のテクノロジーをちゃんとアプリケーションまで持ってきているところ. 
+<a href="http://jp.techcrunch.com/archives/20080813wuala-launches-public-beta-tomorrow/">TechCrunch</a> で
+見かけたときはちょっとびびった. </p>
+<h4><a href="http://www.youtube.com/watch?v=4E4672CS58Q">Clean Code Talks - GuiceBerry</a></h4>
+<p><a href="http://code.google.com/p/google-guice/">Guice</a> という DI コンテナを
+単体テストの中でも使おうぜ, という話. </p>
+<p>まず単体テスト用の再利用可能部分(ハーネスの初期化とか)は, JUnit のデザインにひきずられてダメ継承になりがち,  
+という例を引き合いに出し, テストコードもプロダクションみたいにちゃんと作らないとダメじゃね, という話をする. 
+ちゃんと作るとは, ここではちゃんと DI ベースの作りにするという意味. 
+本題は, <a href="http://code.google.com/p/guiceberry/">GuiceBerry</a> を使うと
+単体テストクラスでハーネスに @Inject をつけて初期化できるから使ってね, と紹介していた. </p>
+<p>私はそもそも Guice からして使ってない(というか Java 書いてない)のでへーそうですか...という感じだったけど, 
+JUnit がダメテストを助長する嫌いがあるのは確かだよなーと思った. 今時 template method パターンは...</p>
+<h4><a href="http://wwww.youtube.com/watch?v=Y6fAszlImPM">Urban Reconstruction and Modeling for Building Virtual Worlds</a></h4>
+<p>町並みを procedural に生成するアルゴリズムの話. </p>
+<p>大きくわけて道路の生成と建物の生成という二系統の問題があり, これは後者を扱っている. 
+講演者は 2001 年の SIGGRPH で 
+"<a href="http://www.vision.ee.ethz.ch/~pmueller/documents/procedural_modeling_of_cities__siggraph2001.pdf">Procedural Modeling of Cities</a>" 
+というのを発表していて, 私はいたく感動したのを覚えている. 
+2001 年の発表では道路の生成がメイン (制約つき L system + いくつかのヒューリスティクス) だった. 
+その続きとして建物の生成を改善し, 次に建物の壁面の生成を改善し...というのがプロジェクトのあらすじ. </p>
+<p>野心的な問題設定だけあって, できあがったアルゴリズムも面白いしデモ動画も華やかで楽しい. 
+デモ動画は<a href="http://www.vision.ee.ethz.ch/~pmueller/publications.html">講演者のページ</a> からも
+ダウンロードできる. CG の話は絵が派手なので好き. </p>
+<h4><a href="http://www.youtube.com/watch?v=37NaHRE0Sqw">Kilim: Fast, lightweight, cheap message passing in Java</a></h4>
+<p>Erlang みたいな Actor を Java でもやりたい, という話. 
+スレッドがネイティブスレッドに結びついた Java で軽量プロセスをやるのは面倒という定石を覆そうとする. 
+どこかで聞いたような...</p>
+<p>方法は, まずブロッキングする可能性のあるメソッドをプログラマが @pausable と注釈する. 
+そしてコンパイルされたクラスを Kilim の 後処理ツール(Weaver)が書き換える. 
+書き換えでは, @pausable なメソッドの引数に, 
+軽量プロセスのコンテクスト(スタック)を保存するための Fiber オブジェクトを追加する. 
+そしてブロックする箇所で, Fiber オブジェクトにローカル変数を保存して return するのだという. 
+ブロックからの復帰ではその Fiber オブジェクトを引数に同じ関数を呼び出し, 
+ブロック前に実行したコードをフラグを駆使してスキップしつつローカル変数を復帰, ブロック位置まで戻ったら
+続きを実行する...という. やりすぎが感ただようものの,  
+同じようなことを例外 + 手動のフラグチェックでやりながら
+Continuation と言い張った <a href="http://docs.codehaus.org/display/JETTY/Continuations">Jetty</a> の例より
+男らしい気はした. 男らしけりゃ良いってもんでもないけどね. </p>
+<p>もう一つ Erlang 風 Actor のインスパイヤとして, 
+immutable なオブジェクトを使うメッセージ渡しを Java で実現しようとする話もあった. これは面白い. 
+C++ の const に似たセマンティクスを, (ここでも)注釈を使い表現する. そして constness (のようなもの)が
+型のレベルで保証されている間は値を共有し, 
+それが破れるとコピーをつくる(かエラーになる. このへんよくわからず)らしい. 
+言語標準にないチェック機構を注釈で実現するのは Java の将来として有望な路線な気がしているので, 
+その実例として興味深かった. </p>
+<p>注釈にしろバイトコード書き換えにしろ, Java は夢のある言語だなーと今更ながらおもいました. </p>
+<h4><a href="http://www.youtube.com/watch?v=yrLd-3lnZ58">MonetDB/X100: a (very) fast column-store</a></h4>
+<p><a href="http://monetdb.cwi.nl/">MonetDB</a> という研究用データベース実装のコンポーネンントである 
+X100 という column store の話. CPU 上での高速化と IO の高速化の二本だてで X100 のテクノロジーを説明している. </p>
+<p>column store というと, クエリーの評価の際に必要な列にしかアクセスしないおかげで IO が減ってうれしい... 
+というものだと思われがちだけれど, X100 の目標はむしろ CPU 上での演算の高速化だという. 
+column store は各レコードのレイアウトが固定(数字の配列)になるため, 
+ふつうの RDB が行ごとにインタープリタとして評価している部分をハードコードのベクトル計算で
+置き換えることができる. インタプリタが C のコードになるようなものなので, 
+ベンチマークによっては数十倍の差がつくらしい. </p>
+<p>このベクトル演算アプローチそれ自体にも色々と高速化の余地がある...と話は続く. 
+ベクトルのトラバーサルをバッチ化(blocked iteration と呼んでいる)してみたり, 
+演算をパイプライン化して, 中間結果のベクトル全体をメモリ上に置かなくしてみたり. 
+普通の RDB とは違う高速化技法を使うことができる. 数値計算の世界に近いのかもなー. 
+そのほか join や hash をどうするみたいな話もあったけどよくわからず. </p>
+<p>演算を高速化してみたら, 今度はいよいよ IO が問題になってしまった. 
+そこで IO を高速化する. これが話の後半. LZO という展開が高速なアルゴリズムを使ったページ(ベクトル)の圧縮, 
+適切なベクトルサイズの設定, 
+ディスクアクセスをシーケンシャルにする IO スケジューラの話など, こちらも盛り沢山な内容だった. </p>
+<p>column store になった時点で既存の RDB のテクノロジーが置いている前提がことごとく覆っていくのは面白い. 
+大義ある再発明なのかも. </p>
+<p>音声はちょっと不明瞭なのでスライドだのみ...</p>
+<h4><a href="http://www.youtube.com/watch?v=4moyKUHApq4">A Possible Future of Software Development</a></h4>
+<p>Adobe の中で <a href="http://stlab.adobe.com/">ASL</a> を作っている stlab の人が, 
+Adobe (たぶん Flash 側じゃなくて Photoshop 側) ではこんな風にプログラミングをしてくぜ, という話をする. </p>
+<p>(<a href="http://stlab.adobe.com/wiki/index.php/Image:2008_07_25_google.pdf">スライド</a>.) 
+まずプログラミングは数学であり, 数学的にアルゴリズムを組み立てるんだと総称的プログラミングを説明する. 
+そのあと, でもこの路線をアプリケーション全体までスケールするのは大変だよね, と話が続き, 
+アプリケーションのグチャグチャしたところは大抵 UI だから, UI を宣言的に作るライブラリを作ったよ, と
+独自マークアップ搭載の自社製 UI ライブラリ (Adam/Eve) の紹介につづく. アルゴリズムの話とは飛躍があるような...</p>
+<p>Adam/Eve は <a href="http://stlab.adobe.com/asl_toc.html">ASL</a> に入っているので私も以前少し
+みたことがあるんだけれど, よくわからなかった. このビデオを見てもやっぱりよくわからず. 
+Adobe がモダン C++ の最先端で頑張ろうとしていることはわかった. </p>
+<h4><a href="http://www.youtube.com/watch?v=tKSYJYV_RGs">Massively Multiplayer Open Source Game Development</a></h4>
+<p>オープンソースで開発されている <a href="http://www.planeshift.it/">PlaneShift</a> という MMO の紹介. </p>
+<p>中のアーキテクチャを紹介する途中で "manager クラスを使う利点" みたいな話をし始めたのに逆上して
+その続きはちゃんとみてない... 
+このソフトウェアの設計はともかく, NPC の AI とスーパークライアント, 
+遅延, サーバとの役割分担, チートの扱いなど, 
+オンラインゲームにおける問題意識はそれほど的外れではなかった, 気がする. 
+だからオンラインゲームのプログラミングがどういう感じか, その雰囲気は伝わってくる. </p>
+<h4><a href="http://channel9.msdn.com/posts/Charles/Don-Box-Paul-Vick-and-Chris-Anderson-Introducing-M/">Introducing M</a></h4>
+<p>これは Channel9 から. "M" という DSL 記述言語を作ってますよという話. </p>
+<p>いまいちよくわからなかったけれど, lex や yacc みたいな構文記述を組み込んだ言語で, 
+DSL を適当なデータモデルにマップする用途に使うらしい. 
+"Channel9" というインタビュー動画用 DSL を題材にサンプルを示し, 
+こういう英語っぽい記述をそのままデータベースにつっこんだりできるんですよ, と説明していた. 
+yacc なり antlr なりのようにホスト言語にコンバートするタイプではなさそう. 
+semantic action のようなものも, その言語で書く. 
+そのコードモ見たかんじオブジェクトモデルの構築に特化していて, 汎用言語というわけじゃさそう. 
+出来あがったオブジェクトモデルはどうせ CLR のオブジェクトだろうから, それを M をホストしている
+言語に返すようなかんじなのだろう. (憶測.)  </p>
+<p>JavaCC の JJTree のように, ツリーを作る機構を持ったパーサジェネレータがある. 
+そのツリー構築部分に拡張性を持たせたようなものだと私は理解した. 
+でも有難味を理解するには言語処理系リテラシーが足りてない. 
+DSL のトレンドに詳しい人の見解が知りたいところです.</p>
+<p>個人的には動く <a href="http://www.pluralsight.com/community/blogs/dbox/default.aspx">Don Box</a> が
+見られてよかった.</p>
+<h4><a href="http://www.infoq.com/news/2008/10/Latency-Dan-Pritchett">Architecting for Latency</a></h4>
+<p>これは InfoQ から. eBay のエライ人が, システムをスケールさせるのは大変なんだぜという話をする. 
+(<a href="http://www.softwaresummit.com/2007/speakers/presentations/PritchettArchitectingForLatency.pdf">スライド</a>.) </p>
+<p>性能のためにマシンを増やすだけじゃなく, 高可用性のためにデータセンターを別にする. 
+データセンターを跨ぐと遅延が数百ミリ秒になって, 同期ベースのアーキテクチャが辛くなる. 同期はスケーラビリティも制限する. 
+そこで非同期でイベントベースのアーキテクチャにするんだぜ, という話. 
+あとはとてもトランザクションなんかできないから, ACID じゃなくて BASE だぜ, という話も. 
+(BASE が何かは <a href="http://acmqueue.org/modules.php?pa=showpage&amp;pid=540&amp;name=Content">ACMQ の記事</a> など参照.) </p>
+<p>実際に ebay がどういうコンポーネントからできているというような具体的な話はなかった. 
+野次馬的にはちょっと残念. 
+あとはイベントストリームを処理する <a href="http://esper.codehaus.org/">ESPer</a> という
+フレームワークを紹介していた. ストリーム志向のデータベース(?)って実用されてたんだなあ. 勉強せんといかん...</p>
+<h4><a href="http://www.infoq.com/presentations/gosling-jvm-lang-summit-keynote">How The JVM Spec Came To Be</a></h4>
+<p>Gosling が Java を作るにあたって何を考えたのかを回顧する. </p>
+<p>序盤は Gosling の個人史.
+PDP8 でプログラミングにデビューしました, から始まり, 
+VAX や IBM のマシンで Cobol や Pascal の処理系をいじっていた話, 
+p-code で学んだ(構文木に対する)バイトコードの価値, Teco で学んだスクリプティングの有難味, 
+Java の元ねたの Oak はもとも Greentalk と呼ばれていたとか, 
+言語を作るにあたっては各方面から異なる優先度を求めれられて大変だったとか, 
+性能だけでもなく抽象化機構だけでもない, いいとこ取りの言語を作りたかった...そんな話を披露する. 
+よくある昔話ではあるけれど, 基本的に有名人の昔話は好きなので少しは楽しめた. 
+もうちょっと発音が明瞭ならいいのに...</p>
+<p>あとは Java の性能の話に進む. このへんは割とどうでもいいかんじ. 
+音声は不明瞭. まーいかにも geek だしなあ. </p>
+<p>...</p>
+<p>以下はいまいちだったり, 見たのが昔なのでよく覚えていないもの. </p>
+<h4><a href="http://www.youtube.com/watch?v=QJPq_8ULpRg">Inside VMWare Fusion</a></h4>
+<p>VMWare の話というより, "Fusion" の話. OSX はヘンな OS で文書化もいまいちだから
+移植するのは大変だったんだぜ! という話を延々と聞かされる. VMWare 本体の話を聞きたいんだけどなあ. (少しはある.)
+笑いの取り方がダメマカーという感じで, そのへんは面白かった. </p>
+<h4><a href="http://www.youtube.com/watch?v=bsgLSb9Dbz8">Recommenders Everywhere: The WikiLens Community-Maintained Recommender System</a></h4>
+<p>よく覚えてないけど, Recommender 研究で知られる GroupLens 一門の最近の成果の話だったような気もする. </p>
+<h4><a href="http://www.youtube.com/watch?v=l-w-1Et2E5g">Social Recommendations</a></h4>
+<p>よく覚えてないけど, だからなんだと思った記憶はある. アルゴリズムの話ではなかった.</p>
+<h4><a href="http://channel9.msdn.com/posts/Charles/The-Concurrency-Runtime-Fine-Grained-Parallelism-for-C/">The Concurrency Runtime: Fine Grained Parallelism for C++</a></h4>
+<p>Channel9. MS でも <a href="http://www.threadingbuildingblocks.org/">TBB</a> みたいのを作るから使ってね, 
+という話だったけれど, あまり具体的な内容ではなくて "今時の並列ってのはさー" という雑談がメイン. 
+詳しい話は PDC に来てね, ということだった. 行きません. 
+(が, 詳しい話のビデオはアップロードされていた. そのうち見よう...)</p>
+<p>メモリ管理を OS がするように, CPU も数が増えたら資源として管理しなきゃいかん. 
+だからプラットホームホルダ提供するのは自然な流れでしょ, という話はそれなりに納得. 
+GPL の TBB は仕事でこっそり使うわけにいかないけれど, 
+Microsoft が開発ツールの一環で配れば気がねなく使えるからね. </p>
+<p>あとは, やっぱり C++ の並列はしばらくノンブロッキングでタスクベースでオレオレスケジューラという路線なのか...
+と諦めがついた. </p>
+<h4><a href="http://channel9.msdn.com/posts/Charles/Lynne-Hill-Parallel-Computing-Platform-The-Vision-and-Future/">Lynne Hill: Parallel Computing Platform - The Vision and Future</a></h4>
+<p>Channel9. 上のより更に雑談色が強く, 途中で飽きた.</p>

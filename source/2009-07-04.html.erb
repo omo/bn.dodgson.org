@@ -1,0 +1,428 @@
+---
+title: "RPC サーバの遅延リターン"
+date: 2009-07-04
+---
+<h3>RPC サーバの遅延リターン</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%82%A8%E3%83%B3%E3%83%89%E3%83%AC%E3%82%B9%E3%83%BB%E3%83%AF%E3%83%BC%E3%82%AB%E3%83%BC%E3%82%BA%E2%80%95%E5%83%8D%E3%81%8D%E3%81%99%E3%81%8E%E6%97%A5%E6%9C%AC%E4%BA%BA%E3%81%AE%E5%AE%9F%E5%83%8F-%E5%B0%8F%E5%80%89-%E4%B8%80%E5%93%89/dp/4532352835%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4532352835' class='bookcover'><img data:asin='4532352835' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41uCJfqDiUL.jpg'></span></a></span></p>
+<p>最近は過労気味でウェブにものを書くこともできない, という話で上司の同情を誘うべく
+日本人の労働時間やストレスの実態をまとめた 
+<a data:asin='4532352835' href='http://www.amazon.co.jp/%E3%82%A8%E3%83%B3%E3%83%89%E3%83%AC%E3%82%B9%E3%83%BB%E3%83%AF%E3%83%BC%E3%82%AB%E3%83%BC%E3%82%BA%E2%80%95%E5%83%8D%E3%81%8D%E3%81%99%E3%81%8E%E6%97%A5%E6%9C%AC%E4%BA%BA%E3%81%AE%E5%AE%9F%E5%83%8F-%E5%B0%8F%E5%80%89-%E4%B8%80%E5%93%89/dp/4532352835%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4532352835'>エンドレス・ワーカーズ</a> を読んだら, 
+自分の労働時間は日本人労働者の上位 2 割から漏れていることを知り愕然とした. 
+あんなに働いたってのに...残業エリートへの道は険しい. 
+道を進みたいわけじゃないけれど. (平均は越えてたぜ!) </p>
+<p>いずれにせよ流行からはすっかり脱落しているので, 
+時流を無視して仕事の話でもしよう. </p>
+<p>以前, 会社の blog で RPC の結果をノンブロッキングスタイルで受け取るプリミティブ
+"<a href="http://plus.ce-lab.net/plus-stream/weak-function-a-small-class-for-cps-based-programming-with-fragility">弱関数</a>"
+を提案した. でも試行錯誤の結果, いまは使っていない. 
+C++ での弱参照は意図しないリークを作りやすい. 使いわすれることも多く, 忘れた頃にクラッシュする. 
+要求は明示的にキャンセルした方がいいことがわかった. 
+(世間はみんなそうやってますね...)</p>
+<p>さて, 結果の受け取りは非同期/ノンブロッキング RPC の一面に過ぎない. 
+今日は呼び出された RPC を非同期に処理する作りについて書いてみたい. </p>
+<h4>復習: RPC のノンブロッキング呼び出し</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Network-Programming-Addison-Wesley-Professional-Computing/dp/0201563185%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0201563185' class='bookcover'><img data:asin='0201563185' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41J39TMBZ5L.jpg'></span></a></span></p>
+<p>まず復習として, RPC のノンブロッキング呼び出し側についてざっとバリエーションを眺めよう. 
+例題はありがちな名簿サービス:</p>
+<pre>
+interface AddressBook {
+  // 住所の文字列から一致した人を返すつもり...
+  List&lt;Person&gt; findByAddress(String address);
+};</pre>
+<p>RPC のノンブロッキング呼び出しにはいくつかのアプローチがある. 
+<a href="http://java.sun.com/j2se/1.5.0/docs/api/java/util/concurrent/Future.html">Future</a> 
+や
+<a href="http://msdn.microsoft.com/en-us/library/system.iasyncresult.aspx">IAsyncResult</a> 
+のようなポリング派と, 
+<a href="http://twistedmatrix.com/projects/core/documentation/howto/defer.html">Deferred</a> 
+のようなコールバック派が二大派閥だ. </p>
+<p>使いやすさは一長一短だけれど, 
+ポリング派はブロッキングで作られたアプリケーションを部分的にノンブロッキング化するとき, 
+コールバック派は最初からノンブロッキング主体に書かれたコードベースで, 
+使われることが多いと思う. 足回りに使う通信フレームワークの流儀に合わせることもある. 
+古の <a href="http://en.wikipedia.org/wiki/ONC_RPC">ONC RPC</a> はどちらもサポートしている. 
+(<a data:asin='0201563185' href='http://www.amazon.co.jp/Network-Programming-Addison-Wesley-Professional-Computing/dp/0201563185%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0201563185'>教科書</a>ではそれぞれ nonblock rpc, callback rpc と呼ばれていた.)</p>
+<p><img src='/images/20090704_0.png' class='diagram'></p>
+<p>私の仕事はノンブロッキング主体のコードベースが相手だから, 
+とりあえずコールバック派に限って話を進めたい. </p>
+<p>コールバック派の中にもコールバック関数の登録方法でバリエーションがある. 
+Deferred のように戻り値へコールバックを登録させるものもあれれば...</p>
+<pre>
+// コールバック派のノンブロッキング RPC 呼び出し疑似コード
+public classs AddressBookProxy implements IAddressBookClient
+{
+  public Async&lt; List&lt;Person&gt; &gt; findByAddress(String address) { ... }
+};
+...
+Deferred&lt; List&lt;Person&gt; &gt; found = addrbook.findByAddress("suzuran st.");
+found.addCallback(...); // ここで登録</pre>
+<p><a href="http://code.google.com/webtoolkit/doc/1.6/DevGuideServerCommunication.html">GWT RPC</a> のように
+コールバック自身を追加の引数に渡す亜種もある. </p>
+<pre>
+// これも疑似コード
+public classs AddressBookProxy implements IAddressBookClient
+{
+  public void findByAddress(String address, Async&lt; List&lt;Person&gt; &gt; callback) { ... }
+};</pre>
+<h4>本題: RPC 受け取り側のノンブロック化</h4>
+<p>本来なら RPC の受け取り(サーバ)側にも同様の議論があるはずだが,
+クライアントのノンブロッキング呼び出しをサポートする RPC 処理系であっても 
+サーバ側の実装をノンブロッキングに作れるものは案外少ない. 
+サーバにはマルチスレッドかつブロッキングを想定することが多い. </p>
+<pre>
+// ブロッキングスタイルの RPC サービス実装
+public class AddressBookServiceImpl implements IAddressBookService {
+  public List&lt;Person&gt; findByAddress(String address) {
+     List&lt;Person&gt; found = .... データベースに問合せて結果をとりだす....;
+     return found;
+  }
+};</pre>
+<p>けれどサーバの実装がシングルスレッドや再入を許さないマルチスレッドで作られているとき, 
+ブロッキングスタイルは都合が悪い. ノンブロッキングにしたい = リターンを遅延したいことがある. </p>
+<p>リターンを遅延するとは, 
+RPC の実装メソッド (上の例だと AddressBookServiceImpl.findByAddress()) の中では
+結果の値を返すかわりに遅延を通知し, 別のタイミングで実際の値を返したいということ. 
+たとえばデータベースの処理をワーカスレッドに任せ, 自分自身は処理を終えたい. 
+そして計算の終わったワーカから戻り値を返したい. 
+あるいは別のサーバに(非同期で)問合せた結果を自身の戻り値に利用したい. </p>
+<p><img src='/images/20090704_1.png' class='diagram'></p>
+<p>けれど素朴なブロッキングスタイルでサーバを実装すると, こうした期待は叶わない. </p>
+<pre>
+public class AddressBookServiceImpl implements IAddressBookService {
+  public List&lt;Person&gt; findByAddress(String address) {
+     m_workers.enqueue(new AddressFinder(address, ...));
+     ... ここでどうすればいい？ ...
+  }
+};</pre>
+<p>ではどのように遅延リターンを実現するのが望ましいだろう? 
+まずは RPC の前提である "要求-応答" モデルを持つ通信層として,
+いくつかの HTTP サーバを調べてみよう. </p>
+<h4>Twisted.Web : 戻り値で遅延を通知+引数のメソッドでリターンを通知</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Twisted-Network-Programming-Essentials-Fettig/dp/0596100329%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596100329' class='bookcover'><img data:asin='0596100329' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51G9MoVBXwL.jpg'></span></a></span></p>
+<p>ノンブロッキングの通信フレームワークである 
+<a href="http://twistedmatrix.com/trac/">Twisted</a> は, 
+ノンブロッキングの HTTP サーバ Twisted.Web を持っている. 
+Twisted.Web で応答を遅延するコードは次のように書ける. 
+(<a href="http://twistedmatrix.com/projects/web/documentation/howto/using-twistedweb.html#auto21">コピペ元</a>.) </p>
+<pre>
+class ExampleResource(Resource):
+     def render_GET(self, request):
+        def hello():
+          request.write("hello world")
+          request.finish() # これでリターン通知
+        reactor.callLater(10, hello) # 10 秒後に "hello world" と応答する
+        return server.NOT_DONE_YET # 遅延通知</pre>
+<p>コールバックである render_GET() からフレームワークに特別な戻り値 NOT_DONE_YET を返し, 
+タイマーに登録したコールバックから遅延処理を実行している. 
+ちなみに応答を遅延しない場合は戻り値に応答の中身 ("hello world" など) を返せばいい. </p>
+<h4>Jetty 6.0 Continuation : 例外で遅延を通知</h4>
+<p>Java の HTTP サーバである <a href="http://www.mortbay.org/jetty/">Jetty</a> の
+バージョン 6.0 は, 遅延リターンの仕組み "Continuation" を実装していた. 
+(<a href="http://docs.codehaus.org/display/JETTY/Continuations">コピペ元</a>.)</p>
+<pre>
+private void doPoll(HttpServletRequest request, AjaxResponse response)
+{
+    HttpSession session = request.getSession(true);
+
+    synchronized (mutex)
+    {
+        Member member = (Member)chatroom.get(session.getId());
+
+        // Is there any chat events ready to send?
+        if (!member.hasEvents())
+        {
+            // No - so prepare a continuation
+            Continuation continuation = ContinuationSupport.getContinuation(request, mutex);
+            member.setContinuation(continuation);
+
+            // wait for an event or timeout
+            continuation.suspend(timeoutMS);
+        }
+        member.setContinuation(null);
+
+        // send any events
+        member.sendEvents(response);
+    }
+}</pre>
+<p>一見するとよくわからないけれど, coninuation.suspend() の呼びだしで
+特別な例外がおこり, 処理は doPoll() を飛び出して Jetty に戻る. 
+そして別の誰かが coninuation.resume() を呼びだすと, 再び doPoll() が呼び出される. 
+つまり遅延通知に例外を使っている. Twisted.Web よりだいぶわかりづらい. </p>
+<h4>Servlet 3.0: 引数のメソッドと注釈で遅延を通知</h4>
+<p>Servlet は 3.0 から非同期応答をサポートした. Jetty の continuation もこれで置き換えられるらしい. 
+(<a href="http://weblogs.java.net/blog/mode/archive/2008/12/asynchronous_su.html">コピペ元</a>.)</p>
+<pre>
+@WebServlet("/foo" asyncSupported=true)
+public class MyServlet extends HttpServlet {
+    public void doGet(HttpServletRequest request, HttpServletResponse response) {
+        ...
+        AsyncContext aCtx = request.startAsync(request, response); // 遅延通知
+        ScheduledThreadPoolExecutor executor = new ThreadPoolExecutor(10);
+        executor.execute(new AsyncWebService(aCtx));
+    }
+}
+...
+public class AsyncWebService implements Runnable {
+    AsyncContext ctx;
+    public AsyncWebService(AsyncContext ctx) {
+         this.ctx = ctx;
+    }
+    public void run() {
+        // Invoke web service and save result in request attribute
+        // Forward the request to render the result to a JSP.
+        ctx.forward("/render.jsp");  // これがリターン
+    }
+}</pre>
+<p>まず doGet() メソッドに特別な注釈をつけ,
+実行時には 引数の request オブジェクトに対し遅延を通知するメソッド startAsync() を呼びだしている. 
+サンプルでは同時にワーカスレッドを起動する. 
+そして処理が完了すると, スレッドは startAsync() の戻り値である 
+<a href="http://java.sun.com/javaee/6/docs/api/javax/servlet/AsyncContext.html">AsyncContext</a> 
+のメソッドを呼び出して戻り値を返す. (=リターンする.) 
+Jetty の例外脱出 + 同じメソッド再呼び出しモデルよりはわかりやすくなった. </p>
+<p>...</p>
+<p>HTTP の遅延リターンは三つの実装に三種類のバリエーションを見ることができた:</p>
+<ul>
+<li>戻り値で遅延を通知+引数のメソッドでリターンを通知 (Twisted.Web)</li>
+<li>例外で遅延を通知 (Jetty6 Continuation)</li>
+<li>引数のメソッド呼び出しで遅延を通知 (Servlet 3.0)</li>
+</ul>
+<p>HTTP の非同期応答 API を一通り眺めたところで, 
+今度はその上に載せる RPC の API を調べてみよう. </p>
+<h4>Ice RPC : 引数のメソッドでリターン通知</h4>
+<p>RPC 実装のひとつ <a href="http://www.zeroc.com/ice.html">ZeroC の Ice</a> は非同期応答をサポートしていた. 
+(コピペ元はパッケージ付属の async サンプル)</p>
+<pre>
+// Hello.ice のインターフェイス定義
+interface Hello
+{
+    ["ami", "amd"] idempotent void sayHello(int delay)
+        throws RequestCanceledException;
+
+    void shutdown();
+};
+
+// 実装
+void
+HelloI::sayHello_async(const Demo::AMD_Hello_sayHelloPtr&amp; cb, int delay, const Ice::Current&amp;)
+{
+    if(delay == 0)
+    {
+        cout &lt;&lt; "Hello World!" &lt;&lt; endl;
+        cb-&gt;ice_response(); // これがリターン
+    }
+    else
+    {
+        _workQueue-&gt;add(cb, delay);
+    }
+}</pre>
+<p>インターフェイス定義で "amd" (Asynchrounous Method Dispatching) を指定すると, 
+実装の第一引数に特別なオブジェクトがやってくるようになる. 
+渡ってきたオブジェクト cb に対し, リターンを示す ice_response() を呼び出すまで応答が遅延されるのだろう. 
+デフォルトの挙動が非同期なため, 遅延を明示的に通知する必要はないようだ.</p>
+<h4>protocol buffer : 引数のメソッドでリターンを通知</h4>
+<p>protocol buffer はどうか. (<a href="http://code.google.com/apis/protocolbuffers/docs/proto.html">コピペ元</a>.) </p>
+<pre>
+// in .proto
+service SearchService {
+  rpc Search (SearchRequest) returns (SearchResponse);
+}
+...
+// in .cc
+class ExampleSearchService : public SearchService {
+public:
+ void Search(protobuf::RpcController* controller,
+             const SearchRequest* request,
+             SearchResponse* response,
+             protobuf::Closure* done) {
+   if (request-&gt;query() == "google") {
+     response-&gt;add_result()-&gt;set_url("http://www.google.com");
+   } else if (request-&gt;query() == "protocol buffers") {
+     response-&gt;add_result()-&gt;set_url("http://protobuf.googlecode.com");
+   }
+   done-&gt;Run(); // これがリターン
+ }
+};</pre>
+<p>Run() がリターンに相当する. これもデフォルトで非同期なため, 遅延を通知する必要はない. </p>
+<p>少し面白いのは, 複数の引数があっても XxxRequest という単一のオブジェクトにまとめられるところ. 
+RPC を "引数や戻り値の直列化とメソッドディスパッチ" と割り切り, 
+実装に使える関数シグネチャの自由度は諦めている. 
+引数の個数を揃えるとランタイムとの相性が良くなり, 
+生成するコードサイズを小さくできるのかもしれない. (単なる手抜きかもしれないけれど.)</p>
+<h4>WCF: 属性と戻り値による遅延+リターン通知</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Programming-WCF-Services-Juval-Lowy/dp/0596521308%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596521308' class='bookcover'><img data:asin='0596521308' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41H2u13a9bL.jpg'></span></a></span></p>
+<p><a href="http://msdn.microsoft.com/en-us/library/ms735119.aspx">WCF</a> も
+遅延リターンをサポートしている. ここでも IAsyncResult を使っているのは一貫性があっていい. 
+(<a href="http://msdn.microsoft.com/en-us/library/ms731177.aspx">コピペ元</a>.)
+WCF のデフォルトはブロッキングスタイルなので, 属性の AsyncPattern パラメタで非同期化を支持している. </p>
+<pre>
+// interface
+ [OperationContractAttribute(AsyncPattern=true)]
+ IAsyncResult BeginServiceAsyncMethod(string msg, AsyncCallback callback, object asyncState);
+
+ // Note: There is no OperationContractAttribute for the end method.
+ string EndServiceAsyncMethod(IAsyncResult result);
+
+// implementation
+ ...
+ public IAsyncResult BeginServiceAsyncMethod(string msg, AsyncCallback callback, object asyncState)
+ {
+      Console.WriteLine("BeginServiceAsyncMethod called with: \"{0}\"", msg);
+      return new CompletedAsyncResult&lt;string&gt;(msg);
+ }
+ ...
+ public string EndServiceAsyncMethod(IAsyncResult r)
+ {
+      CompletedAsyncResult&lt;string&gt; result = r as CompletedAsyncResult&lt;string&gt;;
+      Console.WriteLine("EndServiceAsyncMethod called with: \"{0}\"", result.Data);
+      return result.Data;
+ }
+ ...</pre>
+<p>クライアントにはこれを ServiceAsyncMethod() として公開することもできるらしい. 
+サービスの EndServiceAsyncMethod() はどんなタイミングで呼ばれるのだろう.
+スレッドモデルが想像できない. </p>
+<p>直接の真似はできないにせよ, 
+WCF のハイテクぶりと protobuf のローテクは遅延リターンの作りを決める論点を絞ってくれた: 
+RPC の約束する "関数呼び出し" の幻影を, ノンブロッキングという現実の中で誰にどれだけ信じさせるか. 
+聴衆の種類と努力の量が支配的なパラメタになりそうだ. 
+クライアントに幻影を見せつつサービス実装側を泥臭くするのか. 
+サービス実装者も夢を見たいのか. そのためのランタイムはどれだけリッチにするか. 
+コード生成だけで逃げきるか. リフレクションの魔法に頼るか. 魔法を使ったときにデバッグはできるか...
+バリエーションは広い. </p>
+<h4>ベイパーウェア A: 戻り値を使った遅延通知</h4>
+<p>さて, HTTP サーバと RPC はそれぞれに遅延リターンの手法があり, 共通点もあれば差異もあった. 
+HTTP 固有の方法に着目し, それを RPC に借用して幻影度を高められないだろうか. </p>
+<p>たとえば Twisted.Web のように戻り値を遅延の通知に使えないか考えてみる. </p>
+<p>けれど, これは少し難しい. RPC では, サービスの結果をあらわすのに戻り値を使いたい. 
+戻り値のデータ型はメソッド毎に IDL 上で定義されている. その型が遅延をあらわす NOT_DONE_YET 相当をうまく表現できるとは限らない. 
+動的型付けの言語なら戻り値の型に制限を受けないから, シングルトンの NOT_DONE_YET を
+遅延通知に使えるかもしれない. 静的型付けの言語でも型システムのトリックでうまく "特別な値" を作れるかもしれない. </p>
+<p>もう一つ問題がある 遅延したリターンは最終的にどこから返せばいいだろう.</p>
+<pre>
+class AddressBookServiceImpl:
+  def findByAddress(address):
+    def find(self, ...):
+      ....
+      return xxx # この戻り値をどうやってクライアントに返すか？
+    reactor.callWorker(find) # ワーカスレッドに処理を任せる空想上のメソッド
+    return NOT_DONE_YET</pre>
+<p>あまり良いアイデアがない. </p>
+<h4>ベイパーウェア B: Deferred で戻り値を使ったリターン通知</h4>
+<p>そういえば Twisted  はクライアント(呼び出し)側で Deferred を特別な戻り値に使っていた. 
+WCF の IAsyncResult のようにサーバ側でも同じスタイルをとれないか. </p>
+<pre>
+class AddressBookServiceImpl:
+  def findByAddress(address):
+    d = Deferred(...)
+    def find(self, ...):
+      ....
+      d.callback(ret) # Deferred を介しリターンを通知
+    reactor.callWorker(find)
+    return d # 結果の値ではなく Deferred オブジェクトを返す</pre>
+<p>これはとても自然に見えるけれど, 面倒なところもある. 
+サービスの実装を呼びだした RPC 処理系は, Deferred に対して結果を受け取るコールバックを登録したい. 
+ところが戻り値として Deferred を返す前に, findByAddress() 内から
+Deferred の callback() を呼び出されてしまう(=処理を遅延しない)こともありうる. </p>
+<pre>
+class AddressBookServiceImpl:
+  def findByAddress(address):
+    d = Deferred(...)
+    d.callback(ret) # NG!: findByAddress() がリターンし
+                    #       addCallback() される前に戻り値をコールバックしてしまう
+    return d
+...
+# テストケースなど
+d = service.findByAddress(...) # ← ここで d.callback() されているので
+d.addCallback(...)             # ← ここで登録したコールバックは取りこぼされる</pre>
+<p>このとき素朴な RPC 処理系はサービスの戻り値を受けとりそびれるかもしれない. 
+処理系は取りこぼしがないよう工夫する必要がある. ちょっと面倒そう. </p>
+<p>対する WCF はポリング派だから取りこぼしが起きないんだね. 絶妙だなあ. </p>
+<h4>ベイパーウェア C: 例外を使った遅延通知</h4>
+<p>別の候補も考えてみよう. 
+Jetty Continuation のように例外を使うのはどうだろう. 個人的には悪くないと思っている. 
+Jetty Continuation がまずかったのは, 休眠からの復帰先に休眠開始時と同じメソッドを使うところだった, 
+高階関数を使って普通に継続を表現すれば, さほど無理なく例外を "特別な戻り値" に使えるかもしれない.</p>
+<p>仮に ruby っぽく書くならこんなかんじ:</p>
+<pre>
+class AddressBookService
+  ...
+  def find_by_address(addr)
+     raise defer do |res|
+       worker.enque do
+         res.respond(AddressBookDb.find_by_address(...))
+       end
+     end
+  end
+  ...
+end</pre>
+<p>ワーカなりへ処理をキューイングすると同時に, メソッドから遅延通知の例外を投げる. 
+ワーカに切り離されたクロージャと例外は遅延処理を追跡する情報が共有しており, 
+RPC 処理系は例外を通じてそれを参照し, クロージャからのリターンを待つ. </p>
+<p>例外を遅延通知に使うのは無作法だけれど利点もある. 
+特に便利なのは, メソッドのシグネチャがブロッキングスタイルと同じになるところ. 
+だから "普段はブロッキングでいいけど時々ノンブロッキングにしたい" という時に都合がいい. </p>
+<h4>勤務先の場合</h4>
+<p>仕事で使う内製の RPC も遅延リターンができる. </p>
+<p>内製 RPC にはいくつかの言語で実装がある. 
+C++ 版は, Ice と同じく引数通知スタイルを使う. 
+IDL の定義にはない特別なオブジェクトがメソッド引数に追加され, その引数を通じてリターンを通知する. 
+コードベースのポリシーで C++ 例外は使えないし, 戻り値も C++ では使いにくい. (オブジェクトの確保と解放の対応づけがわかりにくくなってしまう.) 
+引数を増やすのはみっともないけれど, 手堅い実装をするには悪くない. </p>
+<p>Python 版と ActionScript 版は例外通知スタイルを使う. 
+この二つを使う場面ではあまり遅延リターンをすることもないだろうという期待から, 
+遅延のないケースがクリーンにかける例外通知スタイルを使っている. 
+(ActionScript 版 RPC にサーバ機能があるのはデバッグの小細工用; 
+サーバといっても実際に listen() するわけではなく, なんとなくサーバっぽく動くだけ.)</p>
+<p>実際に使ってみたところ, ActionScript なら例外通知モデルもそれほど複雑にならないことがわかった. 
+ActionScript はクロージャのおかげで遅延後のコードがコンパクトに書けるからかもしれない. 
+Python 版の遅延リターンは使いこんでないのでよくわからず. </p>
+<p>余談: Python 版にはブロッキングスタイルの RPC 実装もある. 適当なマルチスレッドの HTTP サーバに載せて使う. 
+C++ でノンブロッキングのコードを書いたあとに Python 版でブロッキングのコードを書くと, 
+そのあと C++ に帰るのが辛くなる. まだ幻影の効き目が弱い. </p>
+<h4>ノンブロッキングスタイルで実装されたサービスの単体テスト(は面倒)</h4>
+<p>更に脇道へ. </p>
+<p>ノンブロッキングの RPC を使うコードベースの単体テストは少し面倒くさい. 
+個々のオブジェクトをテストする面倒は想像がついていたけれど, 他にも困る場面があった. </p>
+<p>たとえばインターフェイス I を定義したリモートのサービスを使うクライアント C のテストを書くとき, 
+C のテストから呼ばれる I プロキシのモック M を適当にでっちあげたい. 
+モック支援の弱い C++ のような言語だと, モックのかわりに I のリアルな実装 S を使って済ますことが多い. 
+S の実装がオンメモリで扱いやすいものならそれで我慢できる. 分散透過万歳!</p>
+<p>ところがノンブロッキングスタイルで実装されたサービスはプロキシのモック代わりに使いにくい. 
+ノンブロッキングスタイルの場合, 同じ IDL から生成されてもプロキシとサービスのシグネチャが違う. </p>
+<pre>
+// proxy は戻り値通知スタイルを採用
+...
+abstract public Future&lt; List&lt;Person&gt; &gt; findByAddress(String address);
+...
+// service は引数通知スタイルを採用
+...
+abstract public void findByAddress(Response&lt; Future&lt; List&lt;Person&gt; &gt; resp, String address);
+...</pre>
+<p>つまりテストしたいクライアント C は, 実際にはプロキシ用インターフェイス Ip を参照しており, 
+一方でサービスの実装 S はサーバ用インターフェイス Is を実装している. そして Ip と Is は互換性がない. </p>
+<p><img src='/images/20090704_2.png' class='diagram'></p>
+<p>ブロッキングスタイルだと Is と Ip は同じになることが多いけれど, 
+ノンブロッキングスタイルでこの二つを揃えるのは案外難しい. 
+仕方ないので M を Ip にあわせるややこしいアダプタを作るか, インプロセスに M をホストして通信するか, 
+再利用を諦めて Ip にあわせたモックを実装することになる. どれもいまいち冴えない. 
+うまい C++ のトリックでなんとか Is と Ip を揃えられないものかと考えるもいまのところ妙案なし. 
+なんとかしてください &gt; 同僚のひと</p>
+<p>別の解決策も考えられる. まずプロキシとサーバの両方で同じ通知スタイルを採用し, (例: 引数通知)
+通知オブジェクトの型もプロキシとサーバで揃えれば (例: IAsyncResult) インターフェイスを統一できる. 
+通知オブジェクトは複雑になるけれど, なんとか頑張れないもんかなあ. そのへんを頑張り切った WCF はエラい. </p>
+<h4>まとめ</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0Erlang-Joe-Armstrong/dp/4274067149%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4274067149' class='bookcover'><img data:asin='4274067149' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51bZh24YhqL.jpg'></span></a></span></p>
+<p>サーバ側でもノンブロッキング/遅延リターンのできる RPC がほしい. </p>
+<ul>
+<li>戻り値を使った遅延通知 (Twisted.Web)</li>
+<li>戻り値を使ったリターン通知 (WCF, Deferred?)</li>
+<li>引数を使った遅延通知 (Servlet 3.0)</li>
+<li>引数を使ったリターン通知 (Ice, protobuf)</li>
+<li>例外を使ったリターン通知 (Jetty 6 Continuation)</li>
+<li>テストとかがかったるくなりがち.</li>
+<li>そんな面倒のない Erlang は勝ち組.<ul>
+<li><a href="http://teahut.sakura.ne.jp/b/2009-06-15-1.html">勉強会</a>には遅延参加してごめんなさい.<ul>
+<li>だからって帰りの電車が遅延しなくてもいいのに.</li>
+</ul></li>
+</ul></li>
+</ul>

@@ -1,0 +1,114 @@
+---
+title: "コードと Communication"
+date: 2008-02-11
+---
+<h3>コードと Communication</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Implementation-Patterns-Addison-Wesley-Signature-Series/dp/0321413091%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321413091' class='bookcover'><img data:asin='0321413091' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51oesRtjLAL.jpg'></span></a></span></p>
+<p>Kent Beck の <a data:asin='0321413091' href='http://www.amazon.co.jp/Implementation-Patterns-Addison-Wesley-Signature-Series/dp/0321413091%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321413091'>Implementation Patterns</a> を読んだ. 
+薄いのがエライ. 内容は Java のイディオムをまとめたようなものだけれど, 
+イディオムという言葉の印象ほどトリッキーなものは多くない. 凡庸なものだ. 
+だからパターンなのだろう. 新鮮味のない, ある意味どうでもいい内容ではあったけれど, 
+逆にこりゃひどい, というものもあまり無い. 良いパターンと言えるのかもしれない. 
+パターンといいつつパターン言語の様式に揃える様子がさらさら無いあたりは宗主の貫禄. 
+そのせいでいまいち納得できない部分もあったけれど, 薄さとのトレードオフという気はする. </p>
+<p>本編はさておき, 前書きと導入部はなかなか読ませる. 
+Kent Beck は自身のプログラミング原則として, 
+その一つ目に "Communication" を置いている. 
+コードの可読性を高くしろ, と主張するのはよく聞くけれど, 
+この原則は可読性の根拠を端的に伝えている. </p>
+<p>ただ Kent Beck は自身の原則を過小評価しているのではないかとも思う. 
+書き手の意図とは無関係にコードは他人と communicate してしまう. 
+書き手がどれだけツンな態度を取ったところで, 
+読み手はコードから様々な意図を読み取る. 
+だからコードは communication のためにあるべきだ, という主張は主張にすらならない. 
+高級言語で書かれたコードは所与の性質として communication を行う. 
+だから原則としての communication に言及するなら, 
+コードは <em>書き手の意図どおりに</em> communication すべきだ, とでも言うべきだろう. 
+仮に <em>Intensive Communication</em> の原則とでも呼んでおこう.</p>
+<h4>Communication と意図</h4>
+<p>Intensive でない communication とは何だろう. 
+世の中には伝えたくないことが伝わってしまう communication もある. 
+自信なさげに研究発表をする学生は, 額の汗や早口から自身の成果がもつ弱点を漏らしてしまうだろう. 
+神経質で焦りがちな男達は, デートをしている女の子の身振りから
+隠された不穏な(稀に嬉しい)メッセージを読み解こうとするだろう. </p>
+<p>コードも書き手の意図しない思惑を伝えてしまう. 
+なげやりな設計はやる気のなさを伝えている. 
+大量の FIXME は切迫感を伝えている. 
+一貫性のないインデントや変数名はチームの意思不統一や個人の迷いを伝えている. 
+過剰な indirection は不信感を伝えている. 
+cryptgraphic なコードはハッカー的な虚栄心を伝えている. 
+など. </p>
+<p>Intensive な communication にも様々な種類がある. 
+Kent Beck が言及しているのはそのごく一部にすぎない. 
+前書きから引用すると, KB の communication 原則は次のように問う. 
+<em>"What do I want to tell a reader about this code?"</em> 
+これは &lt;説明&gt; としてのコードを示唆している. 
+KB のいう communication は, その大半が説明に見える. たまに &lt;指示&gt; があるかもしれない. 
+そのほかの intensive communication はどこに行ってしまったのだろう. 
+たとえば &lt;恫喝&gt; するコード, なんてのはあるだろうか.</p>
+<h4>様々な Communication</h4>
+<pre></pre>
+<p>さすがに仕事で恫喝はしないにせよ, 
+仕事の communication が &lt;説明&gt; と &lt;指示&gt; で済むなら PM が胃を痛めることはないだろう. </p>
+<p>たとえば短い名前の関数は, その利用を &lt;勧めている&gt; かも知れない. 
+XxxManager は設計のまずさを &lt;謝っている&gt; かもしれない. 
+誰かの作ったインターフェイスを実装するのはある種の &lt;合意&gt; だろうし, 
+クラスを継承するのは &lt;君を信じてる&gt; と言うようなものだ. 
+既存の API をプロジェクトやモジュール独自でラップしたら, 
+それは &lt;不満&gt; や &lt;不信&gt; の意思表示と取れなくもない. 
+インターフェイスの定義は &lt;提案&gt; や &lt;説得&gt; を含むことがある. 
+facade の裏にある実装へのアクセスを一切禁止するのは &lt;威嚇&gt; かもしれない. </p>
+<p>コードの上の communication 不全を正すのも PM の仕事だろうか. 
+ちょっと無責任な気がする. プログラマ同士で何とかすべきだろう. 
+技術主任なんてのはそのためにいるんだろうし. 
+コードを精査して不信や対立, ぎこちなさをを洗いだす. 
+refactoring でそれを正す. コードにおける dis-communication の解消は
+そんな形をとるのだろう. コードの外でも話をつける必要はあるだろうけど...ちょっと胃が痛い...</p>
+<p>仕事の話は味気なくなりがちだなあ. 
+ヒトはもっと趣のある communication の様式を持っているはず. 
+たとえば花言葉. このくらいの情緒が欲しい. コード言葉があっていい. </p>
+<p>美しい同僚が職場を去るという. あなたは密かな恋心を抱いていた.
+この溢れる想いを伝えたい. 彼女のブランチをチェックアウトしたあなたは最後のコミットをする. </p>
+<pre>
+Index: ChangeLog
+===================================================================
+--- ChangeLog  (revision 1630)
++++ ChangeLog  (revision 1631)
+@@ -1,3 +1,40 @@
++2008-02-07  omo &lt;omo at dodgson.com&gt;
++
++	* my last fix for you
++
+Index: lib/read_record.c
+===================================================================
+--- lib/read_record.c  (revision 1630)
++++ lib/read_record.c  (revision 1631)
+@@ -992,6 +992,7 @@
+     res = read_from_file(f, &amp;ctx-&gt;msg);
++   } else {
++     res = NULL != gets(&amp;ctx-&gt;msg);
+   }
+   return res;
+ }</pre>
+<p>翌日. </p>
+<pre>
+Index: ChangeLog
+===================================================================
+--- ChangeLog  (revision 1631)
++++ ChangeLog  (revision 1632)
+@@ -1,3 +1,40 @@
++2008-02-08  alice &lt;alice at dodgson.com&gt;
++
++	* no overflowed message is welcome (including yours)
++
+Index: lib/read_record.c
+===================================================================
+--- lib/read_record.c  (revision 1631)
++++ lib/read_record.c  (revision 1632)
+@@ -992,6 +992,7 @@
+   } else {
+-     res = NULL != gets(&amp;ctx-&gt;msg);
++     res = NULL != fgets(&amp;ctx-&gt;msg, sizeof(message_t), stdin);
+   }
+   return res;
+ }</pre>

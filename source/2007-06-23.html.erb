@@ -1,0 +1,227 @@
+---
+title: "つくってわか(った気にな)る STM"
+date: 2007-06-23
+---
+<h3>つくってわか(った気にな)る STM</h3>
+<p>最近みた TechTalks の中で STM (Software Transactional Memory) の話が面白かった. 
+紹介しようと思ったものの, まず STM の認知度はどれほどなのだろうか. 
+日本語でぐぐると CPU 会社の宣伝くらいしか見当たらない. 
+友達にたずねたら "そんなので騒いでいるのは君と Haskell ユーザくらいだよ" とのたまう. 
+私の脳内では STM 派とメッセージ通信派が激烈な争いを繰り広げていることになっているけれど, 
+気のせいなのかもしれない... 
+念のため TechTalks を眺める前に少し STM の話を書いてみる. 
+そのあと話の肴に作ってみた STM のトイ実装 (500行くらい) を紹介したい. </p>
+<h4>Software Transactional Memory の話</h4>
+<p>ではさっそく STM のことを簡単に説明してみよう. 
+専門家による一次資料を読みたい人はあとにあるリンクを参照ください. </p>
+<p>Software で実装された TM (Transactional Memory) のことを STM という. 
+TM は共有メモリ型の並列プログラミングに使う技術で, 
+ロックを使った排他制御の代替として提案されている. 
+TM つきの言語ではロックより宣言的な方法でコードパスの原子性を記述できる. </p>
+<p>たとえば以下のコードをスレッドセーフにしたいとき...</p>
+<pre>例 1
+01: void move(Object key) {
+02:   if (map1.contains(key)) {
+03:     Object val = map1.remove(key);
+04:     map2.put(key, val);
+05:   }
+06: }</pre>
+<p>lock を使った排他制御はこうなる:</p>
+<pre>例 2
+01: void move(Object key) {
+02:   synchronized(mutex) { // ここでロック
+03:     if (map1.contains(key)) {
+04:       Object val = map1.remove(key);
+05:       map2.put(key, val);
+06:     }
+07:   } // アンロック
+08: }</pre>
+<p>典型的な TM ではこんな風に書ける:</p>
+<pre>例 3
+01: void move(Object key) {
+02:   atomic { // ここからアトミック
+03:     if (map1.contains(key)) {
+04:       Object val = map1.remove(key);
+05:       map2.put(key, val);
+06:     }
+07:   } // ここまでアトミック
+08: }
+</pre>
+<p>(例は<a href="http://www.acmqueue.org/modules.php?name=Content&amp;pa=showpage&amp;pid=444&amp;page=1">他所</a>から引用, ちょっと改変)</p>
+<p>2 と 3 は大差ないように見えるが, 3 の atomic ブロックは別にロックで実現しなくていい. 
+ブロック内が(データベースのトランザクションのように)アトミックに動くという
+事実だけを指示している. 
+たとえば 03 と 04 の間で他のスレッドから map1 の key 要素が削除されることはない. 
+それは TM が保証してくれる. </p>
+<p>TM はもともとハードウェアの機能として提案されたが, 
+あとからソフトウェアでも作れることが示された. 
+敷居の低さもあってか, 今はソフトウェア実装である STM の方が
+広く話題に上る気がする. 以下も STM の話が中心になる. </p>
+<p>さて, 先に並列の制御がロックでなくてもいいと言ったけれど, 実際はどうなんだろう. 
+いまのところ, 多くの STM はデータベースでいう楽観的ロックのように実装されているらしい. 
+つまり atomic ブロックでの変更は一旦トランザクション内に保留しておき, 
+ブロックの最後にまとめて変更をコミットする. (普通のロックを使う実装もある.) 
+コミットの処理では一貫性を検査し, 
+他のトランザクションと変更が衝突していたら自分の変更を破棄する. 
+トランザクションはコミットが成功するまでコードを再実行する. 
+素朴なデータベース (sqlite とか) はユーザが明示的に再実行を行うのに対し, 
+STM の再実行はふつう裏で勝手に動く. </p>
+<p>ロックに対して TM が有利な点はいくつかある. 
+一つは処理の組合せに強いこと. (論文とかでは composability が高いという.) 
+上の例だと, 例1 は map1 と map2 をスレッドセーフに作っておいても
+コード全体はスレッドセーフにならない. 例2 のように更なるロックでガードする必要がある. 
+これは嬉しくない. 余計なロックにはオーバーヘッドがあるし, 
+なによりユーザが下手にロックを書くとデッドロックの心配がある. 
+ロックの中でロックを使うコードを呼ぶべきでない. (オープンコールの原則.) 
+TM ではこうしたケースも扱えることになっている. 
+データベースでいうネストしたトランザクションみたいなものね. </p>
+<p>もう一つの利点はスケーラビリティ. 
+プログラムの並列度があがると 例2 のような大雑把なロックはボトルネックになる. 
+かといってロックの粒度を上げるのはバグのもと. 
+それにどう頑張ってもロックは並列化の妨げになる. 
+TM では排他制御がコミットの瞬間に局所化されている. 
+また優れた実装ではノンブロックの技法を使ってコミットを実現する. 
+そうした方法はスケーラビリティが高いと言われている. </p>
+<p>こうした利点から TM は注目を集めているが, 解決すべき問題点も多い. 
+まずスケーラビリティに優れるとはいえトランザクションにはコストがかかる. 
+たとえば楽観的ロックを実現するオーバーヘッド. 
+atomic ブロック内の変更はコピーを保存しておく必要があるし,
+衝突検知や再試行も負担だ. なんとか速くしたい. </p>
+<p>利便を考えると atomic ブロックのようにうまく言語へ組込みたいが, 
+それも一筋縄ではいかない. 楽観的ロックで実装が使う "コピー" のセマンティクスは? 
+全てのオブジェクトをコピーするのは負担が大きそうだけれど, どれをコピーすればいいの? 
+トランザクション中にファイルを書き換えて, そのトランザクションが破棄されたらどうするの? 
+例外が起きたら? delete しちゃったオブジェクトは再試行で使えるの?</p>
+<p>そもそも TM ってどう作るもんなの? (ほんとに作るの?)</p>
+<h4>最近みた TechTalks: <a href="http://video.google.com/videoplay?docid=-5240896304418824367">Transactional Memory: From Semantics to Silicon</a></h4>
+<p></p>
+<p>そんな背景を踏まえたところで TechTalks の話. </p>
+<p>この講演では Intel の研究者が自分のところで作った TM を紹介する. 
+前半は TM という概念を紹介し, 中盤が STM ランタイムの実装の話. 
+それから Intel CPU に命令を追加して実現する HATM (Hardware Accelerated TM) の
+話へと進む. ランタイムの実装も面白いけれど, HATM の話が見所. 英語はさほどクリアでもない. </p>
+<p>ランタイムの話. 
+このランタイムは C で書かれており, そのランタイムを使った言語拡張が Java と C にある. 
+講演ではまずランタイムの API (tmRead(), tmWrite(), ...) が紹介され, 
+コンパイラが通常のコードをどんな API 呼び出しに変換するかが示される. 
+ベタな例の他に, コンパイラがそれを最適化するとどうなるかという話もある. 
+コンパイラの仕事として TM 固有の最適化ができるというのは面白い. 
+Java でのベンチマークは atomic を使った HashMap と ConcurrentHashMap を比べ, 
+まだ高速化の余地が大きいことを認めている. 
+仕方ないよね. アセンブラと高級言語を比べるようなもんだよ...</p>
+<p>そこで高速化のために...と, 話は HATM に進む. 
+まずハードウェアを使う既存の TM 実装として HTM と HyTM (Hybrid TM) を挙げ, 
+それらと HATM を比べる. HTM や HyTM がトランザクションのモデルを
+ハードウェアに組み込んでしまうのに対し, 
+HATM の CPU 拡張は最小限でモデルに依存しないという. 
+HATM ではキャッシュラインの状態を拡張し, 更にその状態を覗ける命令を用意する. 
+ある CPU が書きこんだキャッシュ(=メモリ)を別の CPU が変更したら, 
+メモリはある種の dirty な状態に移る. 
+トランザクションはコミット前の衝突検知の冒頭でまずその状態をチェックし, 
+dirty でないなら衝突ナシとみなして残りの検知ロジックを省略できる. 
+dirty なら書き換えられた可能性があるため, 検知のアルゴリズムを実行する. 
+この省略のおかげで高速化できるというわけ. たしかにミニマムな気がする. </p>
+<p>そんなかんじで HATM いいよ, という話でした. </p>
+<p>リンク:</p>
+<ul>
+<li><a href="http://journal.mycom.co.jp/articles/2007/01/08/micro2/002.html">MICRO39 - 発表論文に見るIntelの研究動向</a>: マイコミジャーナルの紹介記事. ハードウェア寄りの視点から.</li>
+<li><a href="http://portal.acm.org/citation.cfm?id=1194838">Architectural Support for Software Transactional Memory</a>: 元ねた. HATM の拡張命令をどうランタイムに組込むかなど, 具体的なことを知りたい人向け.</li>
+</ul>
+<h3>そのほか STM 関係の記事</h3>
+<p>勢いあまっていくつか他の記事を読んだのでついでに紹介しておく. </p>
+<p>外野から見た STM の議論にはおおよそ二つの流れがある. 
+ひとつはどうランタイムを実装するかという話. HATM 使おうぜ, とかね. 
+もうひとつは STM の仕組みをどうプログラマに提供するかという話. 
+こっちは atomic ブロックを使うかライブラリにしておくかというような路線. 
+両方がセットになっている記事もあるけれど, 
+前者のランタイムの上に後者のフレームワークが乗るような構成で議論をするものが多い. </p>
+<p>私が STM のことを知ったのは去年の ACMQ の記事だった. 
+("<a href="http://www.acmqueue.org/modules.php?name=Content&amp;pa=showpage&amp;pid=444&amp;page=1">Unlocking Concurrency</a>") 著者は TechTalks に出てきた Intel の人. 
+Transactional Memory の動機から実装の話までを概観する. わかりやすく入門にいい. 
+巻末の参考文献も充実している. 私の話はだいたいこれの受け売りです. </p>
+<p>その後 "<a href="http://www.cs.wisc.edu/trans-memory/biblio/">Transactional Memory Bibliography</a>" やぐぐった結果からいくつか記事を読んでみた. 
+ハードウェアの話には興味がないから STM が中心. </p>
+<p>まずはサーベイ探し. "<a href="http://www.cs.rochester.edu/u/scott/papers/2004_TR839.pdf">A Qualitative Survey of Modern Software Transactional Memory Systems(Scott, 2004)</a>" を読んでみる. これによると Transactional Memory は 1993 年に登場したアイデアだという: "<a href="http://www.cs.brown.edu/people/mph/HerlihyM93/herlihy93transactional.pdf">Transactional Memory: architectural support for lock-free data structures(Herlihy, 1993)</a>" このアイデアはハードウェアによる実装(例のごとくキャッシュラインに細工する)だったが, 後にソフトウェアで実装され直した. 注目を集めるようになったのはノンブロックなアルゴリズムの研究が進み, その応用で高速な STM を作れることが示されたからだという. </p>
+<h4>ノンブロッキングのモデル</h4>
+<p>この文脈では OS の 排他制御機能を使わないプログラミングモデルをノンブロッキングという. 
+ノンブロッキングにも色々な段階がある. 一番強力なモデルは "Wait-freedom". どのスレッドも常に走っていて, wait() などで寝て待つことのないモデル. もう少し緩いのは "Lock-freedom". リソースの奪い合いに負けたスレッドが wait() することはあるけれど, 常にいずれかのスレッドが動いているモデル. デッドロックはおきないけれど, <a href="http://en.wikipedia.org/wiki/Resource_starvation">starvation</a> はおこる. 要するにいつまでも必要な資源が手に入らない負け犬スレッドを生むモデル. 一番緩いのが "Obstruction-freedom". これは微妙にわかりづらい. デッドロックは起きないけれどライブロックは起きるモデルらしい. 理論的な保証がないかわりにコードはシンプルになるらしく, "現実的なアルゴリズム" みたいに銘打った手法で使われている. </p>
+<p>そういえばぐぐったらノンブロッキングのアルゴリズムに関する簡易 bib のページがあった. 参考まで : "<a href="http://www.audiomulch.com/~rossb/code/lockfree/">Some notes on lock-free and wait-free algorithms</a>"</p>
+<h4>STM の二つの手法: アドレス式 / オブジェクト式</h4>
+<p>もともと HTM を模して作られた STM なので, 
+当初は素のメモリブロックがトランザクションの対象だった. 
+そうした STM ではグローバルなハッシュテーブルに, 
+アドレスをキーとしてトランザクション情報(排他制御のロックとか)を保存する. 
+これをアドレス式 (word-based) の STM と呼ぶ. hashtable-based と呼ぶこともある.</p>
+<p>よりモダンな STM は VM に組込まれ, 言語のオブジェクトモデルと統合されている. 
+こうした実装をオブジェクト式 (object-based) の STM と呼ぶ. 
+オブジェクト中心の STM ではオブジェクト毎にトランザクションに関する情報を持つ. 
+たとえば VM が確保したオブジェクトのヘッダ部分にそうしたデータを埋め込んでおく. 
+Intel の Java 用 STM はこの路線だった.</p>
+<p>とはいえ VM を改造するのは大変そう. 
+Sun の <a href="http://research.sun.com/people/moir/">Mark Moir</a> らによる
+DSTM/DSTM2 は, ライブラリとして pure java で書かれている. 
+("<a href="http://research.sun.com/scalable/pubs/OOPSLA2006.pdf">A Flexible Framework for Implementing Software Transactional Memory(Moir, 2006)</a>", <a href="http://www.sun.com/download/products.xml?id=453fb28e">ソースコードのダウンロード</a>) 
+DSTM は研究目的のプラットフォームを意識しており, 
+様々な実装をプラグして比較できるフレームワークになっている. 
+API はそれなりに妥当なかんじ. コード生成を駆使する前提なのは今時の Java っぽい. </p>
+<p>コンパイラもいじれずコード生成もできない
+場末の C++ プログラマにはオブジェクト式の方法が使えない. 
+仕方ないからアドレス式の方法を眺めていこう. 
+<a href="http://research.microsoft.com/~tharris/">Tim Harris</a> らによる STM は
+オブジェクト式の他にアドレス式の実装も含んでいる. ("<a href="http://research.microsoft.com/~tharris/drafts/cpwl-submission.pdf">Concurrent programming without locks(Harris, 2007)</a>", (<a href="http://www.cl.cam.ac.uk/research/srg/netos/lock-free/">プロジェクトのページとソースコード</a>) 試すのに手頃なのはこのへんかもしれない. </p>
+<h3>tora: STM のおもちゃ実装</h3>
+<p>そんなわけで Harris の libstm をちょっと眺めてみた...けれど, わけがわからん. 
+論文を読んだかんじではそんなに難しくもなさそうなので, 試しに作ってみることにした. 
+(<a href="http://dodgson.org/omo/tora/">hg</a>, <a href="http://dodgson.org/omo/tora/?archive/b6a49d406916.tar.gz">スナップショット</a>)
+先に紹介した新しいやつはちょっと大変そうなので, 少し古い "<a href="http://www.cl.cam.ac.uk/netos/papers/2003-ls4lt.pdf">Language support for lightweight transactions</a>" に載っている疑似コードをぱくり元とした. また STM の実装に必要な CAS 命令の可搬な実装として <a href="http://www.hpl.hp.com/research/linux/qprof/index.php4">Hans Boehm の Atomic_ops ライブラリ</a> を使った. 実用はまったく考えておらず, ギリギリまで手を抜いてある. 論文はよく読むと GC がないとダメとか書いてあるし...(結局そこの部分は省略.) そんなかんじで性能なんかはひどいはず. かわりに 500 行くらいで書けた. 与太話の延長だと思ってください. </p>
+<p>本体のコードは疑似コードを C++ にしただけだから特に面白くもないけれど, 
+テストコードがちょっと楽しい. </p>
+<pre>// トランザクションで書き換える変数
+static tora::word_t g_hello_false_abort = tora::to_word(10);
+
+static int test_hello_commit_abort()
+{
+  tora::context_t ctx; // トランザクションの文脈を保持するコンテクスト
+  tora::addr_t a = &amp;g_hello_commit_abort; // 書き換える変数のアドレス
+
+  // トランザクションを二つ同時実行
+  tora::transaction_t t1(&amp;ctx);
+  tora::transaction_t t2(&amp;ctx);
+
+  t1.write(a, tora::to_word(20)); // t1 で 20 を書く....
+  assert(tora::to_word(20) == t1.read(a));
+  assert(tora::to_word(10) == t2.read(a)); // t2 では変わらない.
+
+  t2.write(a, tora::to_word(30)); // t2 で 30 を書く
+  assert(tora::to_word(20) == t1.read(a)); // t1 は 20 のまま
+  assert(tora::to_word(30) == t2.read(a)); // t2 は 30 に.
+
+  // コミット前の変数は元の 10 のまま
+  assert(tora::to_word(10) == g_hello_commit_abort);
+
+  t1.commit(); // t1 をいざコミット!
+
+  // t1 のコミット結果が反映されて 20 になった.
+  assert(tora::to_word(20) == g_hello_commit_abort);
+
+  // t2 がコミットしようとしても衝突して例外ができる;
+  bool t2_is_bad = false;
+  try { t2.commit(); } catch (tora::bad_consistency_t&amp;) { t2_is_bad = true; }
+  assert(t2_is_bad);
+  assert(tora::to_word(20) == g_hello_commit_abort); // 値はもとの 20 のまま.
+
+}</pre>
+<p><span class='image'><a href='http://www.amazon.co.jp/Database-Management-Systems-Raghu-Ramakrishnan/dp/0071230572%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0071230572' class='bookcover'><img data:asin='0071230572' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51i8D880drL.jpg'></span></a></span></p>
+<pre></pre>
+<p>データベースの教科書みたいでしょ. </p>
+<p>本当はスレッドを使ったテストもしたいけれど, 何を試せばいいのか見当がつかない. 
+これを使ったノンブロックのデータ構造を実装して, それをテストすればいいのかなあ. 
+今のベタな状態ではあまりに使い難いから, 
+データ構造を作るならもう少し C++ に易しい API が要るなこりゃ. 
+先は長い. そのうち気が向いたらまた続きをやろう...</p>
+<p>しかし C++ は GC も VM もないし, 言語は拡張しづらいし, 
+ほんとに並列化に向かない言語だなあ. 人力でのスケールには限界があるから, 
+CPU の数が増えたら並列機構を持つ今時の言語に勝てる気がしない. 
+共有メモリモデルの並列計算が主流になるのだとすると, 
+高速言語としての C++ はあと数年の命かもね. 嬉しいような悲しいような... 
+そもそも今まで生き永らえているのが不思議ではあるけれど. </p>

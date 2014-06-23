@@ -1,0 +1,234 @@
+---
+title: "Failgrind: Failmalloc on Valgrind framework"
+date: 2008-05-25
+---
+<h3>Failgrind: Failmalloc on Valgrind framework</h3>
+<p>以前, <a href="http://www.nongnu.org/failmalloc/">Failmalloc</a> がなかなか良いという<a href="http://www.dodgson.org/omo/t/?date=20060728">話をした</a>. 
+その中で書いた "malloc() の失敗するタイミングを呼出元の関数名で制限する" 機能. 
+スタックを覗いたりが面倒で vaporware のまま放置してたんだけど, <a href="http://valgrind.org/">Valgrind</a> を使うとあっさり実現できた. 本家リスペクトで Failgrind と命名. 
+(<a href="http://dodgson.org/omo/failgrind/hg/">レポジトリ</a>, <a href="http://dodgson.org/omo/failgrind/hg/?archive/tip.tar.gz">スナップショット</a>) </p>
+<h4>インストール</h4>
+<p>Failgrind は Valgrind に対する patch になっている. patch といっても中のコードは手つかずで, ビルドシステムに相乗りするだけ. 
+Valgrind は <a href="http://valgrind.org/docs/manual/writing-tools.html">マニュアルに拡張の仕方が載っている</a> だけあって, フレームワークとしての利用を前提としている. 
+なので patch という響きを嫌がらないでください.</p>
+<p>まず valgrind-3.3.0 を展開:</p>
+<pre>$ tar xvjf ~/Download/valgrind-3.3.0.tar.bz2</pre>
+<p>次に failgrind を展開して valgrind のディレクトリにうつす:</p>
+<pre>$ tar xvzf ~/Download/failgrind-3336efc98b98.tar.gz
+$ mv failgrind-3336efc98b98 valgrind-3.3.0/failgrind</pre>
+<p>パチる(patch のファイル名は .diff が業界標準なのを思いだしたけど後の祭り..) :</p>
+<pre>$ cd valgrind-3.3.0
+$ patch -p1 &lt; failgrind/3_3_0_root.patch</pre>
+<p>あとは autotools で configure をつくりなおし, 普通にビルド. </p>
+<pre>$ ./failgrind/autogen.sh # つくりなおしスクリプト同梱
+$ ./configure --prefix=`pwd`/inst
+$ make &amp;&amp; make install</pre>
+<p>これで準備ができた.</p>
+<h4>実行</h4>
+<p>まず failgrind 上で動かすテストコードを用意する. 
+私の使ったプログラムが failgrind/tests/hello.c にある. こんなの.</p>
+<pre>
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+
+void* fine() { return malloc(16); } // 16 には意味なし.
+
+void* how_are_you() { return fine(); }
+
+void* hello() { return malloc(16); }
+
+void* bye() { return malloc(16); }
+
+int main(int argc, char* argv[])
+{
+    void* h = 0;
+    void* b = 0;
+    void* hau = 0;
+
+    h = hello();
+    if (!h) {
+        printf("failed to alloc hello\n");
+        return 1;
+    }
+
+    hau = how_are_you();
+    if (!hau) {
+        printf("failed to alloc how_are_you\n");
+        free(h);
+        return 1;
+    }
+
+    b = bye();
+    if (!b) {
+        printf("failed to alloc bye\n");
+        free(hau);
+        free(h);
+        return 1;
+    }
+
+    printf("all allocted successfully\n");
+
+    free(b);
+    free(hau);
+    free(h);
+
+    return 0;
+}</pre>
+<p>いくつかの関数の中で malloc() を呼び, NULL だったらエラー処理をして終了する.
+とりあえずビルドして動かすと...</p>
+<pre>$ gcc failgrind/tests/hello.c
+$ ./a.out
+all allocated successfully</pre>
+<p>当然エラーもなく終了する. </p>
+<p>次に failgrind を使う. </p>
+<pre>$ ./inst/bin/valgrind -q --tool=failgrind --fail-conds=bye ./a.out
+failed to alloc bye</pre>
+<p>bye() の中で malloc() に失敗したのがわかる. 関数はカンマ区切りで複数個指定できる. 
+いずれかにヒットすると fail する. </p>
+<pre>$ ./inst/bin/valgrind -q --tool=failgrind --fail-conds=how_are_you,bye ./a.out
+failed to alloc how_are_you</pre>
+<p>スラッシュで区切ると, 関数が呼び出しスタックにその順序で現れた時に fail する.</p>
+<pre>$ ./inst/bin/valgrind -q --tool=failgrind --fail-conds=bye/how_are_you ./a.out
+all allocated successfully # bye がマッチしてない.
+$ ./inst/bin/valgrind -q --tool=failgrind --fail-conds=fine/how_are_you ./a.out
+failed to alloc how_are_you # マッチした
+$ ./inst/bin/valgrind -q --tool=failgrind --fail-conds=how_are_you/fine ./a.out
+all allocated successfully # 順序が異る</pre>
+<p>こんなかんじ. というか, 今のところこれが全機能. 地味だなー... 
+malloc() だけでなく, calloc() や rellaloc(), C++ の operator new() も対象になる. </p>
+<h4>仕組み</h4>
+<p>valgrind は実行ファイルのバイナリに細工をして動かすためのフレームワークで, 
+実態は x86(など)の機械語をバイトコートとする JIT つき VM. 
+この VM は様々なデバッグ機構を備えている. (機械語を動かすだけなら CPU にもできるからね.) 
+Valgrind の代表的な機能であるメモリリーク検出は, そのデバッグ機構を利用して作られている. 
+Failgrind もその仕組みに載っている. </p>
+<p>Valgrind が備えるデバッグ機構の基礎をなすのは, 強力なバイナリ書き換え支援. 
+Valgrind はネイティブの機械語をアーキテクチャ中立な内部表現 (IR) に変換し, 
+フレームワークの利用者はその IR を書き換えて様々なフックを仕掛けることができる. 
+キャッシュミスの検出や呼び出しグラフの構築 (Callgrind) も, こうした枠組みの上に作られている. 
+より詳しい議論は <a href="http://valgrind.org/docs/pubs.html">Valgrind のページにある記事</a> を
+参照してほしい. </p>
+<p>...のだけれど, Failgrind は別にそういうごつい機能は使っていない. 
+結局のところ Valgrind の目玉はメモリをめぐるあれこれで, そのへんは特に手厚くなっている. 
+動的なメモリ確保をフックするくらいなら自分でバイナリを書き換えるまでもない. 
+そのままずばりな API がある. </p>
+<pre>
+// プラグインの初期化関数
+static void fgr_pre_clo_init(void)
+{
+   ....
+   // 各メモリ確保関数にフックを挿す
+   VG_(needs_malloc_replacement)  (fgr_malloc,
+                                   fgr___builtin_new,
+                                   fgr___builtin_vec_new,
+                                   fgr_memalign,
+                                   fgr_calloc,
+                                   fgr_free,
+                                   fgr___builtin_delete,
+                                   fgr___builtin_vec_delete,
+                                   fgr_realloc,
+                                   0 );
+    ....
+}</pre>
+<p>中身も簡単. </p>
+<pre>
+static void* fgr_malloc ( ThreadId tid, SizeT szB )
+{
+   return new_block( tid, NULL, szB, VG_(clo_alignment), /*is_zeroed*/False );
+}
+
+...
+
+static
+void* new_block ( ThreadId tid, void* p, SizeT req_szB, SizeT req_alignB,
+                  Bool is_zeroed )
+{
+   ...
+   if (is_to_fail(tid)) { // fail 条件にマッチしたら NULL を返す
+       return NULL;
+   }
+
+   // Allocate and zero if necessary
+   if (!p) {
+      p = VG_(cli_malloc)( req_alignB, req_szB );
+      ....
+   }
+
+   return p;
+}
+</pre>
+<p>失敗条件を判定する is_to_fail() が核心なわけだけれど, これも大したことをしていない. </p>
+<pre>
+static
+Bool is_to_fail(ThreadId tid)
+{
+    Int i = 0, j = 0, k = 0;
+    Int n_ips = 0;
+    Addr ips[MAX_IPS];
+    Char fnname[MAX_FNNAME_LEN];
+    XNameList* cand_names = 0;
+
+    // スタックトレースの配列を取得する (Valgrind の API.)
+    n_ips = VG_(get_StackTrace)( tid, ips, g_clo_depth, 0/*first_ip_delta*/ );
+    tl_assert(n_ips &gt; 0);
+
+    for (i = 0; i &lt; VG_(sizeXA)(g_failure_cond_list); i++) {
+        cand_names = VG_(indexXA)(g_failure_cond_list, i);
+        k = 0;
+
+        for (j = 0; j &lt; n_ips; j++)  {
+            // 関数ポインタから関数名を取得する (Valgrind の API.)
+            if (!VG_(get_fnname)(ips[j], fnname, MAX_FNNAME_LEN)) {
+                continue;
+            }
+
+            for (/**/;k &lt; cand_names-&gt;size; ++k) {
+                // コマンドラインで渡しておいた関数名と比較し, よろしくやる.
+                if (!VG_STREQ(fnname, cand_names-&gt;names[k])) {
+                    break;
+                } else if (k+1 == cand_names-&gt;size) { // all names mathced
+                    VERB(0, "hit failure condition: %s", cand_names-&gt;names[k]);
+                    return True;
+                }
+            }
+        }
+    }
+
+    return False;
+}</pre>
+<p>コードは短い. そのうえ中身も Massif という Valgrind のヒーププロファイラからコードをコピペし, 
+適当に削っただけ. コードを書く時間より automake と闘う時間の方が長いような有様だった. </p>
+<h4>ロードマップ</h4>
+<p>というわけで無事 vaporware の汚名を返上. 満足した. 
+自分では使い道がないから, 今のところ続けてがんばる気はない. 
+でも Linux でばりばりコードを書く日のために, 欲しい機能は列挙しておく:</p>
+<ul>
+<li><em>本家 Failmalloc の機能移植:</em> 今は指定した関数で常に malloc() が失敗する. Failmalloc 本家にある, 確率的に失敗するなどの機能は欲しくなりそう. まあこれは簡単. 元ネタがある.</li>
+<li><em>メモリ確保以外の API の失敗:</em> エラー処理が必要なのはメモリ確保だけじゃないから, 再現が面倒なその他の失敗も起こせるようにする. send() とか recv() のような IO はその典型. これは Valgrind の <a href="http://valgrind.org/docs/manual/manual-core-adv.html">function wrapping</a> を使うとできそうな気がするけどよくわからない.</li>
+<li><em>テストコード内からの制御:</em> 今はコマンドラインの引数から関数名を与えている. でも単体テストの支援ツールとして使うなら, テストコードの中から関数名を与えたい. これは <a href="http://valgrind.org/docs/manual/manual-core-adv.html#manual-core-adv.clientreq">client request</a> という仕組みを使って作れそう.</li>
+<li><em>メモリリーク検出:</em> Memcheck と併用はできなそうなので, このくらいは面倒をみた方がいいかもしらん. コード本体の側にも同じ仕掛けがありそうだけど.</li>
+</ul>
+<p>こうしてみると半月くらいで作れそうな雰囲気だなあ...
+Linux で仕事をしながらこの手のツールのない人がいたら, 
+つくってみてはいかがでしょうか. </p>
+<h4>まとめ</h4>
+<ul>
+<li>Valgrind は思ったより便利だね.</li>
+</ul>
+<h4>追記</h4>
+<p>元ねたの開発者 <a href="http://enbug.tdiary.net/20080527.html">okuji さん</a> から反応が. 
+ありがとうございます. そして netaware だったのか...
+(親戚は <a href="http://lwn.net/Articles/209292/">linux kernel</a> にも入ってるのに!) </p>
+<p>メモリに限らずわざとエラーを起こすのはソフトウェアテストの技法で 
+<a href="http://en.wikipedia.org/wiki/Fault_injection">fault injection</a> という, らしい. 
+ぐぐると色々でてくる. </p>
+<p>通信のミドルウェアでもこれをサポートしているものは多い. 
+(たとえば XNA の <a href="http://msdn.microsoft.com/en-us/library/microsoft.xna.framework.net.networksession.aspx">NetworkSession</a> クラスは
+パケット損失や遅延のシミューレション機能を<a href="http://msdn.microsoft.com/en-us/library/microsoft.xna.framework.net.networksession.simulatedpacketloss.aspx">備えている</a>.) 
+そのほか組み込み界隈だと, たとえば Symbian OS の<a href="http://www.symbian.com/developer/techlib/v9.1docs/doc_source/reference/reference-cpp/N101CA/RAllocatorClass.html">メモリアロケータ</a> は
+標準で failmalloc 的機能を備えている. これは <a href="http://developer.uiq.com/devlib/uiq_30/SDKDocumentation/sdl/N1035A/Emulator/emulator/Debugging.guide.html#emulator%2edebug">GUI からも設定できる</a>. </p>
+<p>failgrind も fault injection という切り口で育ててくのがいいのかもしらん. </p>
+<p>okuji さんは gdb の利用を提案している. 繋ぐのは面倒そうだけど, linux 以外でも動きそうなのはいい. 
+gdb のドキュメントには <a href="http://sourceware.org/gdb/current/onlinedocs/gdbint_5.html#SEC31">libgdb</a> 
+というのが載っていて夢を煽るけれど, いかにも suspended な雰囲気. 
+世間の GUI frontend のようにプロセス間通信で頑張るのが正しい路線なのかなー. すげー大変そうだけど...</p>

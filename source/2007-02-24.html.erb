@@ -1,0 +1,44 @@
+---
+title: "Porter-Duff の下着の話"
+date: 2007-02-24
+---
+<h3>Porter-Duff の下着の話</h3>
+<p>その夜の帰路, 山手線はよっぱらいに溢れていた. </p>
+<p>よっぱらいの話はいつだってくだらない. 
+"白いパンツをはくときは肌色のTバックだと透けないんですよ." 
+私のうしろにはそう熱弁する女よっぱらいがいた. 
+"白い方が透けないんじゃないの?" と連れの男. 
+女よっぱらいは反論する. "白は透けるんです." 
+納得しない男は喰い下がる. "なんで? 白に白なら透けないんじゃない?" 
+反論に困る女よっぱらい. 話は混迷の色を深め, 下着の色の詳細に潜っていく. 
+"肌色というかべージュっぽいんですよ..." </p>
+<p>男の目的がエロトークを続けることなら, 彼は目的を遂げつつあった. 
+品川まではまだ時間がある. がんばれ. 
+男の目的が "なぜ白い下着は透けるのか" を理解することなら, 
+彼は Porter-Duff のアルゴリズムについて学ぶ必要があるかもしれない. </p>
+<p>Porter-Duff のアルゴリズムは透明度つき画像の合成に関する操作をまとめた古典. 
+12 種類の操作を定義して, それぞれに名前をつけた. その名前が重宝され, 
+<a href="http://www.adobe.com/devnet/pdf/pdf_reference.html">PDF</a> や 
+<a href="http://java.sun.com/j2se/1.5.0/docs/api/java/awt/AlphaComposite.html">Java2D</a> 
+といった画像合成を扱う文書からたびたび参照される. 
+肝心の元記事 "Compositing digital images" は <a href="http://portal.acm.org/citation.cfm?id=808606">ACM DL</a> にある. ACM 会員でなくても <a href="http://www.google.com/search?q=Porter+Duff">Porter Duff でぐぐれば</a> なんとなく怪しいコピーをみつけることができる. 
+日本語だと <a data:asin='4274064050' href='http://www.amazon.co.jp/%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%82%BF%E3%82%B0%E3%83%A9%E3%83%95%E3%82%A3%E3%83%83%E3%82%AF%E3%82%B9-%E7%90%86%E8%AB%96%E3%81%A8%E5%AE%9F%E8%B7%B5-James-D-Foley/dp/4274064050%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4274064050'>件の厚い本</a> で説明をみた気がする. </p>
+<p>簡単のために
+以下では <a href="http://images.google.co.jp/images?q=tback">Tバック</a> を下着, 
+その上に履く <a href="http://images.google.co.jp/images?q=pants">パンツ</a> を上着と呼ぼう. 
+端的にいうと, 男は衣類の重ね合わせを Porter-Duff の "atop" 操作であると誤解していた. 
+加えて下着と上着が同じ透明度を持つと暗黙の仮定を置いていた. 
+現実の衣類は "over" として重なるし, 両者の透明度も異るのが普通だろう. 
+(図は <a href="http://en.wikipedia.org/wiki/Alpha_transparency">Wikipedia から拝借.</a>) 
+肌色の下着は, 操作の種類によらず下着を識別させないハックだと言える. </p>
+<p><img class='diagram' src='http://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Alpha_compositing.svg/642px-Alpha_compositing.svg.png' /></p>
+<p>もしかすると男は日本語と欲情の間で混乱していただけかもしれない. 
+ふだん, "透ける" の主語には透明度を持つものが来る. (例: 蒸し餃子の皮が透ける.) 
+ところが "下着が透ける" というとき, 透明度を持つのは上着だ. 
+主語の下着ではない. 
+このように "透ける" という言葉は文脈によって意味が変わる. 
+男は透明度の低そうな素材を連想して "白い下着" を挙げたのだろう. 
+そして彼をこの連想に誘ったのは, 
+上着より下着の透明度を重要と感じる素朴な性的嗜好だった. 
+そう考えると何もかもが腑に落ちる. 彼の心の叫びが聞こえる. 下着にアルファ値を! </p>
+<p>すこし<del>共感</del>同情した. </p>

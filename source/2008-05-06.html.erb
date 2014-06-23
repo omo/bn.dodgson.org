@@ -1,0 +1,246 @@
+---
+title: "Tamarin 近況"
+date: 2008-05-06
+---
+<h3>Tamarin 近況</h3>
+<p><a href="http://dodgson.org/omo/t/?date=20061111">公開</a>. から一年半. 
+最近はどうなってんのなかなーと Tamarin 周辺を見てみると, いろいろ変わっていた. 
+目玉は新しい JIT の仕組みである "Tamarin-Tracing". 略して TT. それと, 
+TT に付随して入った Forth によるインタプリタ実装. 
+例のごとく <a href="http://journal.mycom.co.jp/news/2008/02/07/011/index.html">マイコミジャーナル</a> に
+ニュースがあった. よくまとまっているけれどまとまり過ぎている. 
+もう少し詳しくみてみることに. </p>
+<p>一次情報は
+<a href="http://hg.mozilla.org/">ソースコード</a>, 
+<a href="http://wiki.mozilla.org/Tamarin">Mozilla Wiki</a> や 
+<a href="https://mail.mozilla.org/listinfo/tamarin-devel">tamarin-devel リスト</a> などを参照ください.  </p>
+<h4>アーキテクチャ概観</h4>
+<p>これまでの Tamarin (Tamarin Central: TC) は, 
+JIT の際に ABC -&gt; MIR -&gt; ネイティブコードと 2 段階の変換を行っていた. 
+TT ではこれが 1 段増え, ABC -&gt; IL -&gt; LIR -&gt; ネイティブコードと変換される. </p>
+<p>LIR は CPU の命令に近い低レベルな中間表現. TC の MIR に相当し, JIT エンジンの "nanojit" モジュールが
+これをネイティブコードに変換する. </p>
+<p>IL は ABC と LIR の中間に位置するもう一つのバイトコード. 
+TT は ABC をロードするとすぐ IL に変換し, インタプリタは IL を評価, 実行する. 
+またインタプリタは実行中にプロファイルをとり, 頻繁に実行される "hotpath" の IL を LIR に変換, 
+nanojit に引き渡して JIT を行う. この hotpath の識別や構造化には 
+"<a href="http://www.ics.uci.edu/%7Efranz/Site/pubs-pdf/ICS-TR-06-16.pdf">Tracing Tree (PDF)</a>" という
+アルゴリズムが使われている. </p>
+<p>こんなかんじ:</p>
+<p><img src='/images/20080506_0.png' class='diagram'></p>
+<h4>Forth VM としての AVM</h4>
+<p>先に書いたとおり. TT のインタプリタは ABC をコンパイルした IL を評価, 実行する. 
+ABC から変換してできた IL は自己完結しておらず, ランタイムの関数を呼び出す. 
+面白いのは, このランタイムも IL だというところ. </p>
+<p>ランタイムの IL は, もともと Forth で書かれている. (vm.fs など.) 
+その Forth スクリプトが VM のビルド時に IL へとコンパイル (fc.py) され, VM の中に埋め込まれる. 
+VM は ABC から生成された IL とランタイムの IL をリンク(というほど大袈裟じゃないけど)して実行する: </p>
+<p><img src='/images/20080506_1.png' class='diagram'></p>
+<h4>IL 命令の実装</h4>
+<p>ランタイム関数だけでなく, IL のインタプリタ(評価ループ)自体も Forth の支援をうけて半自動生成される. 
+このへんはコードをみた方がわかりやすいかもしれない. </p>
+<p>まず, ABC から IL への変換は ForthWriter クラスが行う. (IL.cpp, IL.h) 
+適当なメソッドを眺めてみよう: </p>
+<pre>
+       void ForthWriter::emitReturn(AbcOpcode op)
+       {
+               int i = state-&gt;sp();
+               ...
+               if (!needCoerce(t, rt)) {
+                       // no coerce needed
+                       emit_LIT(i);
+                       if (op == OP_returnvoid) HELPER(w_returnvoid);
+                       else                     HELPER(w_returnvalue);
+               }
+               else {
+                       ...
+               }
+               emit_simple(EXITABC);
+               emit_simple(EXIT);
+       }</pre>
+<p>emit_simple() は IL の命令を出力する. </p>
+<pre>
+       void ForthWriter::emit_simple(enum _Token t)
+       {
+               verbose_only(if (verbose) printf("+%04X %s\n", (ip-buf), primnames[t]);)
+               reserve(1);
+               *ip++ = Token(t);
+       }</pre>
+<p>HELPER() マクロはランタイム関数へジャンプする命令を出力する.</p>
+<pre>  
+       #define HELPER(x) emit_LNEST(x##_offset, "")</pre>
+<p>こうして生成された IL は Interpreter クラスで実行される. (Interpreter.cpp)</p>
+<pre>
+   void Interpreter::inner(Frame *f, wcodep ip, Box *sp, wcodepp rp)
+   {
+       ...
+       top_of_loop:
+       INTERP_PRE
+       switch (NEXTIP)
+       {
+       #ifdef AVMPLUS_MINBUILD
+               #include "vm_min_interp.h"
+       #else
+               #ifdef NJ_SOFTFLOAT
+                       #include "vm_softfp_interp.h"
+               #else
+                       #include "vm_fpu_interp.h"
+               #endif
+       #endif
+       }
+       ...
+   }</pre>
+<p>上の top_of_loop: と switch 文が VM の評価ループの中心. 
+opcode の case がならぶはずの部分で include している vm_min_interp.h などのファイルは, 
+Forth コンパイラによって生成されたもの. 
+TT では, ランタイム関数だけでなく命令セットの定義にも Forth を利用している. </p>
+<p>vm_min_interp.h はこんな風にマクロが並んだファイルだ: </p>
+<pre>
+/* machine generated - do not edit */
+INTERP_SUPERCASE(readslotid_and_te)
+  /* begin nest for readslotid */
+    INTERP_CALLPRIM(uint32_t, u1_0, IMM, (f))
+    /* PICK2 stktop=1 */
+      INTERP_LET(bool32, b2_1, sp[-1].i)
+    /* OVER stktop=2 */
+      INTERP_LET(uint32_t, u3_2, u1_0)
+    INTERP_CALLPRIM(bool32, b3_3, NOT, (u3_2))
+    INTERP_CALLPRIM(int32_t, i2_4, OR, (b2_1, b3_3))
+    INTERP_CALLPRIM(bool32, b2_5, NOT, (i2_4))
+...</pre>
+<p>このマクロが展開されて, swtich 内の case 文になる(はず). 
+わかりやすそうなやつ, 分岐をあらわす BR 命令を追いかけてみよう. まず生成されたヘッダファイルから:</p>
+<pre>
+INTERP_PRIMCASE(BR)
+  INTERP_CALLPRIM_VOID(BR, (ip))
+  INTERP_NEXT(BR)</pre>
+<p>関係するマクロの定義はこう:</p>
+<pre>
+       #define INTERP_PRIMCASE(x)              case x: label_##x: { TIMING_START(t_interp)
+       #define INTERP_CALLPRIM_VOID(x,args)    INTERP_CALLFUNCBYNAME_VOID(prim_##x, args)
+       #define INTERP_CALLFUNCBYNAME_VOID(_funcname,_args) _funcname _args ;
+       #define INTERP_NEXT(x)  TIMING_END(t_interp) }  goto top_of_loop;</pre>
+<p>展開するとだいたいこんなかんじ:</p>
+<pre>
+       case BR: label_BR: {
+               prim_BR(ip);
+       } goto top_of_loop;</pre>
+<p>ようやく VM ぽくなってきた. prim_BR() はこんなの:</p>
+<pre>
+       // unconditional jump, 1 byte signed offset
+       PRIM(void, BR)(wcodep&amp; ip)
+       {
+               ip = ip + *((int8_t*)ip);
+       }</pre>
+<p>たしかにジャンプしてます. </p>
+<p>ついでに上の BR の生成がどんな Forth コードに由来しているかも見ておこう. (prim.fs)</p>
+<pre>
+{ BR                   (( IP -- )) }</pre>
+<p>これだけか. シンプル, というか宣言的. 二重のカッコは Forth の関数型宣言に相当する. 
+上の例だとスタックから要素を一つ pop し, 何も戻さないという意味になる. 
+型宣言からネイティブの関数呼び出しのコードを生成するあたりは, RPC の IDL や SWIG のノリだね. </p>
+<p>スタブらしさを見るために, もう少しややこしい CHOOSE 命令を見てみよう. </p>
+<p>C++:</p>
+<pre>
+       PRIM(int32_t, CHOOSE)(const int32_t a, const int32_t b, const bool32 cond)
+       {
+               return cond ? a : b;
+       }</pre>
+<p>Forth:</p>
+<pre>
+{ CHOOSE               (( i2 i1 b -- i=b?i2:i1 )) }</pre>
+<p>スタブ:</p>
+<pre>
+INTERP_PRIMCASE(CHOOSE)
+  INTERP_CALLPRIM(int32_t, i_2_0, CHOOSE, (sp[-2].i, sp[-1].i, sp[0].i))
+  INTERP_COPY(sp[-2].i, i_2_0)
+  INTERP_INVALBOXTYPE(sp[-2])
+  INTERP_ADJUSTSP(-2)
+  INTERP_NEXT(CHOOSE)</pre>
+<p>それっぽいでしょ.</p>
+<h4>superword</h4>
+<p>このように, IL の各命令は基本的に C++ で実装される. 
+ただし一部の命令 (superword) は Forth で記述されている.
+例として isobject 命令を見てみよう.</p>
+<p>まず Forth 側から. "SUPER:" という特別なコンパイルモードで関数/word を定義する. (vm.fs)</p>
+<pre>
+SUPER: isobject (( x -- x b )) peekrawboxtype BoxedObj = ;</pre>
+<p>vm_min_interp.h 内ではこうコンパイルされる.</p>
+<pre>
+INTERP_SUPERCASE(isobject)
+  /* DUP stktop=0 */
+    INTERP_LET(Box, x1_0, sp[0])
+  INTERP_CALLPRIM(int32_t, i1_1, RAWBOXTYPE, (x1_0))
+  INTERP_LET(int32_t, i2_2, int8_t(uint8_t(BoxedObj)))
+  INTERP_CALLPRIM(bool32, b1_3, CMPEQ, (i1_1, i2_2))
+  INTERP_COPY(sp[1].i, b1_3)
+  INTERP_INVALBOXTYPE(sp[1])
+  INTERP_ADJUSTSP(1)
+  INTERP_NEXT(isobject)</pre>
+<p>INTERP_SUPERCASE は INTERP_PRIMCASE と同様に case: に展開される. </p>
+<pre>
+       #define INTERP_SUPERCASE(x)             case x: { TIMING_START(t_interp)</pre>
+<p>superword はインタプリタを高速化するための仕組みだろうと想像できる. 
+IL は ABC より粒度が細かいから, 素朴に解釈したらいかにも遅くなりそうだよね. 
+(そもそもなんで IL にするの, という話はまたあとで...)</p>
+<h4>ランタイムのコンパイルと呼び出し</h4>
+<p>superword はインタプリタの評価ループに展開されたが, 多くのランタイム関数は IL へとコンパイルされる. 
+先に示した HELPER() マクロから呼ばれている w_returnvoid 関数を見てみよう. (vm.fs)</p>
+<pre>
+EXTERN: w_returnvoid           ( i -- )
+       &gt;R undefined R&gt; w_returnvalue ;</pre>
+<p>この関数は IL にコンパイルされる. コンパイルされた IL は整数の配列として 
+C++ のコード (vm_min.cpp) に埋め込まれる. </p>
+<pre>
+/* machine generated - do not edit */
+extern const uint8_t code_pool[] = {
+  ...
+// w_returnvoid offset=7960
+    RPUSH, LIT8, 0, LIT8, uint8_t(BoxedVoid), SETRAWBOXTYPE, RPOP, JUMP, /* w_returnvalue -3086 */ 242, 243,
+  ...
+};</pre>
+<p>命令配列内の offset 位置は vm_min.h に出力される. </p>
+<pre>
+/* machine generated - do not edit */
+...
+extern_entry(w_returnvoid, 7960)
+...</pre>
+<p>ForthWriter はこのオフセットを使って IL を生成し, インタプリタはそれを解釈してコードを呼び出す. </p>
+<pre>
+       PRIM(void, LNEST)(wcodep&amp; ip, wcodepp&amp; rp)
+       {
+               // 2byte unsigned offset
+               *rp++ = ip+2;
+               ip = code_pool + uint16_t(readUnalignedInt16(ip));
+       }</pre>
+<p>こうして ABC を変換した IL からランタイムの IL を呼び出すことができた. めでたしめでたし. </p>
+<p>"EXTERN:" は TT Forth の拡張で, 定義した関数の IL を指すオフセットが定数として公開される. 
+通常の関数定義 ":" は定数を公開しない. 
+TT Forth では "EXTERN:" や "SUPER:" の他にもいくつかの拡張を持っており, 
+VM の実装を宣言的に支えている. そのへんは面白い. </p>
+<h4>なぜ IL を使うのか？</h4>
+<p>インタプリタの性能を考えると, IL は冗長に思える. 
+ABC を直接実行した方が間接化のコストもなく高速になるだろう. 
+おそらく IL は JIT の都合で導入された. 
+JIT したコードからランタイムの C/C++ 関数を呼び出すとオーバーヘッドがある. 
+ランタイムが呼出側と同じ IL になっていれば, 
+JIT のインライン化によってそのオーバーヘッドをなくすことができる. </p>
+<p>IL ではなく ABC の拡張やサブセットでランタイムを記述することもできたはずだけれど, 
+ABC のようなオブジェクト指向で抽象度の高い命令セットは VM の下回りを支えるのに向かないのかもしれない. 
+ActionScript を使って ActionScript のメソッドティスパッチのコードを書くのは, 
+さすがにもどかしそうだよね. その点 Forth/IL は原始的なぶん低レベルな操作を書きやすそうな気はする. 
+(読みにくいけど...) </p>
+<h4>まとめ</h4>
+<p>というわけで Tamarin Tracing のインタプリタを眺めてみました. </p>
+<p>まとめ:</p>
+<ul>
+<li>ABC は ABC -&gt; IL -&gt; LIR -&gt; native と変換される</li>
+<li>ABC から生成された IL はランタイムの関数を呼びだす. そのランタイムも IL.</li>
+<li>ランタイムの IL は Forth をコンパイルしてつくる</li>
+<li>Forth コンパイラは IL インタプリタの評価ループと各 IL 命令の C++ 実装をつなぐ glue にも使われる<ul>
+<li>Forth で実装された命令 (superword) もある</li>
+</ul></li>
+<li>IL を挟んだのは JIT 高速化の恩恵をうけるため(であろう).</li>
+</ul>
+<p>ほんとは Tracing Tree の話も書くつもりだったけど, 長くなってしまった. 
+続きはまたそのうち. </p>

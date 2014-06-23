@@ -1,0 +1,73 @@
+---
+title: "[favidle] Rails の InvalidAuthenticityToken に困った"
+date: 2008-01-25
+---
+<h3>[favidle] Rails の InvalidAuthenticityToken に困った</h3>
+<p>最近の帰宅後はもっぱら <a href="http://favidle.net/">favidle</a> をいじってばかり. 
+本も feed もさっぱり読んでない. いつになく世間から取り残されている. 
+でも美人と世離れできるなら本望. あと少しは手をいれていきたい. 
+ちまちまと速くしたり, 昨日は写真表示を lightbox 化して, なんか今時っぽい! と喜んでいた. 
+(Google Trends によれば <a href="http://www.google.com/trends?q=lightbox">二年以上前</a>
+からあるようだけれど...) </p>
+<p>私の主観によれば, 今時のウェブっ子は rails のバグについて書くのが流儀. 
+そんな若者プレイをすべくありのままに起こったバグをかくぜ. </p>
+<p>favidle をさわっていると時々エラーでアクセスできなくなる. 
+ログをみたところ InvalidAuthenticityToken という例外が投げられている様子. 
+<a href="http://api.rubyonrails.org/classes/ActionController/RequestForgeryProtection/ClassMethods.html">CSRF を防ぐ機構</a>がこれを投げている. 
+私は何も悪いことをしていないのに. 
+とはいえエラー画面は見苦しいから, 
+とりあえず例外が出た時はトップページにリダイレクトするように変更. 
+するとログインすらできなくなってしまう. 
+場当たり的逃亡に失敗... 仕方ないので原因を調べることに. </p>
+<p>色々試してみると, どうも ActionController::Base#reset_session で 
+session をクリアした直後にエラーが起きている. 
+favidle では sign in のパスワードを間違えるとなんとなく session をクリアしている. 
+そのため一度パスワードを間違えたあとで正しいパスワードを post するとエラーになる. 
+不愉快なバグだ. </p>
+<p>件の CSRF 防止トークンは以下のように計算されている.</p>
+<pre>
+# request_forgery_protection.rb
+     # Generates a unique digest using the session_id and the CSRF secret.
+     def authenticity_token_from_session_id
+       key = if request_forgery_protection_options[:secret].respond_to?(:call)
+         request_forgery_protection_options[:secret].call(@session)
+       else
+         request_forgery_protection_options[:secret]
+       end
+       digest = request_forgery_protection_options[:digest] ||= 'SHA1'
+       OpenSSL::HMAC.hexdigest(OpenSSL::Digest::Digest.new(digest),
+                               key.to_s, session.session_id.to_s)
+     end</pre>
+<p>session.session_id.to_s のあたりが怪しい. </p>
+<p>呼出元を見ると, この値は一度計算したものがキャッシュされている. </p>
+<pre>
+# request_forgery_protection.rb
+     # Sets the token value for the current session.
+     # Pass a :secret option in #protect_from_forgery to
+     # add a custom salt to the hash.
+     def form_authenticity_token
+       @form_authenticity_token ||= if ...
+         authenticity_token_from_session_id
+       elsif ...
+         ...
+       end
+     end</pre>
+<p>このせいか... 
+キャッシュをしたあとに計算の種である session_id を変更すると不整合がおきるのね. 
+具体的には before_filter の verify_authenticity_token() 内で値が計算され, 
+そのあと action の途中で session をクリアする. 
+すると次回のアクセス時に異なる id の session が生成され, 
+めでたく InvalidAuthenticityToken となる. 
+やれやれ. キャッシュはバグの温床だよなあ... 
+Tim Bray から <a href="http://www.tbray.org/ongoing/When/200x/2005/12/23/UPI">孫引き</a>しよう: "There are only two hard things in Computer Science: cache invalidation and naming things”. </p>
+<p>さて私の主観によれば, 
+こういう時はやる気なく逃げておくのが rails way ということになっている.</p>
+<pre>
+# application.rb
+ def reset_session
+   super
+   @form_authenticity_token = nil # to force regenerate
+ end</pre>
+<p>Now it just works! </p>
+<p>こうしてウェブっ子気分を楽しんだある日の夜の一幕でした. あらあらかしこ. 
+もうバグらなくていいからね... </p>

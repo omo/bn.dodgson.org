@@ -1,0 +1,160 @@
+---
+title: "LLVM 勉強会第一回 に参加"
+date: 2008-08-23
+---
+<h3>近況</h3>
+<p><a href="http://groups.google.co.jp/group/llvm_study">LLVM 勉強会第一回</a> に参加. 
+ついでにちょこっと喋りました. 
+<a href="http://groups.google.co.jp/group/llvm_study/web/binaries_are_not_only_output.pdf">スライドはこれ</a>. 
+(同僚へ私信: 水曜のお昼に話すので資料をみないでください. ネタバレ禁止.) 
+ソースコードは <a href="http://github.com/omo/jsllc/tree/master">github</a> へ.
+ほんとは主催者の趣向にあわせてレイトレなんかを書きたかったけれど, 根性と時間が足らず挫折しました. 
+レンダリストへの道は険しいです. </p>
+<p>それにしても LLVM はそこそこよくできているので, 
+使い方を紹介するだけだとあと 1,2 回分くらいで勉強会の話題がなくなりそうだなあ. 
+自分のコードに組み込んだというケーススタディがあれば別だけれど... 
+"最適化パス勉強会" みたいにコンパイリストな路線に進むか, 
+"JIT 勉強会" みたいに間口を広げるのがよいかもしれない. 
+<a href="http://weblogs.mozillazine.org/roadmap/archives/2008/08/tracemonkey_javascript_lightsp.html">TraceMonkey</a> 
+なんてのも出てきたことだしね. </p>
+<h4>TraceMonkey と Tamarin nanojit</h4>
+<p>きのう "tamarin jit どうなのよ?" というようなことを聞かれ, 外から使うにはいまいちだと断言した. 
+ところがそのあと TraceMonkey の登場を知り, 自分の見る目の無さを悔いた. 知ったかぶりはよくないなあ我ながら...
+どうして nanojit をいまいちに感じたか, tracemonkey を眺めつつ少し考えてみた. 
+理由をふたつ後付けしてみる. </p>
+<p>1 つ目は, nanojit が AVM 本体と癒着しているように見えたこと. </p>
+<p>なにしろ</p>
+<pre>
+// nanojit/nanojit.h
+...
+#include "avmplus.h"
+...</pre>
+<p>となっているし, オブジェクトも AVM の GC を使い確保している. </p>
+<pre>
+// nanojit/space/space.h
+...
+inline void *operator new(size_t size, GC* gc, size_t extra=0, uint32_t options=0)
+{
+   void* r = allot(gc-&gt;s, size+extra, options);
+   return r;
+}
+...
+// there are no "operator delete"</pre>
+<pre>
+// nanojit/Fragmento.h
+...
+class Fragmento : public GCFinalizedObject
+...</pre>
+<p>TraceMonkey がどうやってこれを解決しているかというと, 適当にやっつけている. </p>
+<p>まず TraceMonkey 用にダミーの avmplus.h をでっちあげる:</p>
+<pre>
+// nanojit/avmplus.h
+...
+class GCObject
+{
+public:
+    static void operator delete (void *gcObject)
+    {
+        free(gcObject);
+    }
+};
+
+#define MMGC_SUBCLASS_DECL : public GCObject
+
+class GCFinalizedObject : public GCObject
+{
+public:
+    static void operator delete (void *gcObject)
+    {
+        free(gcObject);
+    }
+};</pre>
+<p>次に GC を骨抜きにする. calloc() からわかるように, 確保したヒープを管理している様子はない. </p>
+<pre>
+class GC
+{
+    static GCHeap heap;
+
+public:
+    static inline void*
+    Alloc(uint32_t bytes)
+    {
+        return calloc(1, bytes); // no way to manage heap...
+    }
+
+    static inline void
+    Free(void* p)
+    {
+        free(p);
+    }
+    ...
+};
+
+inline void*
+operator new(size_t size, GC* gc)
+{
+    return calloc(1, size);
+}
+
+inline void
+operator delete(void* p) // now we have delete() !
+{
+    free(p);
+}</pre>
+<p>GC がないので自分でオブジェクトを delete する</p>
+<pre>
+// nanojit/Fragmento.cpp on tracemonkey
+...
+       Fragmento::~Fragmento()
+       {
+               clearFrags();
+       _frags-&gt;clear();
+               while( _allocList.size() &gt; 0 )
+               {
+                       //fprintf(stderr,"dealloc %x\n", (intptr_t)_allocList.get(_allocList.size()-1));
+#ifdef MEMORY_INFO
+                       ChangeSizeExplicit("NanoJitMem", -1, _gcHeap-&gt;Size(_allocList.last()));
+#endif
+                       _gcHeap-&gt;Free( _allocList.removeLast() ); // 自分で回収するのは gc じゃない...
+               }
+       delete _frags;
+       delete _assm;
+#if defined(NJ_VERBOSE)
+       delete enterCounts;
+       delete mergeCounts;
+#endif
+               NanoAssert(_stats.freePages == _stats.pages );
+       }
+</pre>
+<p>もともとはこうだった. コード領域のヒープだけはもともと GC の外で管理してたんだね.</p>
+<pre>
+// nanojit/Fragmento.cpp on tamarin-tracing
+...
+       Fragmento::~Fragmento()
+       {
+       _frags-&gt;clear();
+
+               while( _allocList.size() &gt; 0 )
+               {
+                       //fprintf(stderr,"dealloc %x\n", (intptr_t)_allocList.get(_allocList.size()-1));
+                       _gcHeap-&gt;Free( _allocList.removeLast() );
+               }
+       }</pre>
+<p>LLVM と比べて使いやすいとは到底言えないけれど, 一方で全然ダメとも言えない. 
+C/C++ でサードパーティのコードを統合しようとすると, 
+程度の差こそあれやっつけ仕事やでっちあげはよくある. 
+それにこういう腕っぷしの強さは中年に求められるダンディズムなのかもしらん. </p>
+<p>nanojit が使いにくいあとづけの理由その 2 は, コンパイルのモデルにある. 
+伝統的には, 静的なコード片に対し basic block や関数の単位で変換をするコンパイルモデルがある. LLVM もこれ. 
+tracing jit はこの伝統と異なるモデルをとる. 
+実行時に通過したパスだけの命令を出力する "tracing", tracing を支えるガードの仕組み, 
+ループを基調としたツリー構造のコードブロック. 
+伝統的なコンパイルモデルに親しんだ人が tracinig jit に馴染むのは少し大変そうだ. 
+ただ動的言語(に限らず多態性を持つ言語)を JIT するなら, 
+tracing jit は割と有力なアイデアに思える. 
+いまどき JIT をしたい人の要求は捉えているのかもしれない. </p>
+<p>というわけで nanojit に対する誹謗中傷は撤回いたします. ごめんなさい &gt; Adobe</p>
+<h4>関連あるような気がする記事</h4>
+<ul>
+<li><a href="http://www.dodgson.org/omo/t/?date=20080510">JIT on Tamarin Tracing</a></li>
+</ul>

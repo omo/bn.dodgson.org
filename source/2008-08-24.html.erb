@@ -1,0 +1,28 @@
+---
+title: "Hello, nanojit"
+date: 2008-08-24
+---
+<h3>Hello, nanojit</h3>
+<p>Tamarin nanojit の面倒くささは, ひたらくいうと 1.設計のまずさ 2.アルゴリズムの複雑さだ. 
+そんなことを昨日書いた. 
+2. はさておき, 1. は実際のところどうなのか. 実際に動かしてみる. </p>
+<p><a href="http://hg.mozilla.org/tracemonkey/">TraceMonkey</a> のコードを持ってきて, 
+js/src/nanojit/ 以下をコピー, ビルドするところからスタート. 
+やってみるとそこそこ簡単だった. 一番面倒なところは TraceMonkey チームが片付けてくれたから, 
+私はその恩恵に与ればいい. 結局 100 行くらいで void say_hello(void) をよびだす
+最小限の JIT コードを書くことができた. 
+<a href="http://github.com/omo/hello-nanojit/tree/master">github</a> したので興味のある方はどうぞ. 
+(<a href="http://github.com/omo/hello-nanojit/tree/master/hello.cpp">該当ファイル hello.cpp の表示</a>) </p>
+<p>Tracing JIT の肝であるループや分岐はやってない. 
+そのほか TraceMonkey との繋ぎ目である 
+<a href="http://hg.mozilla.org/tracemonkey/index.cgi/file/tip/js/src/jstracer.cpp">jstracer.cpp</a> 
+を見ていて面倒そうだったのは, やはり VM と JIT のコンテクストを往復する部分. 
+guard に失敗したらローカル変数を含む native スタックを VM のスタックに書き戻すなんてのは, 
+他所の VM じゃあんまし無いんじゃなかろうか. 知らないけど...</p>
+<p>こうして試すと, コードが小さいことの価値を実感する. 
+nanojit は 1.3 万行で, そのうち CPU 固有の部分が 4k 行くらい. 
+外部ライブラリへの依存もない. STL も boost も使わず, 標準 C ライブラリだけを使っている. 
+コードはけっこうひどいんだけれど, 
+これだけ小さいと適当に grep して問題箇所をコメントアウトするような対症療法でも乗り切れる. 
+中身を追いかけるのもさほど苦にならない. 
+あとはコードがクリーンなら言うことないんだけどなあ. </p>

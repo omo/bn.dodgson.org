@@ -1,0 +1,85 @@
+---
+title: "最近読んだ本 : Working Effectively With Legacy Code"
+date: 2006-03-31
+---
+<h3>最近読んだ本 : <a data:asin='0131177052' href='http://www.amazon.co.jp/Working-Effectively-With-Legacy-Code/dp/0131177052%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0131177052'>Working Effectively With Legacy Code</a></h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Working-Effectively-With-Legacy-Code/dp/0131177052%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0131177052' class='bookcover'><img data:asin='0131177052' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51H6SHy6g2L.jpg'></span></a></span>
+良い本だった. 思わず知り合いに電話してカート投入を強要してしまった.</p>
+<p>単体テストに挫ける, コストではないもう一つの要因がある. 技術的な難しさだ. 
+テストには技術が必要だ. "<a href="http://www.dodgson.org/omo/t/?date=20060212">テストで手を抜く</a>" にはそのことを書かなかった. 
+テストをしない言い訳にされるからというのと, この本ではその難しさに挑戦する. </p>
+<p>この本ではまずテストを議論するための枠組みを定義し, 
+それからテストが困難なコードをいかにテストするかを Q&amp;A 形式で示している. </p>
+<p>まずレガシーコードを "テストされていないコード" と位置づける. 
+ここでいうテストは単体テスト. QA チームによるテストは含まない. 
+それは開発のターンアラウンドを改善しないからだ. 
+単体テストの定義にもうるさい. 
+単体テストに 1 ケースの実行が 1/10 秒で終わることを要求している. 
+件数が増えた時にターンアラウンドが落ち, やがて実行されなくなってしまうという. 
+このほかにもいくつかの実践的なプラクティスを示している. </p>
+<p>次に, テストをするには何が必要かを議論する. 
+テストでは, まずテスト対象のコードを環境から "分離(separation)" して
+動かす必要がある. 
+更にコードを動かした結果を "検知(sensing)" しなければならない. 
+レガシーコードは他の部分への "依存(dependency)" があって分離や検知ができない. 
+テストをするためにはリファクタリングによって
+結果を検知できるポイントを探し, 作りだす必要がある. 
+そのポイントを "縫い目(seam)" と呼ぶ. </p>
+<p>で, いかに依存関係の縫い目を探しだし, コードを切り離してテストするか. 
+そのための技術と方法論が中心的な話題となっている.
+なかなかエキサイティングで面白い. 
+レガシーコードの相手も楽しいんじゃないかと一瞬信じかけてしまう. </p>
+<p>著者は, どんなにクリーンでエレガントなコードもテストがなければ
+良いコードとはいえないという. 
+だからテストをするためにコードが醜くなることを厭わない. 
+実際, この本で紹介されているテクニックには
+テスト慣れしていない人からすると不恰好に見えるものも多いだろう. 
+それでもテストをする価値はあるのだという主張に勇気づけられる.</p>
+<p>私がテストの持つ技術的な難しさについて書かなかったもう一つの理由として,
+問題を解決する手段は経験に頼ったアドホックなものしかないと
+思っていたからという面がある. 
+結局テストの技術は各ドメインに依存したアドホックな知識であって, 
+一般的な方法論として説明することはできないと諦めていた. 
+この本はただ個々のテクニックを示すだけでなく, 
+問題をうまく整理して一般的なアイデアに仕立てている. 見事だと思う. </p>
+<p>洋書嫌いの知り合いにも送りつけたい. 誰か訳してください. </p>
+<h3>最近読んだ本 : <a data:asin='0071151109' href='http://www.amazon.co.jp/Database-Management-Systems-Raghu-Ramakrishnan/dp/0071151109%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0071151109'>Database Management Systems</a></h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Database-Management-Systems-Raghu-Ramakrishnan/dp/0071151109%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0071151109' class='bookcover'><img data:asin='0071151109' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51qmx7ugTrL.jpg'></span></a></span></p>
+<p>データベースの教科書. 
+全部は読んでいないけれど, いちおう 2/3 くらいは読んだので書いておく. </p>
+<p>普通のデータベース入門書と比べると, 
+プログラミングの入門書とコンパイラの教科書の関係だと思えばいい. 
+使う側だけではなく, 実装の話も載っているのが楽しい. </p>
+<p>データベースの実装技術はかなりエキサイティングだ. 
+主記憶に収まり切らないデータをいかに扱うかという話で
+仮想記憶よりハードボイルドな読み物は他になかなかないと思う. 
+実装編ではほとんどが I/O アクセスをいかに減らすかという話題に終始する. 
+そういう問題設定は他のジャンルではあまり無いため, 
+この分野特有のテクニックが色々出てきて飽きない. 
+特に join を中心とした高速化の技術は読んでいてかなり悶絶する. </p>
+<p>ただ, とても厚い. かなり挫ける. 時々衝動的に読み進めてきたけれど, 
+読み終える前に改版してしまった. (私が持っているのは 2 版.)
+次に衝動が起こるのはだいぶ先な気がする. 残りは新しい版で読もうかな...
+章毎の区切りは割とはっきりしているため, 全部読まなくても楽しめます. </p>
+<h3>MapReduce, Sawzall と分散データベース</h3>
+<p>"Database Management Systems" の後半に分散データベースの話が出てくる. 
+そこに分散データベース上で join を実現する方法の一つとして 
+parallel hash join というアルゴリズムが載っていた. 
+これは join の方法の一つである (sequential) <a href="http://en.wikipedia.org/wiki/Hash_Join">hash join</a> の並列版で, 各レコードについてキーの hash を求めてからその hash 値に対応するノード(クラスタ上の計算機)にレコードを送りつけるというもの. </p>
+<p>似たような話を最近どこかで...としばし考えてみたら, 
+MapReduce の shuffle フェーズが同じようなことをしているのに気付いた. 
+hash join では join 元であるテーブル二つのレコードをノード群に割り振るが, 
+MapReduce は(概念的に)テーブルは一つ. 言ってみれば join のない hash join. 
+レコードをソートしてマージするのが join の基本的なアイデアだとすると, 
+MapReduce はそのうち sort の部分だけを使っているかんじか. 
+Google では RDB を使わないという話を何かで読んだのを思いだす. 
+MapReduce を RDB のように使っているのだな. 
+クローラの集めたデータが相手ならトランザクションに気を使うことも少ないだろうし, 
+たしかに MapReduce でいいのかもしれない. 
+join も案外出番はなくて, たまに必要になったらがんばってコードを書くわけね. 
+などと想像した. </p>
+<p>ところがその後 <a href="http://labs.google.com/papers/sawzall.html">Sawzall の記事</a> を
+眺めていたら, "joining is supported" と書いてある. やっぱり要るのか...
+Sawzall は言ってみれば GFS/MapReduce というデータベースを叩くための
+SQL なのかもしれない. 
+そのデータベースがコア技術なんだから, 他所の製品は使わないだろうな. たしかに. </p>

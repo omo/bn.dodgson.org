@@ -1,0 +1,630 @@
+---
+title: "V8 祭り"
+date: 2008-09-07
+---
+<h3>V8 祭り</h3>
+<p>ウェブっ子の間では Google Chrome の JS 処理系である 
+<a href="http://code.google.com/p/v8/">V8</a> 祭りが絶賛開催中らしい. 
+いつもは出遅れる私もたまにはやんやしたいと思っていろいろ読んでみたものの, 
+VM に食傷気味な自分に気付いた. けれど, そうは言っても祭りは別腹. 一通り騒いでみます. </p>
+<p><a href="http://www.google.com/googlebooks/chrome/">販促マンガ</a> や
+<a href="http://code.google.com/apis/v8/design.html">資料</a> によれば, V8 は以下のような特徴を備えている. </p>
+<ul>
+<li>hidden class transition と fast property access</li>
+<li>generational accurate GC<ul>
+<li>accurate だから incremental GC もできる</li>
+<li>オブジェクトの rellocation はするけど handle は使わず参照元書き換え</li>
+</ul></li>
+<li>中間表現のインタプリタなしの native code 生成.</li>
+<li>instruction cache</li>
+</ul>
+<p>コードをみたところ, incremental GC 以外は実装されているかんじ. 
+incremental GC も, マンガを注意深く読むと 
+"we can also implement incremental garbage collection" となっており, 実装したとは書いてない. 
+まあ広告だしね... </p>
+<p>広告に書いてないところで面白かった(?) のはこんなところ:</p>
+<ul>
+<li>JIT は x86 と ARM. ARM は Android 用であろう. ゲーム屋待望の PowerPC 版はなし.</li>
+<li>VM 実行状態のシリアライザつき. 用途不明.</li>
+<li>VM のインスタンスは複数 <em>つくれない</em>. YARV 風なネイティブスレッド + 単一ロックのスレッドモデル<ul>
+<li>embedding には向かないし, マルチプロセスになってない普通のブラウザに組込むのも辛い気がする</li>
+</ul></li>
+</ul>
+<p>特にマルチ VM ができないのはひどい. ホストがマルチプロセスだからって今時こりゃねーよ. グローバル変数は悪ですよ. 
+まあ Android 移植で困るだろうから, そのうち直すんだろうけどね...</p>
+<p>ダメなところはさておき, 面白そうなのは</p>
+<ul>
+<li>JIT と instruction cache</li>
+<li>hidden class transition</li>
+<li>precise GC</li>
+</ul>
+<p>あたりだろうか. 速いコードといったら JIT だとおもうので, 
+そのへんを中心に hidden class transition もちらっと見るかんじを目指して読んでいきます. </p>
+<h4>コード概観</h4>
+<p>V8 のコードはおよそ 13 万行ある. (テストのぞく.)
+これだけのコードが単一ディレクトリにまとめて入っており, モジュールの内訳がわかりにくい. 
+とりあえず主観で分類してみよう. 
+(...リストは長くなりすぎたので <a href="http://sites.google.com/site/stepstoappendix/v8filelisting">別ページ</a>へ.)
+こんなかんじになった: </p>
+<ul>
+<li>共通部分: 基本的なデータ構造, メモリ管理, 移植層,...</li>
+<li>ホスト API: ライブラリとして呼び出すための API と実装</li>
+<li>パーサ: JavaScript をパースして AST を作る</li>
+<li>オブジェクトモデル: JavaScript のオブジェクトなど, GC で管理されるオブジェクトの実装</li>
+<li>GC: ヒープやらマークスイープやら</li>
+<li>JIT: 機械語生成</li>
+<li>ランタイム: 生成された機械語から呼び出される API.</li>
+<li>デバッグ支援そのほか</li>
+</ul>
+<p>処理系はまずスクリプトの文字列を AST に変換する. 
+JIT モジュールはこの AST をトラバースし, 機械語を出力する. 出力された機械語を呼び出せば
+実行スタートといった塩梅になる. さすがにまとめてコンパイルは辛いので遅延の仕組みは入ってるっぽい. </p>
+<p>JIT をみるためには, JIT 本体とオブジェクトモデルを眺めればいい. </p>
+<h4>メモリ管理</h4>
+<p>...といっても季節柄メモリ管理を無視はできない. なのでちょっとだけ. </p>
+<p>GC がからむとメモリ管理には慎重でありたい.  V8 のメモリ管理は大きくわけて三系統ある. 
+V8 は, メモリ管理の方法にあわせ, ある種の注釈として基底クラスを用意している. 
+malloc()/free() 相当の API を使う自前メモリ管理の対象は <em>Malloced</em> クラスを継承する. (allocation.h) 
+Malloced なクラスの数は多くない. GC で確保するヒープは Malloced である. そりゃそうだ. </p>
+<p>apache の memory pool のように文脈に紐づけて一括解放する場合は <em>ZoneObject</em> を継承する. (zone.h) 
+AST のノードは ZoneObject である. (ちなみに一括解放のコンテクストも singleton だった. まじかよ.) </p>
+<p>GC で管理するオブジェクトは <em>HeapObject</em> を継承する. (objects.h) HeapObject のサブクラスは
+JS のオブジェクトや, JIT されたコードは GC で管理される.  objects.h 冒頭のコメントを見るとよい. </p>
+<p>動的なメモリ管理の対象とならず, 他のオブジェクトに埋め込まれるクラスは <em>Embedded</em> を継承する. 
+これらのクラスは operator new(), delete() が呼ばれるとエラーになる. 
+インスタンスをつくらず, グローバル変数やそのアクセサをまとめる名前空間として使うクラスは 
+<em>AllStatic</em> を継承する. AllStatic なクラスの多さは V8 コードベースの不吉な匂いを象徴している. </p>
+<h4>V8 のマネジドオブジェクト</h4>
+<p>GC の対象となる HeapObject は処理系のあちこちに顔をだす. まずはこの構造を確認したい. </p>
+<p>HeapObject は Object のサブクラスである. Object のサブクラスにはこの他に Smi クラスがある. 
+HeapObject を始めとする Object の一族は C++ に反旗をひるがえす挑発的な作りになっている. </p>
+<p>Object の一族にはメンバ変数がひとつもない. 仮想関数もない. コンストラクタもデストラクタもない. 
+この一族は C++ のオブジェクトモデルを完全に無視し, オブジェクトのメモリレイアウトを自分で取り仕切っている. </p>
+<p>たとえば Array クラスには length というメンバ変数...があるかのようなアクセサが定義されている.</p>
+<pre>
+// objects.h
+class Array: public HeapObject {
+ public:
+  // [length]: length of the array.
+  inline int length();
+  inline void set_length(int value);
+  ...
+};</pre>
+<p>実装はこんなマクロ:</p>
+<pre>
+// objects-inl.h
+INT_ACCESSORS(Array, length, kLengthOffset)
+
+#define INT_ACCESSORS(holder, name, offset)                             \
+  int holder::name() { return READ_INT_FIELD(this, offset); }           \
+  void holder::set_##name(int value) { WRITE_INT_FIELD(this, offset, value); }
+...
+#define READ_INT_FIELD(p, offset) \
+  (*reinterpret_cast&lt;int*&gt;(FIELD_ADDR(p, offset)))
+
+#define WRITE_INT_FIELD(p, offset, value) \
+  (*reinterpret_cast&lt;int*&gt;(FIELD_ADDR(p, offset)) = value)
+...
+#define FIELD_ADDR(p, offset) \
+  (reinterpret_cast&lt;byte*&gt;(p) + offset - kHeapObjectTag)</pre>
+<p>this のアドレスに適当なオフセットを足して該当の型にキャストしている. 
+要するにふつうコンパイラがやってくれることを自分でやっている. </p>
+<p>初期化もコンストラクタなんて軟弱なものは使わない:</p>
+<pre>
+// heap.cc
+Object* Heap::AllocateFixedArray(int length, PretenureFlag pretenure) {
+  ...
+  int size = FixedArray::SizeFor(length);
+  Object* result;
+    ...
+    result = AllocateRaw(size, space);
+    ...
+  // Initialize the object.
+  reinterpret_cast&lt;Array*&gt;(result)-&gt;set_map(fixed_array_map());
+  FixedArray* array = FixedArray::cast(result);
+  array-&gt;set_length(length);
+  for (int index = 0; index &lt; length; index++) array-&gt;set_undefined(index);
+  return array;
+}</pre>
+<p>GC 用のヒープから必要なメモリを確保し, そのあと初期化している. 
+バイト列を自分で直接操作するのは, メモリレイアウトを完全に把握して precise GC をするためだろう. 
+ただ C++ への愛があれば pragma でパディングを制御しつつ 
+operator new() で GC のヒープを確保することもできたはず. 
+V8 の書き手は C++ があまり好きじゃないんだろうね. </p>
+<p>V8 は Ruby と同様, 整数値はヒープにとらずポインタに埋め込む. 
+だから 整数値をあらわす <em>Smi</em> (small integer) クラスのコードは少し面白いことになる. </p>
+<pre>
+// objects-inl.h
+int Smi::value() {
+  return reinterpret_cast&lt;int&gt;(this) &gt;&gt; kSmiTagSize;
+}</pre>
+<p>ポインタから<em>タグビット</em>を削っている. this をシフトするコードってはじめてみたよ...</p>
+<p>ポインタワードには整数(smi)か HeapObject かエラー値が含まれており, 下位のタグビットでそれを判別する. 
+タグビットのレイアウトは以下のとおり:</p>
+<pre>
+// objects.h
+
+// Formats of Object*:
+//  Smi:        [31 bit signed int] 0
+//  HeapObject: [32 bit direct pointer] (4 byte aligned) | 01
+//  Failure:    [30 bit signed int] 11</pre>
+<p>よくみると, 先に登場した FIELD_ADDR() の定義でタグビット(kHeapObjectTag) を除去しているのがわかる.</p>
+<h4>オブジェクトの型情報: Map オブジェクト</h4>
+<p>HeapObject の先頭ワードは常に <em>Map</em> オブジェクトを指している. 
+Map オブジェクトは Class みたいなもので, 該当オブジェクトのレイアウト情報などを持っている. 
+宣伝文句で hidden class と呼んでいるものの実体はこの Map クラスである. 
+(<a href="http://research.sun.com/self/papers/implementation.html">資料のリンクをたどると</a>, 
+Map という名前は Self 由来であることがわかる.)</p>
+<pre>
+// objects.h
+class Map: public HeapObject {
+ public:
+  // instance size.
+  inline int instance_size();
+  inline void set_instance_size(int value);
+
+  // instance type.
+  inline InstanceType instance_type();
+  inline void set_instance_type(InstanceType value);
+
+  ...
+  // [prototype]: implicit prototype object.
+  DECL_ACCESSORS(prototype, Object)
+
+  // [constructor]: points back to the function responsible for this map.
+  DECL_ACCESSORS(constructor, Object)
+
+  // [instance descriptors]: describes the object.
+  DECL_ACCESSORS(instance_descriptors, DescriptorArray)
+
+  // [stub cache]: contains stubs compiled for this map.
+  DECL_ACCESSORS(code_cache, FixedArray)
+  ...
+};</pre>
+<p>いかにも型情報っぽい. </p>
+<h4>マークビット</h4>
+<p>V8 の元ねたになった <a href="http://strongtalk.org/">Strongtalk</a> VM では先頭ワードに
+GC の<em>マークビット</em>などが入っており, Map を指すのは二番目のワードだったらしい. 
+V8 では 先頭ワードの下位ビットをマークビットに使うことで 1 ワードの節約に成功している. 
+(<a href="http://groups.google.com/group/strongtalk-general/browse_thread/thread/40eb8f405fbd3041">Strongtalk の ML でも小ささを自慢している.</a>)</p>
+<p>Map を挿す先頭ワードのためにわざわざラッパクラスまである. </p>
+<pre>
+//objects.h
+class MapWord BASE_EMBEDDED {
+public:
+  // Normal state: the map word contains a map pointer.
+  // Create a map word from a map pointer.
+  ..
+  static inline MapWord FromMap(Map* map);
+   // View this map word as a map pointer.
+  inline Map* ToMap();
+
+  ...
+  // Return this map word but with its mark bit set.
+  inline void SetMark();
+  // Return this map word but with its mark bit cleared.
+  inline void ClearMark();
+
+  ...
+  explicit MapWord(uintptr_t value) : value_(value) {}
+
+  uintptr_t value_;
+  ...
+};</pre>
+<pre>
+// objects-inl.h
+void MapWord::SetMark() {
+  value_ &amp;= ~kMarkingMask;
+}
+...
+void MapWord::ClearMark() {
+  value_ |= kMarkingMask;
+}</pre>
+<p>全体の荒々しさと比べて抽象の粒度がちぐはぐな気はするけど, そこはこだわりの現れなのかも. </p>
+<h4>Map, オブジェクトレイアウト, Precise GC</h4>
+<p>2 ワード目以降のレイアウトはオブジェクトの型によってことなる. 
+先頭ワードの Map オブジェクトを参照することで型がわかり, 
+型からレイアウトを知ることができる. 要するにダウンキャストできる. </p>
+<p>GC もこの型情報を利用してオブジェクトグラフをトラバースする. (mark-sweep の mark  とかね.) 
+オジェクトグラフのトラバースには Visitor パターン, <em>ObjectVisitor</em> が使われる. 
+HeapObject が visit 用 API を用意している: </p>
+<pre>
+// object.cc
+void HeapObject::Iterate(ObjectVisitor* v) {
+  // Handle header
+  IteratePointer(v, kMapOffset);
+  // Handle object body
+  Map* m = map();
+  IterateBody(m-&gt;instance_type(), SizeFromMap(m), v);
+}
+
+void HeapObject::IterateBody(InstanceType type, int object_size,
+                             ObjectVisitor* v) {
+  ...
+  switch (type) {
+    case FIXED_ARRAY_TYPE:
+      reinterpret_cast&lt;FixedArray*&gt;(this)-&gt;FixedArrayIterateBody(v);
+      break;
+    case JS_OBJECT_TYPE:
+    case JS_VALUE_TYPE:
+    case JS_ARRAY_TYPE:
+    case JS_FUNCTION_TYPE:
+    case JS_GLOBAL_OBJECT_TYPE:
+      reinterpret_cast&lt;JSObject*&gt;(this)-&gt;JSObjectIterateBody(object_size, v);
+      break;
+    case JS_BUILTINS_OBJECT_TYPE:
+      reinterpret_cast&lt;JSObject*&gt;(this)-&gt;JSObjectIterateBody(object_size, v);
+      break;
+    case ODDBALL_TYPE:
+      reinterpret_cast&lt;Oddball*&gt;(this)-&gt;OddballIterateBody(v);
+      break;
+    case PROXY_TYPE:
+      reinterpret_cast&lt;Proxy*&gt;(this)-&gt;ProxyIterateBody(v);
+      break;
+    case MAP_TYPE:
+      reinterpret_cast&lt;Map*&gt;(this)-&gt;MapIterateBody(v);
+      break;
+    case CODE_TYPE:
+      reinterpret_cast&lt;Code*&gt;(this)-&gt;CodeIterateBody(v);
+      break;
+      ....
+    default:
+      PrintF("Unknown type: %d\n", type);
+      UNREACHABLE();
+    }
+  }
+}
+
+...
+void JSObject::JSObjectIterateBody(int object_size, ObjectVisitor* v) {
+  // Iterate over all fields in the body. Assumes all are Object*.
+  IteratePointers(v, kPropertiesOffset, object_size);
+}
+...
+void HeapObject::IteratePointers(ObjectVisitor* v, int start, int end) {
+  v-&gt;VisitPointers(reinterpret_cast&lt;Object**&gt;(FIELD_ADDR(this, start)),
+                   reinterpret_cast&lt;Object**&gt;(FIELD_ADDR(this, end)));
+}</pre>
+<p>オブジェクトが自己申告するならそりゃ precise だよね. 
+GC の起点となる グローバル変数やスタックフレームにも, ObjectVisitor がトラバースするための 
+API がある. </p>
+<h4>オブジェクトのプロパティ</h4>
+<p>V8 の目玉の一つにプロパティアクセスの高速化がある. 
+従来の JavaScript 処理系は, プロパティをインスタンス単位のハッシュテーブルに保存していた. 
+V8 は "fast mode" と銘打って, ハッシュではなく配列にプロパティを保存することができる. </p>
+<pre>
+// objects-inl.h
+ACCESSORS(JSObject, properties, FixedArray, kPropertiesOffset)</pre>
+<p>ここでは properties フィールドの型は FixedArray (配列) と宣言されているが, 
+モードによっては Dictionary(=ハッシュ) が含まれることもある. 
+このように配列を使うかハッシュを使うかは排他である. 
+どちらを使っているかは上の properties フィールドに代入されているオブジェクトの型情報(Map)でわかる. </p>
+<pre>
+bool JSObject::HasFastProperties() {
+  return !properties()-&gt;IsDictionary();
+}
+...
+bool Object::IsDictionary() {
+  return IsHashTable() &amp;&amp; this != Heap::symbol_table();
+}
+...
+bool Object::IsHashTable() {
+  return Object::IsHeapObject()
+    &amp;&amp; HeapObject::cast(this)-&gt;map() == Heap::hash_table_map();
+}
+...
+bool Object::IsHeapObject() {
+  return HAS_HEAP_OBJECT_TAG(this);
+}</pre>
+<p>配列のインデクスとプロパティ名の関係は, インスタンスに対応する Map オブジェクトの 
+instance_descriptors フィールドに記録されている. 
+instance_descriptors はプロパティの情報を示す Descriptor オブジェクトの配列である. </p>
+<pre>
+// objects.h
+class Map: public HeapObject {
+public:
+  // [instance descriptors]: describes the object.
+  DECL_ACCESSORS(instance_descriptors, DescriptorArray)
+  ...
+};</pre>
+<pre>
+// objects.h
+class Descriptor BASE_EMBEDDED {
+public:
+ ...
+private:
+ String* key_;   // プロパティ名
+ Object* value_; // 配列内のインデクス
+ PropertyDetails details_; // ReadOnly, DontDelete, DontEnum などのフラグ詰め合せ
+};</pre>
+<p>Dictionary を使うのはプロパティ数が多すぎる時など限られた場面のようなので, 
+以下ではもっぱら配列のケースだけに注目して話を進める.</p>
+<p>プロパティの get と set をそれぞれ見てみよう.</p>
+<p>まず get から</p>
+<pre>
+// なぜか JSObject じゃなくて Object のメソッド.
+Object* Object::GetProperty(String* key) {
+  PropertyAttributes attributes;
+  return GetPropertyWithReceiver(this, key, &amp;attributes);
+}
+...
+Object* Object::GetPropertyWithReceiver(Object* receiver,
+                                        String* name,
+                                        PropertyAttributes* attributes) {
+  LookupResult result;
+  Lookup(name, &amp;result);
+  return GetProperty(receiver, &amp;result, name, attributes);
+}
+...
+Object* Object::GetProperty(Object* receiver,
+                            LookupResult* result,
+                            String* name,
+                            PropertyAttributes* attributes) {
+  ...
+  if (!result-&gt;IsProperty()) { // プロパティがなかった...
+    *attributes = ABSENT;
+    return Heap::undefined_value();
+  }
+  ...
+  Object* value;
+  JSObject* holder = result-&gt;holder();
+  switch (result-&gt;type()) {
+    case NORMAL: // ハッシュを引く場合
+      value =
+          holder-&gt;property_dictionary()-&gt;ValueAt(result-&gt;GetDictionaryEntry());
+      ASSERT(!value-&gt;IsTheHole() || result-&gt;IsReadOnly());
+      return value-&gt;IsTheHole() ? Heap::undefined_value() : value;
+    case FIELD: // 配列アクセスの場合
+      value = holder-&gt;properties()-&gt;get(result-&gt;GetFieldIndex()); // インデクスでとれる
+      ASSERT(!value-&gt;IsTheHole() || result-&gt;IsReadOnly());
+      return value-&gt;IsTheHole() ? Heap::undefined_value() : value;
+    ...
+    default:
+      UNREACHABLE();
+      return NULL;
+  }
+}</pre>
+<p>set.</p>
+<pre>
+Object* JSObject::SetProperty(String* name,
+                              Object* value,
+                              PropertyAttributes attributes) {
+  LookupResult result;
+  LocalLookup(name, &amp;result);
+  return SetProperty(&amp;result, name, value, attributes);
+}</pre>
+<pre>
+Object* JSObject::SetProperty(LookupResult* result,
+                              String* name,
+                              Object* value,
+                              PropertyAttributes attributes) {
+  ...
+  switch (result-&gt;type()) {
+    case NORMAL: // ハッシュの場合.
+      property_dictionary()-&gt;ValueAtPut(result-&gt;GetDictionaryEntry(), value);
+      return value;
+    case FIELD: // 配列の場合
+      properties()-&gt;set(result-&gt;GetFieldIndex(), value);
+      return value;
+    ...
+    default:
+      UNREACHABLE();
+  }
+  UNREACHABLE();
+  return value;
+}</pre>
+<p>雰囲気はわかった(よね?)けれど, 疑問もある. たとえば...:</p>
+<ul>
+<li>Map が型情報だとして, どうやってオブジェクトの型を決めるの？<ul>
+<li>マンガにあった hidden class の話はどうなったの?</li>
+</ul></li>
+<li>配列に保存するのはいいとして, Lookup() でプロパティ名の文字列から配列の添字(インデクス)を検索すると遅いんじゃない?</li>
+</ul>
+<p>とりあえず一つ目から片付けていきたい.</p>
+<h4>隠れクラスの実現: Map Transition</h4>
+<p>オブジェクトの型情報である Map クラスのインスタンスはまず, 
+同じ<em>コンストラクタ関数</em>を持つオブジェクト間で共有される. 
+つまり同じコンストラクタをもてば同じ型だとみなされる. 
+関数オブジェクトは自身が construct するオブジェクトに登録する Map オブジェクトを, 自分の Map とは別に持っている. </p>
+<p>実行時にプロパティが増えるとオブジェクト内のプロパティのレイアウト(=どんな名前のプロパティがいくつあるか)が変わる. 
+Map にはプロパティのレイアウトが記述されているから, それが変わると同じ Map を使えなくなる. 
+このときオブジェクトは新しい Map を作り, 自分に登録する. この仕組みを <em>Map Transition</em> と呼ぶようだ. 
+要するにプロパティが増減すると型が変わるわけ. </p>
+<pre>
+function Hello() { this.foo = 1; this.bar = 2; }
+var hello1 = new Hello();
+var hello2 = new Hello(); // hello1 と hello2 は Map を共有: 生成元のコンストラクタが同じ.
+hello1.baz = 3; // hello1 の Map は baz を含む新しい Map に差しかわり, hello2 とは別マップを参照する.</pre>
+<p>コードはこんなの:</p>
+<pre>
+// objects.cc
+Object* JSObject::SetProperty(String* name,
+                              Object* value,
+                              PropertyAttributes attributes) {
+  LookupResult result;
+  LocalLookup(name, &amp;result);
+  return SetProperty(&amp;result, name, value, attributes); // ここにすすむ
+}</pre>
+<pre>
+Object* JSObject::SetProperty(LookupResult* result,
+                              String* name,
+                              Object* value,
+                              PropertyAttributes attributes) {
+  ....
+  if (result-&gt;IsNotFound()) {
+    return AddProperty(name, value, attributes); // ここにすすむ
+  }
+  ....
+}
+
+
+Object* JSObject::AddProperty(String* name,
+                              Object* value,
+                              PropertyAttributes attributes) {
+  if (HasFastProperties()) {
+    // Ensure the descriptor array does not get too big.
+    if (map()-&gt;instance_descriptors()-&gt;number_of_descriptors() &lt;
+        DescriptorArray::kMaxNumberOfDescriptors) {
+        ...
+        return AddFastProperty(name, value, attributes); // ここにすすむ
+      }
+    } else
+        ...{
+    }
+  }
+  ...
+}</pre>
+<p>ようやく本題:</p>
+<pre>
+Object* JSObject::AddFastProperty(String* name,
+                                  Object* value,
+                                  PropertyAttributes attributes) {
+  ...
+  DescriptorArray* old_descriptors = map()-&gt;instance_descriptors();
+  ...
+  // Compute the new index for new field.
+  int index = map()-&gt;NextFreePropertyIndex();
+  ...
+  // Allocate new instance descriptors with (name, index) added
+  // プロパティの Descriptor を追加した新しい DescriptorArray をつくる
+  FieldDescriptor new_field(name, index, attributes);
+  Object* new_descriptors =
+      old_descriptors-&gt;CopyInsert(&amp;new_field, REMOVE_TRANSITIONS);
+  ...
+  if (map()-&gt;unused_property_fields() &gt; 0) {
+    ASSERT(index &lt; properties()-&gt;length());
+    // Allocate a new map for the object.
+    // Map も新しいのを作る
+    Object* r = map()-&gt;Copy();
+    Map* new_map = Map::cast(r);
+    ...
+    // We have now allocated all the necessary objects.
+    // All the changes can be applied at once, so they are atomic.
+    ...
+    // 新しい Map に新しい DescriptorArray を挿し...
+    new_map-&gt;set_instance_descriptors(DescriptorArray::cast(new_descriptors));
+    new_map-&gt;set_unused_property_fields(map()-&gt;unused_property_fields() - 1);
+    // それを自分にセットする
+    set_map(new_map);
+    // プロパティも忘れず追加.
+    properties()-&gt;set(index, value);
+  } else {
+    ...
+  }
+
+  return value;
+}</pre>
+<p>さて, 一つ気になることがある. 同じコンストラクタを持てば Map が共有されるとして, 
+コンストラクタの中でプロパティが追加されたら何がおこるのだろう. 
+追加のたびに Map ができてしまったら, 空のオブジェクト以外はみな違う Map を持つことになってしまう. 
+(つまり大半のオブジェクトが違う型になってしまう.) それじゃ台無しだ. 
+コンストラクタ内のプロパティアクセスは特別扱い...なんてのも苦しい. 継承なんかもあるし...</p>
+<p>V8 の Map Transition は, この問題をうまく扱っている. 
+transit 前の Map に, "この Map にはプロパティが追加されて新しい Map ができたよ" という<em>マーク</em>を
+残しておくのだ. 先の AddFastProperty() のコードで "..." と省略していた場所に, 実はその仕組みが潜んでいる. 
+省略箇所を変えて引用しなおし:</p>
+<pre>
+Object* JSObject::AddFastProperty(String* name,
+                                  Object* value,
+                                  PropertyAttributes attributes) {
+  ...
+  // Compute the new index for new field.
+  int index = map()-&gt;NextFreePropertyIndex();
+
+  // Allocate new instance descriptors with (name, index) added
+  FieldDescriptor new_field(name, index, attributes);
+  Object* new_descriptors =
+      old_descriptors-&gt;CopyInsert(&amp;new_field, REMOVE_TRANSITIONS);
+  ...
+  if (map()-&gt;unused_property_fields() &gt; 0) {
+    ASSERT(index &lt; properties()-&gt;length());
+    // Allocate a new map for the object.
+    Object* r = map()-&gt;Copy();
+    if (r-&gt;IsFailure()) return r;
+    Map* new_map = Map::cast(r);
+    if (allow_map_transition) { // ある所定の条件を満たすなら...
+      // Allocate new instance descriptors for the old map with map transition.
+      // 古い(既存の) DescriptorArray に "MapTransitionDescriptor" を追加する
+      MapTransitionDescriptor d(name, Map::cast(new_map), attributes);
+      Object* r = old_descriptors-&gt;CopyInsert(&amp;d, KEEP_TRANSITIONS);
+      ...
+      old_descriptors = DescriptorArray::cast(r);
+    }
+    // 既存の Map の DescriptorArray を MapTransitionDescriptor を追加したものに差し替える
+    map()-&gt;set_instance_descriptors(old_descriptors);
+    // あとはこれまでどおり
+    new_map-&gt;set_instance_descriptors(DescriptorArray::cast(new_descriptors));
+    new_map-&gt;set_unused_property_fields(map()-&gt;unused_property_fields() - 1);
+    set_map(new_map);
+    properties()-&gt;set(index, value);
+  } else {
+    ...
+  }
+
+  return value;
+}</pre>
+<p>MapTransitionDescriptor が問題の "マーク". 
+この MapTransitionDescriptor には, 追加されたプロパティ名と transit 先の Map, 
+そして "transit した" という事実を表すフラグが入っている. </p>
+<pre>
+class MapTransitionDescriptor: public Descriptor {
+ public:
+  MapTransitionDescriptor(String* key, Map* map, PropertyAttributes attributes)
+      : Descriptor(key, map, attributes, MAP_TRANSITION) { }
+};</pre>
+<p>JSObject::SetProperty() がこのマークをみつけたら, 
+新しい Map を作るかわりに transit 先の Map を使いつつプロパティを登録する. </p>
+<pre>
+Object* JSObject::SetProperty(LookupResult* result,
+                              String* name,
+                              Object* value,
+                              PropertyAttributes attributes) {
+  ...
+  switch (result-&gt;type()) {
+    case NORMAL:
+    ...
+    case FIELD:
+      ...
+    case MAP_TRANSITION: // マーク発見!
+      if (attributes == result-&gt;GetAttributes()) {
+        // Only use map transition if the attributes match.
+        // マークを使ってプロパティを追加!
+        return AddFastPropertyUsingMap(result-&gt;GetTransitionMap(),
+                                       name,
+                                       value);
+      } else { // Map を再利用できないこともある...
+        return AddFastProperty(name, value, attributes);
+      }
+      ...
+    default:
+      UNREACHABLE();
+  }
+  UNREACHABLE();
+  return value;
+}
+...
+Object* JSObject::AddFastPropertyUsingMap(Map* new_map,
+                                          String* name,
+                                          Object* value) {
+  int index = new_map-&gt;PropertyIndexFor(name);
+  if (map()-&gt;unused_property_fields() &gt; 0) {
+    ASSERT(index &lt; properties()-&gt;length());
+    properties()-&gt;set(index, value); // プロパティを追加しつつ...
+  } else {
+    ...
+  }
+  set_map(new_map); // 与えられた Map に transit!
+  return value;
+}</pre>
+<p>こうしてめでたく Map が共有された. 
+なんとなく transit 元から "継承" されたクラスができるかんじだね. </p>
+<p>こうした追跡の仕組みがあるなら, コンストラクタ毎に最初の Map をわける必要はないようにも思える. 
+ただ全てのオブジェクトで最初の Map を共有してしまうと, 
+最初 Map には大量の MapTransitionDescriptor が登録されてしまう. これは性能上都合が悪そうだ. 
+だからコンストラクタ単位で分割しているのだろう. </p>
+<h4>型付け, JIT, instruction cache (はまた今度)</h4>
+<p>hidden class の謎が解けたところで, もう一つ疑問が残っていた: 
+"DescriptorArray から配列インデクスを検索すると遅いじゃん?" 
+これはまったくそのとおりで, 上の JSObject::GetProperty() や JSObject::SetProperty() は
+どう見ても速いはずがない. かわりに Map オブジェクトを活用した JIT の仕組みが快速アクセスを実現する. </p>
+<p>...のだけれど今日はもう力尽きました. コードひどすぎ. 続きはそのうち. </p>

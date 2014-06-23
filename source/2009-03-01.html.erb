@@ -1,0 +1,13 @@
+---
+title: "How FriendFeed uses MySQL to store schema-less data"
+date: 2009-03-01
+---
+<h3><a href="http://hyuki.com/yukiwiki/wiki.cgi?HowFriendFeedUsesMySqlToStoreSchemaLessData">How FriendFeed uses MySQL to store schema-less data</a></h3>
+<p><a href="http://steps.dodgson.org/?date=20090222">道に迷った</a>腹いせに訳しました. 
+YukiWiki に置かせてもらっています:
+<a href="http://hyuki.com/yukiwiki/wiki.cgi?HowFriendFeedUsesMySqlToStoreSchemaLessData">FriendFeed では MySQL を使いどのようにスキーマレスのデータを保存しているのか</a></p>
+<p>そういえば一部ゲーム屋さんも schema-less なデータを DB につっこむのが好きだという説を聞いたことがあるけれど真偽は不明. 
+その場合につっこむものは pickled dictionary ではなく memcpied struct なのは言うまでもありません. 
+それはそれで便利なところもあるらしい...個人的にはバイナリ化した JSON くらいでいい気がする. 
+まずは<a href="http://github.com/ceplus/unfact/tree/master">仕事で作った JSON パーサ/ライタ</a>にも
+バイナリ IO をつけないとなあ.</p>

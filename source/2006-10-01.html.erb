@@ -1,0 +1,470 @@
+---
+title: "Fulltext index on SQLite"
+date: 2006-10-01
+---
+<h3>Fulltext index on SQLite</h3>
+<p>もうすぐ SQLite に全文検索がつく. Wiki を見ていて気付いた. 
+(<a href="http://www.sqlite.org/cvstrac/wiki?p=FullTextIndex">Full-text Search for SQLite</a>) 
+なかなか頑張ってるみたい. </p>
+<p>他のデータベースは既に全文検索をサポートしている. 
+商用のものはもちろん, 
+<a href="http://techdocs.postgresql.org/techdocs/fulltextindexing.php">PostgreSQL</a> や 
+<a href="http://dev.mysql.com/doc/refman/5.0/en/fulltext-search.html">MySQL</a> も
+対応済. 
+一方で, Java 製インプロセス RDB の <a href="http://www.hsqldb.org/">HSQL</a> や 
+<a href="http://db.apache.org/derby/">Derbyy</a> は対応していない. 
+(Wiki を見ると<a href="http://wiki.apache.org/db-derby/LuceneIntegration">提案されてはいるようす</a>.) 
+大物 DB には追いつかないにせよ, 他の軽量 DB よりは一足先を行くかんじ. 
+数ある DB の要件から全文検索をえらぶあたりがピンポイントでいい. 
+小さな規模のアプリケーションでも検索が使えたら嬉しいよね. </p>
+<p>コードは CVS に入っている. 
+<a href="http://www.sqlite.org/cvstrac/dir?d=sqlite/ext/fts1">このへん</a>. 
+とりあえずチェックアウトして試そうと思いレポジトリを覗いてみると, 
+コードはあるけど Makefile がない. 
+Wiki をよく読むと, Makefile はまだらしい. ひどい...
+まあいいや. 
+拡張モジュールとして実装されているようなので, まず sqlite 本体だけをビルド. 
+全文検索拡張の "fts1" は自分のコードと一緒にコンパイルしてみる. 動いた. ばんざーい. </p>
+<p>こんなかんじで使える. </p>
+<pre>void hello_fts(){
+  sqlite3 *db;
+  char* stmt;
+
+  /* エラーチェックはばりばり省略してます. */
+  sqlite3_open("hello-fts.db", &amp;db);
+  sqlite3Fts1Init(db);
+  /* 表つくる */
+  stmt = "create virtual table recipe using fts1(name, ingredients);";
+  sqlite3_exec(db, stmt, callback, 0, NULL); /* callback はユーザ定義の関数 */
+  /* 列を追加 */
+  stmt = "insert into recipe (name, ingredients) "
+         "values ('broccoli stew', 'broccoli peppers cheese tomatoes');";
+  sqlite3_exec(db, stmt, callback, 0, NULL);
+  /* 検索 */
+  stmt = "select * from recipe where name match 'stew';";
+  sqlite3_exec(db, stmt, callback, 0, NULL);
+
+  sqlite3_close(db);
+}</pre>
+<p>まず sqlite3Fts1Init() で拡張機能を登録する. 
+(プラグインとして動的にリンクする場合は要らないようす. プラグインなんてあったのか...) 
+そのあとの操作は SQL 文経由で行う. 
+"create virtual table .. using fts1 ..." と全文検索可能な表をつくる. 
+insert とか update は普通にやっていい. 
+検索する時は match 節(?) で文字列を指定する. </p>
+<p>今のところマルチバイト文字を無視するなど色々制限はあるらしい. 
+ただ開発途中の機能なので段々よくなっていくだろう. 勝手に期待している. </p>
+<h3>sqlite-fts1 の仕組み</h3>
+<p>FTS1 は sqlite の 
+"<a href="http://www.sqlite.org/cvstrac/wiki?p=VirtualTables">仮想テーブル</a>"  
+という仕組みで作られている. 
+仮想テーブルはユーザが C 言語で定義する一種の "ビュー" のこと. 
+各種 SQL 呼び出しをコールバックでフックし, 問い合せに応じて適当な値を返す. 
+SQL の呼び出し側からは普通の表を叩いているように見える. 
+"ユーザ定義関数" に対する "ユーザ定義ビュー" みたいなものかもしれない. </p>
+<p>仮想テーブル FTS1 は内部でこっそり別のテーブルを作り, 
+それをうまく使って全文検索を実装している. 実体のテーブルは二つある. 
+上の例だと実体はこんなテーブルができる: </p>
+<pre>create table recipe_content(c0name, c1ingredients);
+create table recipe_term(term text, segment integer, doclist blob,
+                         primary key(term, segment));</pre>
+<p>全文検索の基本的なアイデアを知っていれば, 仕組みはだいたいわかると思う. 
+仮想テーブル recipe は, recipe_content にテキスト本体を, 
+recipe_term に転置インデクスを保存している. </p>
+<p><img src="http://dodgson.org/omo/t/images/20061001_0.png" style="display;block" /></p>
+<p>今のところスコアなどへの配慮はない. 
+ごく素朴な実装だと想像がつく. (余分なテーブルがないもんね.) 
+update のフックで転置インデクスを作り, 
+select のフックでそれを索く. それだけ. 
+4000 行くらいだし, それほど凝ったことはしていないのだろう. </p>
+<h3>仮想テーブルを試す</h3>
+<p>全文検索の話はだいたい気が済んだ...</p>
+<p>それより仮想テーブルが面白そう. 
+linux の仮想 filesystem で色々と変なものが作れるように, 
+仮想テーブルにも夢がひろがる. 
+たとえば <a href="http://fuse.sourceforge.net/wiki/index.php/FileSystems">Fuse(Filesystem in Userspace)</a> のアイデアを移植するだけで面白いかもしれない. 
+select 文で Web サーフィン, insert で blog を投稿する 
+http table (<a href="http://httpfs.sourceforge.net/">httpfs</a> 風), 
+勝手に分散な gmail table (<a href="http://richard.jones.name/google-hacks/gmail-filesystem/gmail-filesystem.html">gmailfs</a> 風) など. 
+仮想テーブルにはなぜか <a href="http://search.cpan.org/~salva/SQLite-VirtualTable-0.03/lib/SQLite/VirtualTable.pm">perl のインターフェイス</a> があるらしい. 
+Web 仕事に飽きた perl プログラマは暇潰しにどうぞ. </p>
+<p>perl のできない私は C 言語で試すことにする. 
+まず FTS1 のコードを削り, 最小限の hello 仮想テーブルを作ってみた. 
+update や insert は無視し, select してもいつも同じ結果が戻るだけ. 
+(<a href="/omo/work/20061001/hello.c.3">これ</a>.)</p>
+<p>コードを削りながら眺めた結果, 
+仮想テーブルの周りはおおよそこんなかんじの構成になっていることがわかった. 
+(C にはオブジェクトっぽくない部分もあるため, コードとの対応は心の目でみてください.)</p>
+<p><img src="http://dodgson.org/omo/t/images/20061001_1.png" style="display;block" /></p>
+<p>要するに Virtual Table が Collection で Cursor は Iterator ね. 
+仮想テーブルの実装者はこれらの API (仮想関数) を作っていけばいい. 
+もっとも大半はお約束の boilerplate code. Cursor を作るのが主な仕事になる. </p>
+<p>仮想関数に相当する関数ポインタは, ぜんぶまとめて sqlite3_module 構造体にセットする. 
+その構造体を sqlite3_create_module() で登録すると仮想テーブルが使えるようになる. </p>
+<pre>static sqlite3_module helloModule = {
+  0,
+  helloCreate,
+  helloConnect,
+  helloBestIndex,
+  ......
+};
+
+int sqlite3HelloInit(sqlite3 *db){
+  return sqlite3_create_module(db, "hello", &amp;helloModule, 0);
+}</pre>
+<h3>仮想テーブルの例 : sqlite + senna</h3>
+<p>あとは実装方法の説明を書くつもりでいたけれど, 
+規模も小さく見ればわかる気がしてきた. というか飽きてきた. 
+実際に何か作ってみたい. 簡単にできそうなものはないかなあ...</p>
+<p>などと考えた末, 
+全文検索ライブラリの <a href="http://qwik.jp/senna/FrontPageJ.html">senna</a> と繋いでみた. 
+(<a href="/omo/work/20061001/hello.c">これ</a>.)</p>
+<p>fts1 と同じようなもので新味はないけれど, コードをいろいろ流用できるのが楽でいい. 
+自分には使い道がないため, 仮想テーブルのお試しに目的を絞って極限まで手を抜いた. 
+まずテーブルのスキーマは選べない. 常に "content" という文字列型の列があるだけ. 
+update, delete できない. insert だけ. エラーチェック適当. 名前が hello のまま. 
+など. このへんは全部単なる手抜き. 技術的な制限ではない, はず. 
+(あ, alter table はできないかも...)</p>
+<p>手抜きの甲斐あって, コードは 500 行くらいで済んだ. 
+実用できるようにがんばっても 2000 行もあればよさそう. </p>
+<p>使い方は fts と同じ. </p>
+<pre> ....
+ sqlite3HelloInit(db);
+
+ stmt = "create virtual table greeting using hello;";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+
+ stmt = "insert into greeting (content) values ('こんにちは, ふたたび');";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+ stmt = "insert into greeting (content) values ('こんにちは, ふたたび');";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+ stmt = "insert into greeting (content) values ('さようなら');";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+ ...</pre>
+<p>検索は match. これで 2 件 hit する. </p>
+<pre> "select * from greeting where content match 'こんにちは';";
+ sqlite3_exec(db, stmt, callback, 0, NULL);</pre>
+<p>RDB なので join もできる. 当たり前だけどちょっと感動. </p>
+<pre> stmt = "create table person(name, gid);";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+ stmt = "insert into person (name, gid) values ('alice', 1);";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+ "insert into person (name, gid) values ('bob', 1);";
+ sqlite3_exec(db, stmt, callback, 0, NULL);
+
+ stmt = "select p.name, g.content from person p, greeting g "
+        "where g.rowid = p.gid;";
+ sqlite3_exec(db, stmt, callback, 0, NULL);</pre>
+<p>字句解析は senna がやってくれるからちゃんとしている. 
+マルチバイトも通る. 国産はいいねえ. </p>
+<h3>senna を使っているところ</h3>
+<p>仮想テーブル用コールバック helloXxx() のうち 
+senna を使っているところだけざっと見てみよう. 
+ここに出てくる部分が仮想テーブルの正味だと言える. 
+逆にいうと残りはほとんど boilerplate. </p>
+<h4>データベースの開閉</h4>
+<p>まずデータベースの作成破棄(create, destroy)と開閉(connect, disconnect)から. 
+作成は helloCreate() で行う. </p>
+<pre>static int helloCreate(
+  sqlite3 *db,
+  void *pAux,
+  int argc, const char *const*argv,
+  sqlite3_vtab **ppVtab,
+  char **pzErr
+){
+  sen_index* index = NULL;
+  const char* name = NULL;
+
+  name = hello_argv_find_table_name(argv);
+  index = sen_index_create(name, 0, SEN_INDEX_NORMALIZE|SEN_INDEX_NGRAM,
+			   0, sen_enc_utf8);
+  return hello_constructor(db, index, argc, argv, ppVtab, pzErr);
+}</pre>
+<p>贅肉は除去済です. </p>
+<p>senna の index を作って仮想テーブルの構造体 sqlite3_vtab に保存する. 
+hello_constructor() が sqlite3_vtab を確保して初期化するコンストラクタ風関数. 
+お約束コードなので面白くないけれど, ひとつくらいは見ておこう. </p>
+<pre>static int hello_constructor(
+  sqlite3 *db,
+  sen_index* index,
+  int argc, const char *const*argv,
+  sqlite3_vtab **ppVtab,
+  char **pzErr
+){
+  int rc = SQLITE_OK;
+  hello_vtab *htab = NULL;
+  HelloStringBuffer hsb;
+
+  htab = malloc( sizeof(*htab) );
+  memset(htab, 0, sizeof(*htab));
+  rc = hello_declare_vtab(db, argc, argv);
+  initHelloStringBuffer(&amp;hsb);
+  hsb_append(&amp;hsb, hello_argv_find_table_name(argv));
+  htab-&gt;name = hsb.s; /* fini()-ed at hello_destructor() */
+  htab-&gt;db = db;
+  htab-&gt;index = index;
+  *ppVtab = &amp;htab-&gt;base;
+
+  return SQLITE_OK;
+}</pre>
+<p>構造体を malloc() して中味を埋める. hello_declare_vtab() は
+データ本文を保存する hello_xxx(content) というテーブルを作る. 
+senna は転置インデクスのみを保持するため,
+データは利用者 (hello 仮想テーブル) 側で保存しないといけない. </p>
+<pre>static int hello_declare_vtab(
+  sqlite3 *db,
+  int argc,
+  const char *const*argv
+){
+  int rc = SQLITE_OK;
+  HelloStringBuffer hsb;
+
+  initHelloStringBuffer(&amp;hsb);
+  hsb_append(&amp;hsb, "create table hello_");
+  hsb_append(&amp;hsb, hello_argv_find_table_name(argv));
+  hsb_append(&amp;hsb, "(content)");
+
+  rc = sqlite3_declare_vtab(db, hsb.s);
+  finiHelloHelloStringBuffer(&amp;hsb);
+
+  return rc;
+}</pre>
+<p>本文用のテーブルを作るだけでなく, 
+sqlite3_declare_vtab() で仮想テーブルのスキーマを
+メタデータとして登録している. 引数には create table 文を渡せばいい. 
+複数列に対応しようと思ったらここを直す必要あり. 
+なお, スキーマだけが参照され, 表の名前は無視される. だからなんでも OK. 
+(fts1 では "x" になっていた気がする.)</p>
+<p>このほかには... 
+helloDestroy() は Create() と逆に構造体を free() し senna の index を削除する. 
+helloConnect(), helloDisconnect() は 
+create() が open() に, remove() が close() になるだけで似たようなもの. </p>
+<h4>データの追加</h4>
+<p>SQL の insert, delete, update に相当するデータの追加, 削除, 更新は 
+helloUpdate() が一気にうけもつ. 今は面倒なので insert のみ対応. </p>
+<pre>static int helloUpdate(
+  sqlite3_vtab *tab,
+  int nData,
+  sqlite3_value **apData,
+  sqlite_int64 *pRowid
+){
+  int rc = SQLITE_OK;
+  hello_vtab* vtab = (hello_vtab*)tab;
+  char key[HELLO_KEY_BUFSIZE];
+  const char* value = NULL;
+  int rowid = 0; /* FIXME: use 64-bit value */
+  sen_rc s_rc = 0;
+
+  rc = hello_redirect_update(tab, nData, apData, pRowid);
+  if( SQLITE_OK != rc ){
+    return rc;
+  }
+
+  rowid = sqlite3_last_insert_rowid(vtab-&gt;db);
+  snprintf(key, HELLO_KEY_BUFSIZE, "%d", rowid);
+  value = (char*)sqlite3_value_text(apData[2]);
+  s_rc = sen_index_upd(vtab-&gt;index, key, NULL, value);
+  return rc;
+}</pre>
+<p>sen_index_upd() で insert する. 
+hello_redirect_update() は本文を hello_xxx に insert している. 
+update や delete に対応しようと思ったらこのへんを直す必要がある. 中味はパス. </p>
+<h4>カーソルの操作</h4>
+<p>SQL の select 文が発行されるといよいよ検索の出番だ. 
+表のトラバースはカーソルを介して行なわれる. iterator みたいなもの. 
+各関数の呼び出し順はだいたいこんなかんじ:</p>
+<pre>helloOpen();
+helloBestIndex();
+helloFilter();
+do {
+  helloNext();
+  foreach (c : columns) { result[c] = helloColumn(c); }
+} while(helloEof());
+helloClose();</pre>
+<p>helloOpen() でカーソルを開いて 
+helloBestIndex() と helloFilter() で where 句の制約を適用したら
+helloNext() でどんどん次の行へ. 
+helloEof() で終端をチェック. 終端じゃなければ helloColumn() で列のデータをとりだす. 
+おわったら helloClose() で閉じる. </p>
+<p>まず開くところ. </p>
+<pre>static int helloOpen(sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor){
+  hello_cursor *cur;
+
+  cur = malloc(sizeof(hello_cursor));
+  memset(cur, 0, sizeof(hello_cursor));
+  *ppCursor = &amp;cur-&gt;base;
+
+  return SQLITE_OK;
+}</pre>
+<p>構造体を初期化するだけです... helloClose() は逆の開放処理をやる. そっちはパス. </p>
+<h4>where 句の適用</h4>
+<p>カーソルを開いたあと, 
+実際にいろいろやるのは helloBestIndex() と helloFilter() まで保留する. 
+where 句に match があるか否かはそこまでわからないからだ. 
+この二つの関数が where 句の制約を実装するんだけど, 
+ちょっとややこしかった. 私もわかっていない部分がある... 
+(でもコードは fts1 からぱくったので問題なし.) </p>
+<p>わかる範囲で説明. 
+まず helloBestIndex() には where 句の制約に関する情報が渡ってくる. 
+ここで senna を使うか全てのレコードを見るかを決める. </p>
+<pre>static int helloBestIndex(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo){
+  int i = 0;
+  if( hello_is_fulltext_query(pIdxInfo) ){
+    for(i=0; i&lt;pIdxInfo-&gt;nConstraint; ++i){
+      pIdxInfo-&gt;aConstraintUsage[i].argvIndex = 1;
+      pIdxInfo-&gt;aConstraintUsage[i].omit = 1;
+      pIdxInfo-&gt;estimatedCost = 1.0;
+    }
+    pIdxInfo-&gt;idxNum = HELLO_QUERY_FULLTEXT;
+  } else {
+    pIdxInfo-&gt;idxNum = HELLO_QUERY_GENERIC;
+  }
+  return SQLITE_OK;
+}</pre>
+<p>hello_is_fulltext_query() が制約の情報をチェックして match がないか調べる. 
+match があるかないかで, トラバース方法を senna を使う HELLO_QUERY_FULLTEXT か 
+HELLO_QUERY_GENERIC か判定, 記録する. この値はあとで使う. </p>
+<p>pIdxInfo の値を書き換えているのは boilerplate だと思うけれど, 
+よくわからない部分もある. 
+興味のある人は sqlite.h のコメントを参照しつつ本体のコードを参照ください. 
+(where.c あたり.)</p>
+<p>次によばれるのは helloFilter(). ここで senna を使う. </p>
+<pre>static int helloFilter(
+  sqlite3_vtab_cursor *pVtabCursor,
+  int idxNum, const char *idxStr,
+  int argc, sqlite3_value **argv
+){
+  int rc = SQLITE_OK;
+  hello_cursor *hcur = (hello_cursor *)pVtabCursor;
+  hello_vtab *htab = (hello_vtab *)pVtabCursor-&gt;pVtab;
+
+  hcur-&gt;query_type = idxNum;
+  if( HELLO_QUERY_FULLTEXT == hcur-&gt;query_type ){
+    rc = hello_cursor_setup_fulltext(hcur, htab, argc, argv);
+  } else {
+    rc = hello_cursor_setup_generic(hcur, htab, argc, argv);
+  }
+
+  if( SQLITE_OK == rc ){ rc = helloNext(pVtabCursor); }
+  return rc;
+}</pre>
+<p>hello_cursor_setup_fulltext() の中へ. ようやく senna 登場. </p>
+<pre>static int hello_cursor_setup_fulltext(
+  hello_cursor* cur,
+  hello_vtab*  vtab,
+  int argc, sqlite3_value **argv
+){
+  int rc = 0;
+  const char *q = NULL;
+
+  q = (const char *)sqlite3_value_text(argv[0]);
+  cur-&gt;records = sen_index_sel(vtab-&gt;index, q);
+  rc = hello_setup_cursor_stmt(vtab-&gt;db, vtab-&gt;name, &amp;cur-&gt;stmt);
+
+  return rc;</pre>
+<p>}</p>
+<p>sen_index_sel() で senna の iterator である sen_records を取得. 
+あとからこれを使ってトラバースする. </p>
+<p>なぜ helloBestIndex() と helloFilter() が二つにわかれているのかはよくわからない. 
+もしかしたら 特殊な join などに helloBestIndex() と helloFilter() 
+で呼び出し回数の違うケースがあるのかもしれない. </p>
+<h4>カーソルによるトラバース</h4>
+<p>次はトラバース. 
+where 句が match 節を持つかどうかで挙動をかえる必要があるのに注意. 
+match なら senna の index を使い, それ以外の時は普通にぜんぶ返す. 
+ちょっと面倒だった. ここでは senna を使うケースだけを追う. </p>
+<pre>static int helloNext(sqlite3_vtab_cursor *cur){
+  hello_cursor* hcur = (hello_cursor *)cur;
+
+  if (HELLO_QUERY_FULLTEXT == hcur-&gt;query_type) {
+    return hello_fulltext_next(hcur);
+  } else {
+    ...
+  }
+}</pre>
+<pre>static int hello_fulltext_next(hello_cursor *cur) {
+  int sret = 0;
+
+  sret = sen_records_next(cur-&gt;records, NULL, 0, NULL);
+  cur-&gt;eof = (0 == sret);
+
+  if( !cur-&gt;eof ){
+    char keybuf[HELLO_KEY_BUFSIZE]; /* 手抜き御免 */
+    sret = sen_records_curr_key(cur-&gt;records, keybuf, HELLO_KEY_BUFSIZE);
+    cur-&gt;key = strtol(keybuf, NULL, 10);
+    hello_cursor_bind_id(cur);
+  }
+
+  return SQLITE_OK;
+}</pre>
+<p>senna のキーには hello_xxx テーブルの rowid を文字列化して使っている. 
+それを整数値に戻す. </p>
+<p>終端判定はフラグをみるだけ. </p>
+<pre>static int helloEof(sqlite3_vtab_cursor *cur){
+  hello_cursor *hcur = (hello_cursor *)cur;
+  return (!hcur || (hcur-&gt;eof));
+}</pre>
+<h4>列の読み出し</h4>
+<p>カーソルから値をとりだすために helloColumn() が呼ばれる. </p>
+<pre>static int helloColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int i){
+  hello_cursor *hcur = (hello_cursor *)cur;
+  switch (i) {
+  case -1: /* rowid */
+    return hello_cursor_rowid(hcur, ctx);
+  case  0: /* content */
+    return hello_cursor_content(hcur, ctx);
+  default:
+    return SQLITE_OK;
+  }
+}</pre>
+<p>列の添字が渡ってくるので, それに応じて値を返せばいい. 配列みたいなもんね. 
+複数の列に対応するなら, 列の添字と名前の対応づけをどこかで覚えておく必要がある. 
+(fts1 では vtab の構造体に対応を保存している.) 
+-1 は特別な添字. sqlite 組込みの行番号 (rowid) を返すことになっている. </p>
+<p>こんなもんでだいたい網羅した気がする. 簡単でしょ. </p>
+<h4>仮想テーブルの見所: 制約とインデクスの実現方法</h4>
+<p>個人的にはインデクスの扱いが面白かった. 
+詳しい説明は省いたけれど, 
+helloBestIndex() には制約の情報を sqlite 本体のエンジンとやりとりする部分がある. 
+ここでコストの推定値や omit フラグを渡す. データベースぽくって面白い. </p>
+<p>こうした情報はもっぱら join や where を高速化するのに使われており, 
+間違えるとバグになってしまうものもある. 
+なぜバグになる余地があるかというと, where 句の制約を実現する方法が柔軟だからだ. 
+仮想テーブルが自分でフィルタしてもいいし sqlite に任せてもいい. 
+このへんの仕組みはよくできている. 
+自分でフィルタする場合は該当する制約の omit フラグを立てる. 
+自分でフィルタすると宣言しながら素通しするなど, フラグを間違えるとバグるわけね. </p>
+<h4>きちんとやるなら ?</h4>
+<p>上の素朴な試作の制限については既に書いたとおり. 
+sqlite を使っている人の中には全文検索対応をきちんとやりたい人もいるだろう. 
+そういう人はこのまま senna でがんばってもいいし, 
+Hyper Estraier のような他の検索ライブラリを繋いでもいいと思う. 
+Hyper Estraier は本文データも保存できるため, 
+他のテーブルへリダイレクトするといった面倒はなさそう. </p>
+<p>また仮想テーブルではユーザ関数も定義できる. 
+こうした外部のライブラリを最大限活用するなら, たとえば 
+"select score(content) from ..." みたいな形で
+属性値を読み出せれば便利かもしれない. </p>
+<p>もう少し硬派な路線として, sqlite の fts1 を改造してもいい. 
+fts1 の字句解析モジュールは簡単に差し替えられる作りになっている. 
+だからその API に合わせて n-gram などの多言語向け字句解析を書けば
+日本語を通すようになるはず. そうすると外部のモジュールはいらなくなる. 
+加えてあわよくば sqlite のツリーに混ぜてもらえるかもしれない. 
+<a href="http://www.chadfowler.com/">Chad Fowler</a> も
+OSS のコミッターになれと言っている. 
+試験勉強に飽きた学生は暇つぶしにどうぞ. (おまえがやれって話もあるけど...)</p>
+<h4>poorman's linq としての 仮想テーブル</h4>
+<p>全文検索はさておき, 
+ユーザ定義のデータソースやコレクションを
+宣言的な言語(SQL)で叩いてとりだす仮想テーブルのアイデアは 
+Microsoft の <a href="http://msdn.microsoft.com/data/ref/linq/">LINQ</a> に
+通じるものがある. 
+仮想テーブルの方がだいぶ貧弱だけれど, 
+うまくスクリプト言語と繋ぐことができれば面白いデータモデルになるとは思う. 
+web2.0 に飽きた ruby プログラマは暇つぶしにどうぞ. </p>
+<p>まとめ:</p>
+<ul>
+<li>sqlite に全文検索がついたよ. でもまだいまいち.</li>
+<li>かわりに仮想テーブルがおしゃれなので senna をくっつけてみた.</li>
+<li>みんなであそぼう sqlite</li>
+</ul>

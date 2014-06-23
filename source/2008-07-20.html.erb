@@ -1,0 +1,70 @@
+---
+title: "今日はメモの日"
+date: 2008-07-20
+---
+<h3>今日はメモの日</h3>
+<p>私のメモとり環境は挫折の歴史を重ねている. 色々試そうとするもだいたい挫ける. 
+それは私の勉強が挫折の歴史なのでは, という疑問はさておき, 
+毎年一度くらいは逆襲を目論む. 今年もその季節がやってきた. </p>
+<p>今の私のメモ環境は howm と会社の wiki, あとはこの日記くらい. 
+何かを読んだ記録という意味では del.icio.us もあるけれど, あまり有効活用できてない. 
+本を読んだり web を読んだりした記憶は端から捨て去られている. </p>
+<p>特に howm をちゃんと使えていないのが我ながら情けない. 
+howm はテキストを書く敷居がとても低い. 
+そのせいか, 一定以上のテキストを書く時は常に howm に打ち出している. 
+メールの下書き, Wiki の下書き, 日記日報の下書き, 
+毎日の TODO リスト, デバッグ中にダンプした変数...  
+こういう一過性のテキストが howm に溢れてしまい, 
+肝心の読み返したいメモ: 読書メモ, 技術記事メモ, 思いつきメモ, 日記, ... を
+管理するのが難しくなってしまった. </p>
+<p>一方で, テキストを書き捨てるときにファイル名を考えなくていい howm の気楽さは捨て難い. 
+なので howm はこれまでどおり書き捨て用に使い, 
+書き溜めるメモには 
+<a href="http://mwolson.org/projects/EmacsWikiMode.html">emacs-wiki</a> 
+を使ってみることにした. なんだか全然メンテナンスされてないっぽいし
+機能もほとんど howm の subset だけどまあいいや. 
+<a href="http://orgmode.org/">org-mode</a> は大袈裟すぎる. </p>
+<p>この Web 全盛のご時世に Emacs を使うのはなんとなく面白くない. 
+でも SKK 依存症で非ウェブっ子の私はこれなしにテキストを書けない. 
+Web のツールを色々と試してそう思い至った. 
+だからしばらくは Emacs を使い続けるだろう. 
+会社でも VisualStudio から Emacs を起動して同情の視線を浴びている. やれやれ...</p>
+<h4>Emacs + Tombloo</h4>
+<p>せめて気分だけでもウェブっ子したい. 
+たとえばウェブの記事を Emacs でメモするのに, 
+<a href="http://code.google.com/p/tombloo/">Tombloo</a> を経由するのはどうだろう. 
+hg のレポジトリを適当な VPS に置いて HTTP でチェックインすれば, 
+ローカルのファイルもどこか雲っぽくなる, 気がする. </p>
+<p>そんなわけで Tombloo の patch を書いた: 
+<a href="http://www.dodgson.org/omo/toybox/?raw-file/tip/tombloo/kickEmacs.js">kickEmacs.js</a>. 
+Tombloo 用語では patch だけれど, Tombloo 本体を変更する必要はない. 
+どちらかというと plugin に近いとおもう. 
+インストール方法は <a href="http://d.hatena.ne.jp/brazil/20080716/1216197254">作者のページにある他の patch</a> と同じ. </p>
+<p>この patch では pref で指定したコマンドラインツールを, 
+同じく pref で指定した引数をつけて呼びだす. 引数には当然 URL や &lt;title&gt; を渡すことができる. 
+user.js でいうとこんな感じの指定をする. (about:config でも同じ.)</p>
+<pre>
+user_pref("extensions.tombloo.emacsclient.path",
+          '/usr/bin/emacsclient');
+user_pref("extensions.tombloo.emacsclient.args",
+          '-e (my-wiki-open-log-for-uri\\s"{itemUrl}"\\s"{item}"\\s"{body}")');</pre>
+<p>引数に空白を渡す時は \s でエスケープしてください. </p>
+<p>.emacs はこんなかんじにしておく.</p>
+<pre>
+(setq my-wiki-log-format "log/%Y%m")
+(defun  my-wiki-open-log-for-uri (uri title body)
+  (let ((wikiname (format-time-string my-wiki-log-format (current-time))))
+    (emacs-wiki-find-file wikiname)
+    (goto-char 0)
+    (insert (format "\n* %s\n- %s\n%s"
+                    (url-unhex-string uri t)
+                    (url-unhex-string title t)
+                    (url-unhex-string body t)))))</pre>
+<p>これで ChangLog memo 風のエントリが emacs-wiki で追記される. </p>
+<pre>* tombloo - Google Code
+- http://code.google.com/p/tombloo/</pre>
+<p>(なぜか日本語通らず. しばらくほっとこう...)</p>
+<p>あてつけで kickEmacs.js という名前だけれど, 呼び出すプログラムは何でもいい. 
+IRC の bot や XMPP を利用することもできるだろう...
+ウェブっ子は twitter 経由ですかそうですか.</p>
+<p><img src='/images/20080720_0.png' class='image-right'></p>

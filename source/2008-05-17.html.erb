@@ -1,0 +1,145 @@
+---
+title: "ファクトリー ファクトリー ファクトリー"
+date: 2008-05-17
+---
+<h3>ファクトリー ファクトリー ファクトリー</h3>
+<p>前に <a href="http://dodgson.org/omo/t/?date=20070514">欲しいと書いた</a> 
+API のユーザビリティテスト. 実際にやってみたぜという話を読んだ. 
+"<a href="http://www.cs.cmu.edu/~NatProg/papers/Ellis2007FactoryUsability.pdf ">The Factory Pattern in API Design: A Usability Evaluation (PDF)</a>" 
+という記事がそれ. 俎上に載ったのは factory パターン. 
+素のコンストラクタとどちらが使いやすいかを比べてみたという. 
+そんなの, Factory が腐ってるだなんて Joel...じゃなくて 
+<a href="http://local.joelonsoftware.com/mediawiki/index.php/(Forum)_%E7%A7%81%E3%81%AF%E3%81%AA%E3%81%9C%E3%83%95%E3%83%AC%E3%83%BC%E3%83%A0%E3%83%AF%E3%83%BC%E3%82%AF%E3%81%8C%E5%AB%8C%E3%81%84%E3%81%8B">Joel の読者も言っている</a>. 
+実際この調査でも "factory は使いにくい" という思ったとおりの結論. 
+面白さはユーザビリティテストをした事実そのものにある. </p>
+<p>調査では 12 人の被験者をあつめ, 5 つの課題をこなしてもらう. コードはぜんぶ Java.</p>
+<ul>
+<li>課題1: メールを送信する. ライブラリを使ってこんな風に書けたらいいなと思うコードを notepad で書いてもらう. 正解はない.</li>
+<li>課題2: 出題者の用意したライブラリを使って実際にメール送信のコードを書く. これ以降は Eclipse をつかう.</li>
+<li>課題3: 意味をもたないふたつのクラス, Thingy と Squark をインスタンス化し, 所定のメソッドを呼び出す.</li>
+<li>課題4: GUI レイアウトライブラリのバグ修正. Mac 上でも Windows 標準のレイアウトとをしてしまうバグをなおす.</li>
+<li>課題5: <a href="http://java.sun.com/javase/6/docs/api/javax/net/ssl/SSLSocket.html">SSLSocket</a> および <a href="http://java.sun.com/javase/6/docs/api/java/net/MulticastSocket.html">MulticastSocket</a> を使った通信をおこなう.</li>
+</ul>
+<p>課題に登場するクラスは一方が factory パターンに従い, 他方は public なコンストラクタを持つ. 
+結果は, 4 以外すべてのタスクでコンストラクタを使ったクラスが好成績を収めたという. 
+バグ修正を行う 4 だけ factory が勝ったのは興味深い. (ただし僅差.) </p>
+<p>同じ研究チームは, "引数なしコンストラクタ + パラメタのアクセサ" と "引数のあるコンストラクタ" も対決させている. 
+そっちは引数なしコンストラクタが勝利. ("<a href="http://www.cs.cmu.edu/~NatProg/papers/Stylos2007CreateSetCall.pdf">Usability Implications of Requiring Parameters in Objects' Constructors(PDF)</a>")</p>
+<h4>Microsoft による実践</h4>
+<p>アカデミックだけではなく, 現実の API 設計でこうした調査を用いる組織もある. 
+みんな大好き Microsoft は, .NET API の開発にあたりユーザビリティのテストを行ったという. 
+("<a href="http://www.ddj.com/windows/184405654">Measuring API Usability</a>") 
+実際の調査の様子は <a href="http://channel9.msdn.com/Showpost.aspx?postid=140993">Channel9 にビデオ</a> がある. 
+被験者が API を探す様子をみながら, 
+"あーそっちじゃなくて, Activities プロパティだよー" と壁の裏でわめいたり, 
+ウェブをぐぐる被験者をみて "そういえば答えに近い話を blog に書いちゃったなあ" とぼやいたり, 
+観察している開発者の様子もなかなか面白い. </p>
+<p>記事の著者 Steven Clarke は <a href="http://blogs.msdn.com/stevencl/">blog</a> も書いており, 
+API ユーザビリティについて詳しい解説をしている. 最近更新がないのは残念だけど, 思わず通読してしまった. 
+ユーザビリティテスト実施 HOWTO のシリーズまである. 
+(<a href="http://blogs.msdn.com/stevencl/archive/2005/03/29/403436.aspx">1</a>,
+<a href="http://blogs.msdn.com/stevencl/archive/2005/04/19/409849.aspx">2</a>,
+<a href="http://blogs.msdn.com/stevencl/archive/2005/05/05/415016.aspx">3</a>,
+<a href="http://blogs.msdn.com/stevencl/archive/2005/07/11/437598.aspx">4</a>)</p>
+<h4>Cognitive Dimensions</h4>
+<p>MS における API ユーザビリティを支えるのは 
+"<a href="http://en.wikipedia.org/wiki/Cognitive_dimensions">Cognitive Dimensions</a>" (CD) という
+アイデアらしい. CD はユーザビリティや HCI の分野で 90 年代に生まれた. 
+数値的なメトリクスを必要とする専門家むけのツールではなく, 
+在野の職業人が使うことを意識した定性的な枠組みだという.</p>
+<p>CD では直交する 12 の評価基準 (dimension) を定義する. 
+ユーザビリティの実験結果やトレードオフを議論するとき, どの軸に焦点を合わせているのかを意識しましょう, 
+そうすれば議論が発散しませんよ, というのが CD のおおまかな主張である(と私は理解した). </p>
+<p><a href="http://www.cl.cam.ac.uk/~afb21/CognitiveDimensions/CDtutorial.pdf">チュートリアル(PDF)</a> 
+によればこんな評価軸がある:</p>
+<ul>
+<li>粘度(Viscosity): 変更にかかる手数など</li>
+<li>隠れた依存 (Hidden Dependency)</li>
+<li>早計な決断, 先読みの強要(Premature Commitment and Enforced Lookahead)</li>
+<li>抽象, 抽象不足, 抽象難 (Absractions, Abstraction Hunger, Abstraction Barrier)</li>
+<li>補助記法 (Secondary Notaion) : 挙動に影響しない補助的な情報: インデントやコメントなど</li>
+<li>可視性, 比較性(Visibility &amp; Juxtaposability)</li>
+<li>対応づけの近さ (Closseness of Mapping)</li>
+<li>一貫性(Consistency)</li>
+<li>冗長さ(Diffuseness)</li>
+<li>エラー傾向(Error-proneness)</li>
+<li>精神的な負荷 (Hard mental operations)</li>
+<li>累進的評価 (Progressive evaluation) : 作りかけの状態で動かせるかなど</li>
+<li>暫定可能性 (Provisionality)</li>
+<li>役割のあらわれ (Role-expressiveness) : 見ればわかる度</li>
+</ul>
+<p>また, タスクの種類を 4 つに分類している</p>
+<ul>
+<li>追加 (incrementation)</li>
+<li>変換 (transcription) : 紙のデータを入力するとか</li>
+<li>変更 (modification)</li>
+<li>探索的設計 (exploratory design)</li>
+</ul>
+<p>この分類にしたがい, どの種の作業ではどの評価軸の影響が大きいか, どちらに倒すべきか. 
+どんなトレードオフが可能かを考えていく. チュートリアルの中では, 
+軸ごとに代表的な workaround をいくつか紹介している. </p>
+<p>見ればわかるように, CD の評価軸は特段 definitive というわけでもない.
+だいたいほんとに直交しているのかも怪しい. 
+実際, Microsoft は上の軸のいくつかを排し, かわりに独自の軸を加えている
+(詳しくは(Clarke の <a href="http://blogs.msdn.com/stevencl/linklist.aspx">連載</a> 参照.):</p>
+<ul>
+<li>学習の様式 (Learning style) : トップダウンかボトムアップか</li>
+<li>作業フレームワーク (Working framework) : 局所性の程度</li>
+<li>作業の単位 (Work step unit) : 実作業とコードの対応づけ</li>
+<li>透過性 (Penetrability) : 裏の実装をどれだけ隠しているか</li>
+<li>精巧さ (API elaboration) : どれだけ凝ったつくりか</li>
+<li>分野との対応 (Domain correspondence) : 作業分野とコードがどのくらい対応しているか. (Closseness of Mapping 相当.)</li>
+</ul>
+<p>また, タスクを分類するかわりに
+<a href="http://blogs.msdn.com/brada/archive/2003/11/18/50737.aspx">ユーザ種別を分類</a>している. 
+ペルソナみたいなもんね.</p>
+<ul>
+<li>Systematic Programmer: 厳格なスタイルでコードを書く. 環境への前提はもたず, まずは試す. コード量が増えたり理解に時間がかかっても全部いじれるのを好む.</li>
+<li>Pragmatic Programmer: 上ほど厳格ではない. 生産性と自由度の引き換えには前向き. 必要に応じて詳しく調べるが, そういうのが好きというわけでもない.</li>
+<li>Opportunistic Programmer: 自由度より生産性重視. IDE やサードパーティのライブラリを使って本業に集中したい.</li>
+</ul>
+<p>タスクでなくユーザを分類するのは, 
+同じタスクでもペルソナによってアプローチが異なるからだという. </p>
+<p>異なるペルソナには異なる抽象を用意すべきだ. Clarke はそう主張している. 
+"good language design boils down to assembling a team of people who have good taste" 
+という <a href="http://www.artima.com/intv/csdesP.html">Anders Hejlsberg の 発言</a> にも, 
+彼は同様の理由で <a href="http://blogs.msdn.com/stevencl/archive/2003/10/15/57048.aspx">異議をとなえる</a>. 
+C# チームと違う taste をもつ顧客が相手だったらどうするのと.</p>
+<h4>ユーザビリティという最適化</h4>
+<p>Clarke のいうように, ユーザに合わせた抽象が開発者にとって都合の良い抽象とは限らない. 
+ユーザは API にユーザビリティの高い抽象を求める. 開発者は他の品質, たとえば保守性を大事にしたい. 
+ギャップを埋める代表的な方法は, 開発者の抽象をラップしてユーザ向けの抽象をつくることだ. 
+けれどラップには冗長性が伴う. 気に入らない. </p>
+<p>ただ少し考えると, このトレードオフは馴染みのあるものだと気付く. 
+たとえば高速化に使うキャッシュは冗長だし, データベースの非正規化も冗長だ. 
+このとき開発者は性能のために冗長性を受けいれている. 
+素朴な方法では実現できない目的のためにプログラマが苦労するのは, 
+気が進まないにせよ必要なこと. ユーザビリティの改善は広い意味で最適化のひとつだと言える. 
+実行速度ではなく利用者の作業速度を高速化するわけ. </p>
+<p>さて, ここでダイクストラの警句を思いだそう: "諸悪の根源は最適化である." 
+そして, 誰もが口にする言葉: "計測せよ." </p>
+<p>これは API のユーザビリティにもあてはある. 
+根拠もなく内部の抽象を覆い隠すべきではない. 
+ユーザのためを思い, 開発者が内部で使う抽象とは別の API を用意しても, 
+それは単なるお節介かもしれない. 計測なしに効果を知ることはできない. </p>
+<p>もちろんこれは粗雑な設計をそのままにすべきだという話じゃないし, 
+どうせわからないなら身勝手なコードを書こうという話でもない. 
+premature optimization が悪であるように, 
+premature pessimization もまた忌むべきものだ. 
+トレードオフがないなら, あるいは僅かなコストで実現できるなら, 
+一般に "良い" とされる API 設計には従うのが良心だとおもう. 
+いずれにせよ, 良い評価方法だけがあっても片手落ちだ. 
+ユーザビリティテストは開発者が設計をさぼる口実にはならない. 
+より良い設計を生み出す責任は開発者に残されている. </p>
+<h4>一本道の傍らで</h4>
+<p>実際のところ, ユーザビリティの評価には手間がかかる. 
+API のユーザビリティ評価は GUI アプリケーションのそれよりは手間だという. 
+コードを書くのはアプリケーションの操作より時間がかかるからだ. 
+Microsoft のように数千数万の開発者に使われる API の評価は割があうだろうが, 
+どの規模のユーザを相手にすれば元がとれるのかは自明でない. 
+多くの API はこの先も開発者の "taste" と伝承に従い続けるのだろう. </p>
+<p>それでも, こう期待せずにはおれない: 
+ペーパプロトタイピングにあたる手軽な評価手法が, API の評価にもないだろうか.
+たとえば, お昼休みに印刷した javadoc を配ってクイズに答えてもらうのは？ 
+あるいはより今時な野心をもって, 集合知な評価はできないか? </p>
+<p>One Microsoft Way だけが約束の地に続いてるなんて, 外野はちょっと悲しい. </p>

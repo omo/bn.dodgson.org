@@ -1,0 +1,88 @@
+---
+title: "最近使った boost"
+date: 2007-06-13
+---
+<h3>最近使った boost</h3>
+<p>仕事で本腰を入れて C++ を使うになり, 久々に boost をさわっている. 
+以前より色々ライブラリが増えていて嬉しい. 今日は喜びの声をすこし. 
+普段から boost を使っている人にとっては当たり前の話題だと思います. </p>
+<h4><a href="http://boost.org/libs/optional/doc/optional.html">boost::optional</a></h4>
+<p>たとえば設定ファイルを扱うコードで, 
+あるかどうかわからないオプションの扱いをを考える. 
+"--log foo.log" と指定されたらログを foo.log に出力し, 
+何も指定されなければ標準エラー出力に書き出したいというような場合. 
+けっこう悩ましい. よくある方法はこんなかんじ: </p>
+<pre>class foo_config_t {
+  ...
+  bool has_log() const { return m_hash.contains("log"); }
+
+  std::string logname() const {
+    assert(has_log());
+    return m_hash["log"];
+  }
+  ...
+};</pre>
+<p>悪くないが, オプションの種類ごとにメソッドを二つ書くのはかったるい. 
+特別な "null" の値を返す方法も考えられるものの不便が多い. 
+C++ はうかつにポインタを返したくないし, 特別な値を決めづらいこともある. </p>
+<p>boost::optional は値があるか否かの真偽値と, 実際の値(あるなら)を持っている. 
+これを使えば上のイディオムをスマートな形で実現できる: </p>
+<pre>class foo_config_t {
+  ...
+  boost::optional&lt;std::string&gt; logname() const {
+    return m_hash.contains("log") ?
+           boost::make_optional(m_hash["log"]) : boost::none;
+  }
+  ...
+};</pre>
+<p>利用する側:</p>
+<pre>boost::optional&lt;std::string&gt; logname = config.logname();
+if (logname) {
+  log = new fstream(logname.get());
+} {
+  log = &amp;std::cerr;
+}</pre>
+<p>実装はそこそこ頑張っており, 動的なメモリ確保は使わない. 
+値のないケースはコンストラクタも呼ばれない. サイズは sizeof(T) + sizeof(bool). 
+上のように一時的な使い方をするなら十分な実装だとおもう. </p>
+<p>以前 <a href="http://www.standardml.org/Basis/option.html#SIG:OPTION.option:TY:SPEC">Standard ML に Option という型がある</a>のを知り, 便利そうだと羨んでいた. 
+C++ にも似たようなものがあって嬉しい. SML はパターンマッチを使って
+それらしく書けるぶん強力だけれど, そこは我慢しておく. </p>
+<h4><a href="http://boost.org/boost/none.hpp">boost::none_t</a></h4>
+<p>boost::optional では boost::none_t という型を使う. 
+どういうものかとヘッダを覗いてみた. </p>
+<pre>namespace detail { struct none_helper{}; }
+
+typedef int detail::none_helper::*none_t ;</pre>
+<p>この typedef の文法は一体...不安になって仕様書を眺めたら, 
+ちゃんとあった. (当たり前.) "8.3.3 Pointers to members" より: </p>
+<pre>
+  class X {
+  public:
+    void f(int);
+    int a;
+  };
+
+  int X::* pmi = &amp;X::a;
+  ...
+
+declares pmi, pmf, pmd and pmc to be a pointer
+to a member of X of type int.</pre>
+<p>メンバ関数へのポインタは知っていたけれど, メンバ変数へのポインタもあったとは...
+実際にはオブジェクト内でのオフセットが入っている. まあそうだろな. </p>
+<h4><a href="http://boost.org/doc/html/xpressive.html">boost::xpressive</a></h4>
+<p>LL じゃない C++ だって正規表現を使いたいことはある. 
+しばらくは boost::regexp が定番だったけれど, 
+これはライブラリ(lib, dll, a, so) を必要とする欠点があった. 
+boost のビルドは面倒だ. できるだけ避けたい. 
+私はビルドを嫌がって, 
+かわりに <a href="http://www.geocities.jp/kosako3/oniguruma/">oniguruma</a> を
+ソースごと組み込んだこともある. 
+boost よりはずっとビルドが楽だからね. </p>
+<p>新しい正規表現ライブラリ boost::xpressive はビルドがいらない. 
+ヘッダファイルだけで閉じている. すばらしい. boost のキラー機能がひとつ増えた. 
+Spirit 風の言語内 DSL で正規表現を組み立てられるのが
+マニア的な見所なんだろうけれど, 
+ちゃんと文字列の正規表現もコンパイルできる. 安心. </p>
+<p>今からでも遅くないから, boost はコードを全部ヘッダに置けばいいのになあ. 
+C++ のライブラリはヘッダファイルだけで完結すべきだと私は密かに思っている. </p>

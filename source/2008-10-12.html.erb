@@ -1,0 +1,386 @@
+---
+title: "Dehydra"
+date: 2008-10-12
+---
+<h3>Dehydra</h3>
+<p>Mozilla を大書き換えする <a href="https://wiki.mozilla.org/Mozilla2">Mozilla2</a> 
+プロジェクトの目標設定はえらく野心的で, 2004 年から話があるのに当分終わりそうにない. 
+傍目にそりゃ無理だろという目標も多い. <a href="https://wiki.mozilla.org/XPCOMGC">XPCOMGC</a> なんていかにも無謀だ. 
+参照カウントをやめて JavaScript と同じ GC を使おうぜという話. 
+JS と C++ のオブジェクトが混ざっても平気だよ...と言われても困る. 
+数百万行ある Mozilla 相手にそんな書き換えを敢行するとは, 
+ロケット科学を通りこして魔術的だと言っていい. 
+それが無理だからこそ C++ は呪われた言語で, Microsoft も逃げだしたんじゃなかったの？</p>
+<p>そんな外野の心配を他所に, Mozilla のプログラマ Benjamin Smedberg は 
+<a href="http://benjamin.smedbergs.us/blog/2008-09-24/call-for-help-boehmjemalloc/">Boehn GC と jemalloc くっつけたいんだけど良いアイデアない?</a> 
+なんて話をしている. 
+その前に色々やることがあるだろとつっこみたいところだけれど, 
+実際のところ彼らはやること ... 手動だと絶望的な大書き換えを自動化するツールの開発 ... をやっていた. 
+<a href="http://developer.mozilla.org/en/Dehydra">Dehydra</a> はその成果の一つ. 
+さわってみたらなかなか優れものだった. </p>
+<h4>Dehydra GCC</h4>
+<p>Dehydra は C++ 用のコード解析ツール. GCC のプラグインとして動く. 
+概観は <a href="http://www.gccsummit.org/2008/gcc-2008-proceedings.pdf">GCC Summit の会報</a> 
+に載っている. ("Using GCC Instead of Grep and Sed" というやつ.) 
+Dehydra は GCC 構文木やら型情報やらを JavaScript のオブジェクトにマップし, 
+ユーザの JavaScript コードに引き渡してくれる. JavaScript で GCC のプラグインを書ける イメージ. 
+ただしそのオブジェクトモデルを GCC に書き戻すことはできない. 読むだけ. 
+だから最適化なんかはできない. でも解析には十分だ. </p>
+<p>オブジェクトモデルは Java のリフレクションくらいの粒度でさわれる. 
+型情報だけでなく制御構造なんかも調べたい時は, 
+Dehydra の拡張である <a href="http://developer.mozilla.org/en/Treehydra">Treehydra</a> を使う. 
+Treehydra は GCC の内部表現である GIMPLE の JavaScript マッピングだという. </p>
+<p>自分の書いたソースコードをパースするのは永年人類... はともかく C++ プログラマの夢だった. 
+Dehydra はその夢を叶えてくれる. </p>
+<h5>Hello, Dehydra</h5>
+<p>g++ にパッチをあてるなど, Dehydra のビルド手順は少し面倒. 
+ただ <a href="http://developer.mozilla.org/en/Dehydra_GCC">指示</a> に従えばはまりどころはない. 
+ビルドをしたら, さっそくさわってみよう. 
+<a href="http://developer.mozilla.org/en/Dehydra_Manual">コールバックや組込み API の一覧はこれ.</a> </p>
+<p>手始めにこんなスクリプトを書く:</p>
+<pre>
+// hello.js
+function process_type(c) {
+  print(c);
+}</pre>
+<p>process_type() は型定義毎に Dehydra から呼ばれるコールバック. 
+引数のオブジェクトには C++ クラスの型情報が入っている. 
+上のコードはそのオブジェクトをプリントするだけ. 
+次に解析する C++ のコードを用意する. とりあえず簡単なやつ. </p>
+<pre>
+// hello.cpp
+class Hello {
+public:
+  void say(int n) {}
+private:
+  int n;
+};
+
+struct Bye {
+  void farewell(Hello* hello) { hello-&gt;say(1); }
+};
+
+int main(int argc, char* argv[]) { return 0; }</pre>
+<p>Dehydra を実行する. プラグインは g++ (独自にビルドしたやつ) の引数に指定する. </p>
+<pre>$ ~/src/dehydra/gcc/bin/g++ \
+   -fplugin=/home/omo/src/dehydra/dehydra-gcc/gcc_dehydra.so \
+   -fplugin-arg=hello.js \
+   hello.cpp -S -o /dev/null</pre>
+<p>実行するとこんなリテラル風文字列が出力される. 実物は改行がないので適当に整形した.</p>
+<pre>
+#1={kind:"class", name:"Hello",
+    members:[{name:"Hello::say(int)", memberOf:#1#,
+             isExtern:true, isFunction:true,
+             type:{type:{name:"void"},
+                   parameters:[#2={min:{value:"-2147483648", type:#2#},
+                                   max:{value:"2147483647", type:#2#},
+                                   isSigned:true, precision:32,
+                                   name:"int"}]},
+                loc:{_source_location:733, file:"hello.cpp", line:6, column:16}, access:"public"},
+               {name:"Hello::ch", memberOf:#1#,
+                type:#3={min:{value:"-128", type:#3#},
+                         max:{value:"127", type:#3#},
+                         isSigned:true, precision:8,
+                         name:"char"},
+                loc:{_source_location:980, file:"hello.cpp", line:8, column:7}, access:"private"}],  size_of:1,
+    loc:{_source_location:462, file:"hello.cpp", line:4, column:1}}
+
+#1={kind:"struct", name:"Bye",
+    members:[{name:"Bye::farewell(Hello*)", memberOf:#1#,
+              isExtern:true, isFunction:true,
+              type:{type:#3={name:"void"},
+                    parameters:[{isPointer:true, precision:32,
+                                 type:#2={kind:"class", name:"Hello", (...上と同じ定義がつづく...) }}]},
+              loc:{_source_location:1513, file:"hello.cpp", line:12, column:28},
+              access:"public"}], size_of:1,
+    loc:{_source_location:1358, file:"hello.cpp", line:11, column:1}}</pre>
+<p>クラス名, メンバ変数や関数名, その引数や戻り値の型... クラスの情報はだいたいとれるかんじ. </p>
+<p>関数引数や変数などの型情報も再帰的に含まれている. だから相互依存のあるクラスを print() すると大変. 
+オブジェクトを直接 print() するのは素朴な例だけにしたい. </p>
+<h5>継承, 仮想関数</h5>
+<p>継承や仮想関数はどうなるだろう. こんな C++ コードを与えると...</p>
+<pre>
+class Base {
+public:
+  virtual ~Base() {}
+  virtual void bark() = 0;
+};
+
+class Derived : public Base {
+public:
+  virtual void bark() {}
+};</pre>
+<p>こうなる. </p>
+<pre>
+#1={kind:"class", name:"Base",
+    members:[{name:"Base::~Base()", memberOf:#1#, isFunction:true, isVirtual:true,
+              type:{type:#3={name:"void"},
+                    parameters:[#2={..., name:"int"}]},
+              loc:{_source_location:2525, file:"hello.cpp", line:20, column:16},
+              access:"public"},
+             {name:"Base::bark()", memberOf:#1#, isExtern:true, isFunction:true, isVirtual:"pure",
+              type:{type:#3#, parameters:[]},
+              loc:{_source_location:2661, file:"hello.cpp", line:21, column:24},
+              access:"public"}], size_of:1,
+    loc:{_source_location:2265, file:"hello.cpp", line:18, column:12}}
+
+#4={kind:"class", name:"Derived",
+    bases:[{access:"public", type:#1={kind:"class", name:"Base", ...}}],
+    members:[{name:"Derived::bark()", memberOf:#4#, isExtern:true, isFunction:true, isVirtual:true,
+              type:{type:#3#, parameters:[]},
+              loc:{_source_location:3297, file:"hello.cpp", line:26, column:20},
+              access:"public"}], size_of:1,
+    loc:{_source_location:3050, file:"hello.cpp", line:24, column:29}}
+
+({variantOf:#1={kind:"struct", name:"__class_type_info_pseudo", ..., size_of:1,
+                loc:{_source_location:2, file:"&lt;built-in&gt;", line:0, column:0}})
+({variantOf:#1={kind:"struct", name:"__si_class_type_info_pseudo", ...,
+                loc:{_source_location:2, file:"&lt;built-in&gt;", line:0, column:0}})</pre>
+<p>サブクラスの bases プロパティに親クラスの配列がはいっているほか, 
+メンバ関数にも isVirtual プロパティができた. 
+gcc がこっそり使う型も出力されている. 
+(デストラクタに整数型の引数があるのはなんでだろ. 多重継承対策?)</p>
+<h5>テンプレート</h5>
+<p>テンレートはどうかしら. </p>
+<pre>
+template&lt;class T&gt;
+struct Templated
+{
+   T&amp; deref(T* t) { return *t; }
+};</pre>
+<p>...何も出力されない. インスタンスを使ってみよう.</p>
+<pre>
+class UseTemplate
+{
+public:
+  void int_t(Templated&lt;int&gt;* t) { }
+};</pre>
+<p>どうか:</p>
+<pre>
+#1={kind:"class", name:"UseTemplate",
+    members:[{name:"UseTemplate::int_t(Templated&lt;int&gt;*)", memberOf:#1#,
+              isExtern:true, isFunction:true,
+              type:{type:{name:"void"},
+                    parameters:[{isPointer:true, precision:32,
+                                 type:{kind:"struct", name:"Templated&lt;int&gt;",
+                                       isIncomplete:true,
+                                       template:{name:"Templated", arguments:[#2={..., name:"int"}]},
+                    loc:{_source_location:4174, file:"hello.cpp", line:33, column:1}}}]},
+              loc:{_source_location:5099, file:"hello.cpp", line:40, column:30}, access:"public"}],
+    size_of:1,
+    loc:{_source_location:4814, file:"hello.cpp", line:38, column:1}}</pre>
+<p>うーん... テンプレートを使う関数の引数の型に, 
+template プロパティと isIncomplete プロパティが増えただけ. 
+template はともかく isIncomplete は困る. </p>
+<p>インスタンス化の条件が足らないのかな:</p>
+<pre>
+class UseTemplate
+{
+public:
+  void int_t(Templated&lt;int&gt;* t) { int x; t-&gt;deref(&amp;x); }
+};</pre>
+<p>やっとでた:</p>
+<pre>
+#1={kind:"struct", name:"Templated&lt;int&gt;",
+    members:[{name:"Templated&lt;T&gt;::deref(T*) [with T = int]", memberOf:#1#, isExtern:true, isFunction:true,
+              type:{{..., name:"int"},
+                    parameters:[{isPointer:true, precision:32, type:#2#}]},
+                    loc:{_source_location:3932, file:"hello.cpp", line:31, column:15},
+                    access:"public"}], size_of:1,
+              template:{name:"Templated", arguments:[#2#]},
+    loc:{_source_location:3790, file:"hello.cpp", line:30, column:1}}</pre>
+<p>インスタンス毎に別の型ができるらしい. 邪魔くさいけど, よく考えたら C++ はそんな言語だった. 特殊化もあるし...
+template プロパティにはもともとの名前が入っている. </p>
+<h5>属性</h5>
+<p>gcc と言えば属性.</p>
+<pre>
+class __attribute__ ((user("hello_class"))) Attributed {
+public:
+  void attred() __attribute__ ((user("hello_method"))) {}
+};</pre>
+<p>こうなる:</p>
+<pre>
+#1={kind:"class",
+    name:"Attributed",
+    members:[{name:"Attributed::attred()",
+              memberOf:#1#, isExtern:true, isFunction:true,
+              type:{type:{name:"void"}, parameters:[]},
+              attributes:[{name:"user", value:["hello_method"]}],
+              loc:{_source_location:5506, file:"hello.cpp", line:43, column:53},
+              access:"public"}], size_of:1,
+    loc:{_source_location:5253, file:"hello.cpp", line:41, column:56},
+    attributes:[{name:"user", value:["hello_class"]}]}</pre>
+<p>ちゃんと取れている. これで WebSerivce 属性から SOAP スタブを生成できる! (やらないけど.) 
+Mozilla では NS_final 属性で Java の final 相当を表現したり,
+NS_outparam 属性で出力変数を明示したりしている. 
+Dehydra を使った解析スクリプトにもこれらの指定を確認するものがあった. </p>
+<h4>実際のスクリプト</h4>
+<p>Mozilla の <a href="http://hg.mozilla.org/mozilla-central/file/tip/xpcom/analysis/">xpcom/analysis/</a> 
+ディレクトリには, 実際に Dehydra を使った解析スクリプトがいくつかチェックインされている. </p>
+<p><a href="http://hg.mozilla.org/mozilla-central/file/tip/xpcom/analysis/final.js">final.js</a> 
+はわかりやすい. NS_final 属性のついたクラスが継承されていないことをチェックしている. 
+他は Treehydra 経由で GIMPLE を読んでいるものも多く. 何をしているのかはよくわからない. 
+そんなハードコアな解析のひとつ 
+<a href="http://hg.mozilla.org/mozilla-central/file/tip/xpcom/analysis/outparams.js">outparam.js</a> 
+は, "NS_SUCCEEDED を返す時だけ出力変数に値を書き込む" というルールをチェックする解析らしい. 
+<a href="http://blog.mozilla.com/dmandelin/2008/03/10/i-need-a-theorem-prover/">開発者の blog</a> に
+詳しい解説があった. でもよくわからん. theorem prover とか言われてもなあ...</p>
+<p>Dehydra には標準ライブラリがあって, 解析スクリプトからも include() されている. 
+コードは dehydra-gcc ツリーの 
+<a href="http://hg.mozilla.org/users/tglek_mozilla.com/dehydra-gcc/file/tip/libs/">libs</a> 
+ディレクトリにある. 
+世間の JS ライブラリほど至れり尽せりじゃないけれど, 
+関数型チックなユーティリティや gcc マクロの移植などがる. Web とは毛色が違って楽しい. </p>
+<h4><a href="http://github.com/omo/dehydra-override-js/tree/master">override.js</a></h4>
+<p>私も少しは意味のあるコードを書いてみよう. "override" チェックなんてのはどうか. 
+override と指定したメソッドは実際に親のメソッドを override しないといけない. 
+C# や ActionScript3 にある機能.  override 専用のキーワードがない Java では, 
+<a href="http://java.sun.com/javase/6/docs/api/java/lang/Override.html">@Override</a> 
+注釈を使って同じ仕組を実現している. 
+これを真似してみた. 
+コードは例のごとく <a href="http://github.com/omo/dehydra-override-js/tree/master">github へ</a>. </p>
+<p>こんな C++ コードを与えると...</p>
+<pre>
+#define MY_OVERRIDE __attribute__ ((user("MY_override")))
+
+class Base {
+public:
+  void neverOverride() {}
+  virtual void shouldOverride() {}
+  virtual void shouldOverrideByGrandBaby(int) {}
+};
+
+class Derived : public Base {
+public:
+  // OK.
+  virtual void shouldOverride() MY_OVERRIDE {}
+  // NG: 存在しないメソッドをオーバーライドしようとした
+  virtual void badOverride() MY_OVERRIDE {}
+  // NG: 名前が同じで引数の違うメソッドをオーバーライドしようとした.
+  virtual void shouldOverride(int ) MY_OVERRIDE {}
+  // NG: virtual でないメソッドをオーバーライドしようとした
+  virtual void neverOverride() MY_OVERRIDE {}
+  // MY_OVERRIDE 指定がないのでチェックしない
+  virtual void notOverride() {}
+};
+
+class Grandbaby : public Derived {
+  // OK. 祖父クラスのメソッドをオーバーライド.
+  virtual void shouldOverrideByGrandBaby(int) MY_OVERRIDE {}
+};</pre>
+<p>こんな結果になる.</p>
+<pre>$ ~/src/dehydra/gcc/bin/g++ \
+     -fplugin=/home/omo/src/dehydra/dehydra-gcc/gcc_dehydra.so \
+     -fplugin-arg=override.js \
+     override.cpp -S -o /dev/null
+
+OK: Derived::shouldOverride() ovrrides Base::shouldOverride()
+NG: Derived::badOverride() violates overriding constraint!
+NG: Derived::shouldOverride(int) violates overriding constraint!
+NG: Derived::neverOverride() violates overriding constraint!
+OK: Grandbaby::shouldOverrideByGrandBaby(int) ovrrides Base::shouldOverrideByGrandBaby(int)</pre>
+<p>NG の行が 不正な MY_OVERRIDE 指定のメソッドを示している. 
+私の理解の範囲では正しく動いているかんじ. </p>
+<p><a href="http://github.com/omo/dehydra-override-js/tree/master/override.js">override.js</a> 
+でやっているのは, 親クラスをたどって同名同型のメソッドを探すだけ. 100 行くらいしかない. 
+いくつかバグがあるとして, そういうのを直したところで 2-300 行くらいで済むとおもう. 
+300 行でこんなチェックができるなら悪くないでしょ. </p>
+<h4>Dehydra 周辺: DXR</h4>
+<p>Dehydra の用途はバグ探しに限らない. 
+<a href="http://zenit.senecac.on.ca/wiki/dxr/">DXR</a> ツールでは 
+Dehydra で取得できるクラス情報を RDB に保存し, 継承関係やメソッドの呼び出し元を検索できる. 
+Eclise のコードブラウザみたいなかんじ. 
+字句の検索しかできない <a href="http://mxr.mozilla.org/">従来のクロスリファレンス</a> より強力そうだ. 
+(<a href="http://vocamus.net/dave/?p=161">開発者の blog</a> によれば, 
+まだデモ段階なのでいじめないでくれとのことです.)</p>
+<p>文書化の支援ツールでは今のところ doxygen が強いけれど, 
+gcc と結託できる Dehydra ベースで作った方が理不尽な思いをすることは少ない気もする. 
+この路線は頑張ってほしいなあ. </p>
+<h4>Dehydra 周辺: <a href="http://developer.mozilla.org/en/Pork">Pork</a></h4>
+<p>Dehydra や Treehydra はソースコードを解析することしかできない. 
+けれど Mozilla2 の野心は自動リファクタリングにある. つまり自動でコードを書き換えようとしている.
+Mozilla の <a href="http://developer.mozilla.org/en/Pork">Pork</a> プロジェクトは
+Oink という静的解析ツールセットのフォークで, その書き換えを目的にしている. 
+フォークというあたりに Dehydra を上回る魔窟感が漂っている. 複数のツールセットが寄せ集まってビルドも面倒そう. 
+あまり近づきたくないので, 
+<a href="http://blog.mozilla.com/tglek/2008/07/18/pork-mcpp-oink-and-elsawhats-going-on/">開発者による説明</a> を
+孫引きしてお茶をにごしたい. </p>
+<p>Pork の基盤は Elsa というに拡張可能な C++ パーサ. C++ で色々プラグインを書けるらしい. 
+(<a href="http://video.google.com/videoplay?docid=-8037498917324385899">参考 Techtalk</a>.)
+もともとはすべての静的解析を Elsa ベースでやる予定だったけれど, 
+保守が大変やら何やらの理由で Dehydra-GCC を併用すことになった(と GCC Summit の記事に書いてあった). 
+Elsa はもともと Mozilla のソースがビルドできず, しかも本家は開発がとまっている. 
+だから Mozilla 関係者はバグをとりつつだましだまし使っているんだそうな. </p>
+<p>Elsa の構文木はファイル内での構文要素の行数や位置を完全に記録している. 
+おかげで構文木を変更して書き戻す曲芸ができるらしい. 
+<a href="http://hg.mozilla.org/oink/file/tip">ツリー</a> をみると, クラス名をつけかえる 
+"<a href="http://developer.mozilla.org/en/Renaming_With_Pork">renamer</a>" や, 
+出力変数を戻り値に書き換える "<a href="http://developer.mozilla.org/en/Pork_Tools">outparamdel</a>" などの
+ツールをみることができる. おっかねー...</p>
+<h5><a href="http://mcpp.sourceforge.net/">mcpp</a></h5>
+<p>混沌とした Pork の中にも単独で使い道のありそうなツールはある. 
+Pork で採用された C プリプロセッサの <a href="http://mcpp.sourceforge.net/">mcpp</a> は, 
+構文木変更 -&gt; 書き戻しのフローを実現するためにプリプロセスの過程を注釈として埋め込んでくれるらしい. </p>
+<p>ちょっと試してみよう. こんなコードを...</p>
+<pre>
+
+// hello-mcpp.cpp
+#define MY_ASSERT(cond) if (!(cond)) { abort(); }
+
+int main(int argc, char* argv[])
+{
+  MY_ASSERT(1);
+  return 0;
+}</pre>
+<p>まずは普通にプリプロセスする:</p>
+<pre>$ cpp hell-mcpp.cpp</pre>
+<pre>
+# 1 "hello-mcpp.cpp"
+# 1 "&lt;built-in&gt;"
+# 1 "&lt;command line&gt;"
+# 1 "hello-mcpp.cpp"
+...
+int main(int argc, char* argv[])
+{
+ if (!(1)) { abort(); };
+ return 0;
+}</pre>
+<p>mcpp を使ってみる:</p>
+<pre>$ ~/src/mcpp/mcpp-2.7.1/src/mcpp -K hello-mcpp.cpp</pre>
+<pre> 
+/*m__STDC_HOSTED__*/
+/*m__STDC_VERSION__*/
+/*m__i386*/
+/*m__MCPP*/
+/*m__unix*/
+/*m__i386__*/
+/*m__DATE__*/
+/*m__FILE__*/
+/*m__LINE__*/
+/*m__STDC__*/
+/*m__TIME__*/
+/*m__unix__*/
+/*m__linux__*/
+#line 1 "/home/omo/work/hello-dehydra/hello-mcpp.cpp"
+/*mMY_ASSERT 3:9-3:50*/
+#line 5 "/home/omo/work/hello-dehydra/hello-mcpp.cpp"
+int main(int argc, char* argv[])
+{
+  /*&lt;MY_ASSERT 7:2-7:14*//*!MY_ASSERT:0-0 7:12-7:13*/if (!(/*&lt;MY_ASSERT:0-0*/1/*&gt;*/)) { abort(); }/*&gt;*/;
+  return 0;
+}</pre>
+<p>わーおい. たしかに色々が注釈されてるなー. (読みかたわかんないけど...) 
+Pork はこれをがんばって解釈し, プリプロセス前のコードに書き戻すのだろう. </p>
+<p>そういえば MCPP は日本製らしい. ウェブサイトには未踏プロジェクトに採用されたとある. 
+<a href="http://mcpp.sourceforge.net/index-jp.html">「mcpp はたぶん世界一優れたＣプリプロセッサです。」</a> だそうな. 
+かっこいい. <a href="http://yohwa-sql.org/yohwa-sql/doc/webmaster.html">作者</a> も変わった経歴をもったひとで面白い.</p>
+<h4>1.0 リリースに向けて</h4>
+<p>Dehydra が gcc にあてているパッチは, 主にプラグインのフックを増やすものらしい. 
+gcc に提案中のこれらパッチが受けいれられ, 
+パッチなし gcc で dehydra をビルドできたら, めでたく Dehydra 1.0 リリースとなるようだ. 
+<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=438412">1.0 向けの作業</a>の中には 
+<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=438412">Debian のパッケージ作成</a> も含まれている. 
+インストールが楽になれば Valgrind くらいの手間で開発に組込めるかな. 
+これが呪われた C++ 資産を抱える linux プログラマを更なる暗黒面に誘う助けになればいいような悪いような, 
+複雑な心境でございます. 
+あらあらかしこ. </p>

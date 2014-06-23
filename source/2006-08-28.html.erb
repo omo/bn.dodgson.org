@@ -1,0 +1,107 @@
+---
+title: "前回のつづき"
+date: 2006-08-28
+---
+<h3>近況</h3>
+<p>前回のつづき. </p>
+<p>なんとなく悔しいので 
+<a href="http://www.boost.org/libs/mpl/doc/">boost MPL</a> を使って書き直した. 
+チュートリアルを読むのは諦め, リファレンスからのコピペで書く. 
+boost MPL では 整数を持つのに直接 enum を使わず, かわりに 内部に enum をを持つ
+(メタ)整数型みたいのを定義するんだね (boost::mpl::int_). で, その型に対して計算を行う. 
+だからメタ関数の引数は常に(整数ではなく)型になる. 確かにこっちの方が一貫性はあるかも. 
+クドいけど... </p>
+<pre>#include &lt;boost/mpl/int.hpp&gt;
+#include &lt;boost/mpl/if.hpp&gt;
+#include &lt;boost/mpl/plus.hpp&gt;
+#include &lt;boost/mpl/times.hpp&gt;
+#include &lt;boost/mpl/arithmetic.hpp&gt;
+#include &lt;boost/mpl/next_prior.hpp&gt;
+#include &lt;boost/mpl/shift_left.hpp&gt;
+#include &lt;boost/mpl/bitand.hpp&gt;
+#include &lt;boost/mpl/bitwise.hpp&gt;
+#include &lt;iostream&gt;
+
+template&lt;
+  typename N,
+  typename M = boost::mpl::int_&lt;sizeof(int)*8-1&gt;
+  &gt;
+struct lg_t {
+  typedef typename boost::mpl::int_&lt;0&gt; zero;
+  typedef typename boost::mpl::int_&lt;1&gt; one;
+  typedef typename boost::mpl::shift_left&lt;one, M&gt;::type hibit_one;
+  typedef typename boost::mpl::bitand_&lt;N, hibit_one&gt;::type hibit;
+  typedef typename boost::mpl::prior&lt;hibit&gt;::type prior_hibit;
+  typedef typename boost::mpl::bitand_&lt;N, prior_hibit&gt; lobit;
+  typedef typename boost::mpl::if_&lt;lobit, one, zero&gt;::type odd;
+  typedef typename boost::mpl::plus&lt;M, odd&gt;::type result;
+  typedef typename boost::mpl::prior&lt;M&gt;::type prior_m;
+  typedef typename lg_t&lt; N, prior_m &gt;::type next;
+  typedef typename boost::mpl::if_&lt;hibit, result, next&gt;::type type;
+};
+
+template&lt;
+  typename N
+  &gt;
+struct lg_t&lt; N, boost::mpl::int_&lt;0&gt; &gt; {
+  typedef typename boost::mpl::int_&lt;0&gt; type;
+};
+
+template&lt;int N&gt;
+struct lg {
+  enum { value = lg_t&lt; boost::mpl::int_&lt;N&gt; &gt;::type::value };
+};
+
+template&lt;
+  typename N,
+  typename M
+  &gt;
+struct pow_t {
+  typedef typename boost::mpl::prior&lt;M&gt;::type rest;
+  typedef typename pow_t&lt;N, rest&gt;::type next;
+  typedef typename boost::mpl::times&lt;N, next&gt;::type times;
+  typedef typename boost::mpl::if_&lt;rest, times, N&gt;::type type;
+};
+
+template&lt;
+  typename N
+  &gt;
+struct pow_t&lt;N, boost::mpl::int_&lt;0&gt; &gt; {
+  typedef typename boost::mpl::int_&lt;1&gt; type;
+};
+
+template&lt;int N, int M&gt;
+struct pow {
+  enum { value = pow_t&lt; boost::mpl::int_&lt;N&gt;,
+	 boost::mpl::int_&lt;M&gt; &gt;::type::value };
+};
+
+int main() {
+  std::cout &lt;&lt; lg&lt;100&gt;::value &lt;&lt; std::endl;
+  std::cout &lt;&lt; pow&lt;2, 6&gt;::value &lt;&lt; std::endl;
+  return 0;
+}</pre>
+<p>長くなってしまった. </p>
+<p>スクラッチで書く場合と比べていまいち便利さを実感しきれないなあ. 
+再利用できるのはいいけど, コードがくどくなるのが辛い. 
+boost::mpl という名前空間接頭子が邪魔なのはさておき, 
+typedef より enum を使う方が 文法が普通の言語に近くて読みやすかった. 
+まあそんなのは慣れの問題か. 
+簡潔さより一貫性が重要なくらいメタ大規模なものを気合を入れて書きたい人なら, 
+MPL を活用できるかもしれない. 
+<a href="http://www.boost.org/libs/mpl/doc/refmanual/vector.html">boost::mpl::vector</a> 
+などコレクションみたいのもあるようだし. (MPL でコレクションってなんだよ...)</p>
+<p>エラーメッセージは案外読みやすい. 
+boost::bind を使った時ほど突き放されない.
+メッセージの量は多いけれど, ほとんどスタックトレースみたいなかんじ. 
+途中はとばして最初の行だけ読めばいい. 拍子抜けするくらい. </p>
+<p>実際に書いてみるとちょっと便利だね. メタプログラミング. 
+完全にマニアのおもちゃだと思っていたけれど, こういう計算をしたいことはたしかにある. 
+私にはまだこの路線を突き進む覚悟ができていないから, 
+まずは指数を求めるくらいにしておこうと思いました. </p>
+<p>まとめ:</p>
+<ul>
+<li>C++ でメタプロはちょっと便利かも. エラーも案外読みやすい.</li>
+<li>boost MPL は大袈裟だけど気持はわかる. 使ってやれないこともない.</li>
+<li>この路線へのひとでなし感を捨てきれない自分に気付く</li>
+</ul>

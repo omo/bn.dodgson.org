@@ -1,0 +1,119 @@
+---
+title: "最近みた TechTalks: Python 3000"
+date: 2007-02-05
+---
+<h3>最近みた TechTalks: <a href="http://video.google.com/videoplay?docid=-6459339159268485356">Python 3000</a></h3>
+<p></p>
+<p>ABSTRACT:</p>
+<blockquote><p>Python の次期メジャーバージョン, 通称 Python 3000 
+(色気のない言い方では Pythoon 3.0) 
+はながらく登場が待たれている. 
+ここ数年, 私は Python 2.x には革新的すぎるアイデアについて
+情報を集めてきた. そして夢見る日々が終わり, コードを書く時がきた. 
+この講演では Pythoon 3000 の仕様を確定するコミュニティのプロセスを紹介し, 
+また言語の大きな変更点, 残された課題について説明する. </p>
+</blockquote>
+<p>というわけでまた Guide von Rossum. 
+Python3000 で予定している新機能や, どういう議論がされているかの話. 
+メジャーバージョンアップは大変そうだ. 
+2.x からの移行支援は面白かった. チェック用のツール (pycheck の亜種) と, 
+非互換の警告をだす処理系を用意することで乗り切るとのこと. 
+文字列が Unicode になるのはいいな. 楽そう. 
+言語機能や文法の話はあまり興味わかず. もともとそう radical な言語でもないしね. </p>
+<p>話を聞く限り Python 3000 はちゃんとリリースされそうで頼もしい. 
+Ruby 2.0 は当分の間でてこなそうだからなあ... 1.9 を使えばいいのかもしらん. 
+講演の中では何度か "ああいう風にはしたくない" と Perl6 が引き合いに出され, 
+聴衆の笑いを誘っていた. Perl6 も出なそうなのか... </p>
+<h3>Python-3000 の自転車置場</h3>
+<p>そういえば, 少し前の LWN にも python 3000 の話があった: 
+<a href="http://lwn.net/Articles/214931/">"Guido van Rossum on the Python 3000 process"</a>. 親玉による python-3000 ML への投稿を紹介している. 
+Guido はこの中で, 
+メーリングリストの議論がどれも "すごい新機能" の追加に関するものばかりになり, 
+Getting Things Done の意欲が感じられん. むかつく, 手を動かせ, 
+雑談は python-4000 ML でも作ってやってろ, と主張している. (やや誇張あり.) </p>
+<p><a href="http://mail.python.org/mailman/listinfo/python-3000">アーカイブ</a> を覗いてみと, 
+"パッチよこせ" とか "PEP にしろ" みたいな Guido の投稿は簡単にみつかる. 
+新機能要求っぽい話題を探して, スレッド先頭のメールに返信しているやつを探せばいい. 
+たしかに苦労は多そうだ. </p>
+<p>一方で Guido のいう "手を動かす" 作業はなかなか要求水準が高い. 
+先のメールでは, 自作リファクタリングツールへの反応の薄さを不満の一例としてあげている. 
+(<a href="http://mail.python.org/pipermail/python-3000/2006-December/005096.html">件のアナウンス</a>) 
+でもそれってちょっと上級者向けだよな. 世の中スーパープログラマはそう多くない. 
+雑談をしたい外野の気持もちょっとわかる. 
+python-4000 を作るのは実際いいアイデアかもしれない. python-3000-users とかね. </p>
+<h4>2to3</h4>
+<p>ところで Guido のいうリファクタリングツールは面白そうだ. 
+(<a href="http://mail.python.org/pipermail/python-3000/2006-December/005096.html">紹介メール</a>, <a href="http://svn.python.org/view/sandbox/trunk/2to3/?rev=53500#dirlist">ソース</a>.) 
+このツール "2to3" は 2.x の pythoon コード をパースして構文木をつくり, 
+3000 で非互換になる部分を互換になるよう変換(refactor)して元のファイルに書き戻す. </p>
+<p>Eclipse なんかのリファクタリングツールは対話的だけれど, 
+2to3 は(今のところ)コマンドラインだ. 
+2.x のコードを 3000 向けに変換するという目的に特化しているから, 
+こう割り切っても使えるものができるのだろう. 
+逆に汎用的なリファクタリングツールも妥協すればコマンドラインでいいかもしれない. 
+たとえば ruby リファクタリングツールを開発するとして, 
+"rubyrefactor.rb --action rename-class --src Foo --dst Bar *.rb" 
+みたいなかんじで呼べるように作っておき, emacs からこれを呼びだす. 
+変換が終わったら該当ファイルを revert-buffer ... 妄想だね... </p>
+<p>さて, 2to3 のリファクタリング操作はプラグインになっている. 
+だから個々のリファクタリングはツールのインフラを頼りに開発できるらしい. 
+ひとつ覗いてみよう. <a href="http://svn.python.org/view/sandbox/trunk/2to3/fixes/fix_exec.py?rev=53174&amp;view=auto">fix_exec.py</a> でいいかな.
+これは 2.x では言語組込みの文だった <a href="http://docs.python.org/ref/exec.html">exec</a> を
+関数呼び出しに直すリファクタリング. 
+"exec a in b" みたいのを "exec(a, b)" に変換する. </p>
+<p>冒頭は boilerplate.</p>
+<p><a href="http://svn.python.org/view/sandbox/trunk/2to3/fixes/fix_exec.py?rev=53174&amp;view=auto">2to3/fixes/fix_exec.py</a>:</p>
+<pre>"""Fixer for exec."""
+
+# Python imports
+import token
+
+# Local imports
+import pytree
+from fixes import basefix</pre>
+<p>各プラグインは BaseFix を継承する.</p>
+<pre>class FixExec(basefix.BaseFix):</pre>
+<p>そして PATTERN というクラス変数を持つ. 
+中味は構文木にマッチするパターン言語. BNF みたいなもんか. (文法は紹介メール参照.)
+このプラグインで変換したいパターンを書いておく. </p>
+<pre>   PATTERN = """
+   exec_stmt&lt; 'exec' a=any 'in' b=any [',' c=any] &gt;
+   |
+   exec_stmt&lt; 'exec' (not atom&lt;'(' [any] ')'&gt;) a=any &gt;
+   """</pre>
+<p>フレームワークは構文木を辿りながら部分木と各プラグインのパターンを比較し, 
+一致したら該当プラグインの transform() を呼び出す. </p>
+<pre>   def transform(self, node):
+       syms = self.syms
+       results = self.match(node)
+       assert results
+       a = results["a"]
+       b = results.get("b")
+       c = results.get("c")
+       args = [a.clone()]
+       args[0].set_prefix("")
+       if b is not None:
+           args.extend([pytree.Leaf(token.COMMA, ","), b.clone()])
+       if c is not None:
+           args.extend([pytree.Leaf(token.COMMA, ","), c.clone()])
+       new = pytree.Node(syms.factor,
+                         [pytree.Leaf(token.NAME, "exec"),
+                          pytree.Node(syms.trailer,
+                                      [pytree.Leaf(token.LPAR, "("),
+                                       pytree.Node(syms.arglist, args),
+                                       pytree.Leaf(token.RPAR, ")")])])
+       new.set_prefix(node.get_prefix())
+       return new</pre>
+<p>transform() はがんばって構文木を変換し, 変換後の部分木を返す. 
+上の例では引数相当の部分のうち "in" の後を "," で連結し,
+それを含め "(" と ")" で括って返している. 
+変換そのものが簡単だとはいえ, けっこうシンプルでいい. </p>
+<p>ただリファクタリングツールとして見た場合, この方式だと制限も多い. 
+まず部分木の外側にアクセスする変換はできない気がする. 
+(ex. extract method.) 
+そういう場合はツリー全体にアクセスする口が必要そう. 
+ファイルを跨ぐのはもっと大変. 
+それに動的型の言語である手前, 型情報の必要な変換はできない. メソッド名の置換とかね. </p>
+<p>もっとも 2to3 の用途なら, そのへんを諦めるのは妥当な割り切りなのかもしれない. 
+Guido はこうした支援ツールで 8 割くらいの問題をフォローできればいいとしている. 
+くだを巻くのに飽きた Python 関係者は応援してあげてください. </p>

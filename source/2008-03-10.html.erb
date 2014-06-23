@@ -1,0 +1,175 @@
+---
+title: "What is a recommender system?"
+date: 2008-03-10
+---
+<h3><a href="http://blog.recommenders06.com/?p=31">What is a recommender system?</a></h3>
+<p>Various algorithms and modifications</p>
+<ul>
+<li>[Breese et al., 1998] [Herlocker et al., 1999]: Presents various modifications to collaborative filtering for performance improvement</li>
+<li>[Sarwar et al., 2000]: Applies dimensionality reduction (SVD) to overcome sparsity problem</li>
+<li>[Goldberg et al., 2001]: Jester - collaborative joke recommendation. Maps users into 2D space by using principal component analysis</li>
+</ul>
+<p>Integrating contents</p>
+<ul>
+<li>[Basu et al., 1998]: Uses collaborative and content-based features together in a rule-based classifier for movie recommendation</li>
+<li>[Pazzani, 1999]: Performs collaboration via content profile! [Good et al., 1999]: Specialized content analysis agent participatesin collaborative filtering</li>
+<li>[Melville et al., 2002]: Augments user’s rating vector with additional content-based predicted ratings</li>
+</ul>
+<p>Item-based collaborative filtering</p>
+<ul>
+<li>[Sarwar et al., 2001]: Item-based collaborative filtering algorithm. Computes correlation between items</li>
+<li>[Linden el al., 2003]: Describes Item-to-item collaborative filtering algorithm used in Amazon.com</li>
+<li>[Deshpande and Karypis, 2004]: Presents item-based top-N recommendation algorithm and experiment with 8 different dataset (purchase transactions, MovieLens, etc).</li>
+</ul>
+<p>Probabilistic model-based recommendation</p>
+<ul>
+<li>[Ungar and Foster, 1998]: Builds clusters of users and movies with K-means and Gibbs sampling</li>
+<li>[Chien and George, 1999]: Presents a Bayesian model</li>
+<li>[Shani et al., 2002]: Introduces Markov decision process model</li>
+</ul>
+<p>Unified probabilistic frameworks</p>
+<ul>
+<li>[Condliff et al., 1999]: Bayesian mixed effect model that incoporateuser ratings, user features, and item features</li>
+<li>[Popescul et al., 2001] [Schein et al., 2002] [Hofmann, 2003]: Unifie probabilistic framework for combining collaborative and content-based recommendation based on probabilistic latent semantic analy</li>
+</ul>
+<p>理屈はなるほど. needs はどうやって集めるの？</p>
+<ul>
+<li>買うたび？</li>
+<li>最初に？</li>
+<li>たまに？</li>
+<li><a href="http://portal.acm.org/citation.cfm?id=985921.986147">http://portal.acm.org/citation.cfm?id=985921.986147</a></li>
+</ul>
+<h3>mixi</h3>
+<p>mixi は身内で愚痴を各場所だと決め付けていた(し自分はそう使っていた)。でも有意義な議論をしてる人はいるんだね。shudo.net のエクスポート(<a href="http://www.shudo.net/mixi-diary/">mixi diary</a>) を見て知った。</p>
+<p>今から入りなおして connection を集めるのも浅ましいから
+やらないけれど、相変わらず自分の情報収集力の無さには呆れる。</p>
+<h3>Optimization for Storage Iteration</h3>
+<p>メモだけ. 
+永続化された DB のトラバースを素直に iterator にしてたら
+C++ で書く利点がない. たぶん batch に近いインターフェイスを切る方が良い. 
+1000 要素 lock できる iterator とかそんなの. 
+あとは b-tree じゃなくて配列に展開とかも欲しいね. </p>
+<h3>Taste</h3>
+<p>採用事例はまったく見当らず. ML も投稿ないし...
+完全に趣味なのかー...</p>
+<h3><a href="http://blog.recommenders06.com/?p=14">Knowledge-based Recommender Technologies</a></h3>
+<p>ぜんぜんわからん</p>
+<h3><a href="http://blog.recommenders06.com/?p=17">Anatomy of a Social Recommendation Engine</a></h3>
+<ul>
+<li>Engine is content agnostic : integers in, integers out</li>
+<li>names relationship between users and generic "items"<ul>
+<li>relationship はいくつもあるのね. これは taste よりいいな.</li>
+</ul></li>
+<li>pre-compute top correlations for every item</li>
+<li>UMA: The Ultimate Matrix of Associations<ul>
+<li>Itemx x Item matrix or directec graph : edge labeled with weight</li>
+</ul></li>
+<li>PCA: Pre-compute Most Correlated : runtime 用の前計算<ul>
+<li>continous asynchronous updates via bg process</li>
+</ul></li>
+<li>辺の重み: popular item を優遇するか否か</li>
+<li>request<ul>
+<li>seeds (seed items), user id, library id, filters</li>
+<li>filter: positive/negative soft/hard, personalization (近傍とか.)</li>
+</ul></li>
+</ul>
+<ul>
+<li>No DBs</li>
+<li>all requests stateless (やっぱりそうだよね !!!)</li>
+<li>メタデータみたいのは常に on memory</li>
+</ul>
+<p>なるほどなー. とても勉強になった...
+サーバは同じデータを持ってるというから slave みたいなもんか. 
+データサイズは一台に収まる前提でいいのかなー.</p>
+<p>演者の <a href="http://www.mystrands.com/corp/bios/jim_shur.vm">Jim Shur</a> 
+はもともと Rogue Wave か. C++ マスターだ... Java の本もぐぐるとみつかる.</p>
+<p>MyStrand には API もあるらしい (OpenStrand API) これみないとね.</p>
+<h3><a href="http://blog.recommenders06.com/?p=30">Characteristics of High-Volume Recommender Systems</a></h3>
+<ul>
+<li>Item-Item Affinity が基本で, これを offline で計算しとくのかな?<ul>
+<li>MyStrand の PCA みたいなもん?</li>
+<li>cache? 永続化する?</li>
+</ul></li>
+</ul>
+<ul>
+<li>update は週に一回</li>
+</ul>
+<h3>Bitsmask for correlation negative cache</h3>
+<p>PCA の話を読んで, やっぱし correlation の cache はいるよなと思ったけれど 
+N item の時に N*N のオーダでストレージがいるのはきつい. 
+correlation matrix は実際はすげー疎なはずなので, 要素のあるところだけ
+持つのがよいだろう. でもそうすると correlation が 0 なのが
+キャッシュがないのかの区別がつかない. 困る.</p>
+<p>で, なんとか negative cache をつくる方法がないかと考えた. 
+そのひとつが bitmask. 0 の要素がある index をたてた bitmask を圧縮して
+保存すればよさそう. timestamp が悩みの種だな...</p>
+<p>もうひとつは, cache を (i,j) の要素で LRU...みたいに汎用に作るんじゃなくて, 
+ある程度の粒度でガバっと取ればいいという. まあ, あんまし具体的なアイデアはない...</p>
+<p>うーむ. cache はむずかしい. MyStrand はどういう実装なのかなー...</p>
+<h3>idea</h3>
+<p>人目につく日記では vaporware の話をするとはずかしいけど
+ここは妄想日記なので問題ない. </p>
+<p>で cache というか PCA 的なものの計算は background でやるんじゃなかろうか. 
+ぐるぐると. そんで相関が低いやつは (online mode では)ガッツリ捨てる. で近似解になる.
+そういうことなんじゃないかなあ. PCA に載ってないのを計算しちゃったら意味ないよね？
+大半は疎だとしたら乗らないわけだから.</p>
+<p>Simen では batch 処理用の offline mode を基本に据えつつ, 
+PCA つき online mode をサポート, とかでいいのかもしらん. 
+correlation エンジンが wrap されてれば, それをさしかえるだけだよね. </p>
+<h3>Simen</h3>
+<p>taste のアーキテクチャに PCA + named item を加えられればいいんかな. </p>
+<ul>
+<li>runtime はスゲー勢いでサボる。</li>
+<li>Issue: harvesting の戦略は？</li>
+<li>Issue: 結果をすぐ反映するような local modification はできない？<ul>
+<li>amazon みたいの。</li>
+</ul></li>
+</ul>
+<h3>tdiary</h3>
+<p>なんか追記すると部分的にタイトルが消えるな。バグじゃないか。
+追記はしないほうがよさそう。</p>
+<h3>Vaporware is exciting</h3>
+<p>あーとてもわくわくするなあ。Vaporware の構想は楽しいなあ。
+パームトップサーチを構想してた時以来のわくわくだ。
+仕事のうんざりをわすれられるのはこれについて考えてるときだけだね。</p>
+<p>あのときも仕事が忙しくて、アホみたいに忙しくて、
+ゴタゴタもあって会社をやめてしまった。
+パームトップサーチはあの会社でやらないと意味がなかったので、
+技術的な困難以前に頓挫した。
+正直なところ、すごく後悔している。会社を辞めたことというより、
+自分の vaporware を殺したことを。</p>
+<p>今回はプログラマとしての能力が
+ボトルネックになるところまで行きたい。
+やる。絶対やる。
+前回の反省を生かしたいところだけど、あんましない。
+会社をやめない、というくらいか。辞めないよそりゃ・・・。
+ほんとはその先にある困難が本物なんだろうけど。</p>
+<p>あとは時間の確保だなあ。翻訳受けたのは若干失敗だったかもしらんが、
+まあ vaporware に遅延はつきもの。地道にやろう。</p>
+<h3>Job Hopper</h3>
+<pre>http://d.hatena.ne.jp/ktdisk/20080309/1205067488</pre>
+<p>まあジョブホッパーなわけですよ自分は。
+面白い仕事にありつくには、まず会社でそれなりに権力をゲットしないといかん。じゃないと雑用になる。スーパープログラマでもない限り会社入ってしばらくは雑用。これは仕方ない。ただ長くいてもずっと雑用ということもある。これは立場の確保が下手な場合もあるし、そもそも面白い仕事がない場合もある。タイミング＋居場所＋立場と三拍子いうのがそろわないと面白い仕事にはありつけない。世の中の仕事はデフォルトではつまらない。長くいて面白い仕事を待つのは妥当だよね。ずーっと無いかも知らんけど、それは他も同じかもしらんわけで・・・。</p>
+<h3>人工知能学会誌</h3>
+<p>レコメンデーション紹介記事があった。書いてるのは 
+<a href="http://www.kamishima.net/jp/">http://www.kamishima.net/jp/</a> の人。すげーまとまってる。
+メモリベースの方法は理解してるけど、モデルベースの方法が
+全然わかってないなーということがわかった。</p>
+<p>あと PCA みたいに近傍だけ前計算するのはポピュラーらしい。
+ハイブリッド方式も、自分の理解どおり候補を絞るのにつかう
+というので正しそう。精度も落ちないって書いてある。
+候補を絞り込む、候補のスコアをよこす、
+という切り口で抽象化するのがいいんかな。
+キャッシュだとこの二つはセットなわけだけど。つうか
+セットでかえせ話しだな。</p>
+<p>ところで、よく考えたら PCA ならちゃんと対話的に結果が変わるね。</p>
+<h3>Before Start</h3>
+<p>うっかり実装を始めてハマると不幸だからやるべきことを</p>
+<ul>
+<li>Taste 読む</li>
+<li>人工知能学会誌でモデルベースを理解する</li>
+<li>スケーラブルにする話も一個くらいは読む</li>
+<li>設計メモをつける</li>
+<li>Understanding MySQL Internals 読む</li>
+</ul>
+<p>ほんとは硬い実装を一個くらい読みたいのだが...</p>

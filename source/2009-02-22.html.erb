@@ -1,0 +1,843 @@
+---
+title: "Bespin"
+date: 2009-02-22
+---
+<h3>Bespin</h3>
+<p>六本木にある SNS の会社で開催されたデータベースの勉強会に向かった私は道に迷って会場に辿りつけず失意のまま帰宅した. 
+もうサーバサイドなんて知らねーよ!  そう(地図を忘れた自分に)憤り, 
+現実逃避にクライアントサイドのコードでも読むかと Bespin を眺めた. </p>
+<p><a href="http://labs.mozilla.com/projects/bespin/">Bespin</a> は
+Mozilla が開発中のウェブで動くテキストエディタサービス. 
+<a href="https://bespin.mozilla.com/">デモ版</a> が公開されている. 
+<a href="http://ajaxian.com/by/topic/bespin">もう少し詳しい話</a> によると, 
+HTML5 の &lt;canvas&gt; で色々実装しているらしい. そういえばそんな機能があったなーと思いだし, 
+どんなものかと <a href="http://hg.mozilla.org/labs/bespin">コード</a> をチェックアウトした. </p>
+<h4>ツリーの構成</h4>
+<p>Bespin のソースは今のところ約 3 万行 ある. 
+サードパーティのライブラリを除くと 2 万行くらい. </p>
+<pre>backend/
+frontend/
+mocks/
+slices/
+docs/
+research/
+template/</pre>
+<p>アプリケーションのコードはサーバサイドの backend/ とクライアントサイドの frontend/ に収まっている. </p>
+<p>サーバサイド(backend)は python と java のコードが混じっている. 
+今は python しか使っていないらしい. 
+<a href="http://hg.mozilla.org/labs/bespin/file/tip/backend/python/README.txt">README</a>
+の指示に従って動かすこともできた. デモサイトと同じものがローカルで起動する. 
+backend のコードはだいたい 6000 行ある.</p>
+<p>クライアントサイド(frontend)のコード は大半が JavaScriptで, ちょっとだけ HTML と CSS. 
+外部ライブラリを除くとサイズはだいたい 10000 行. 
+今日は backend を無視して frontend を眺めたい. 
+(テーマは &lt;もうサーバサイドなんて知らねーよ&gt; ですからね.)</p>
+<p>フロントエンドのコードは大半が 
+<a href="http://hg.mozilla.org/labs/bespin/file/tip/frontend/js/">frontend/js</a> にある. 
+内訳はこんなかんじ:</p>
+<pre>client/
+commandline/
+editor/
+external/
+syntax/
+th/
+util/
+bestin.js
+bootstrap.js
+events.js
+registation.js</pre>
+<p><em>client</em> はサーバとの xhr 通信を隠蔽したデータアクセス層. 
+<em>commandline</em> は画面下にあるコンソール部分のハンドリング. 
+<em>editor</em> はテキストエディタの GUI. 
+<em>syntax</em> はエディタが利用するテキストの色付け機能. 
+<em>th</em> は GUI コンポーネント. <em>util</em> はブラウザ互換などの細かいコード
+を実装している. 
+<em>external</em> には外部ライブラリとして prototype.js と scriptaculous が入っている. 
+GUI コンポーネントの "th" とエディタを実装している "editor" の周辺が今回の見所です. </p>
+<h4>th</h4>
+<p>まず "th" から. </p>
+<p>Bespin には二つの画面がある. 
+一つ目がレポジトリブラウザである <em>dashboard</em> で, サーバ上のファイルを一覧, 選択できる.
+dashboard でファイルを選ぶと, 
+テキストを編集する <em>editor</em> の画面が起動する. これが二つ目. </p>
+<p><img src='/images/20090222_0.png' class='dashboard'></p>
+<p>dashboard の画面は RIA 風味のウェブアプリというミタメをしている. 
+実際ユーザにとってはそのとおりなんだけど, 実現には色々と頑張りがある;  
+dashboard 画面の GUI はほとんどが &lt;canvas&gt; 上に描かれている. 
+(Firebug で簡単に確認できる.)</p>
+<p>"th" ではその GUI コンポーネント一式を定義している. 
+<a href="http://hg.mozilla.org/labs/bespin/file/tip/frontend/js/th/th.js">th/th.js</a> を眺めてみると, 
+<em>Component</em> や <em>Container</em> などそれらしいクラスの定義がある. </p>
+<pre>
+...
+var Component = Class.define({
+    ....
+    members: {
+        init: function(parms) {
+            if (!parms) parms = {};
+            this.bounds = parms.bounds || {};
+            this.style = parms.style || {};
+            this.attributes = parms.attributes || {};
+            this.id = parms.id;
+            ...
+        },
+
+        getPreferredHeight: function(width) {},
+        ....
+
+
+        paint: ....
+
+        repaint: ...
+   }
+};
+
+var Container = Class.define({
+    ...
+    superclass: Component,
+    ...
+    members: {
+        init: function(parms) {
+            this._super(parms);
+            this.children = [];
+        },
+    ...
+        paintChildren: function(ctx) { ... }
+    ...
+        layout: ...
+    }
+};</pre>
+<p><a href="http://hg.mozilla.org/labs/bespin/file/tip/frontend/js/th/components.js">th/components.js</a> 
+には <em>Button</em>, <em>Panel</em>, ... と具体的なコンポーネントの定義が続く: </p>
+<pre>
+var Button = Class.define({
+    type: "Button",
+
+    superclass: Component,
+    ....
+};
+
+var Scrollbar = Class.define({
+    type: "Scrollbar",
+
+    superclass: Container,
+    ....
+};
+
+var Panel = Class.define({
+    type: "Panel",
+
+    superclass: Container,
+    ...
+};
+
+var Splitter = Class.define({
+    type: "Splitter",
+
+    superclass: Container,
+    ...
+};
+
+...
+</pre>
+<p>他にも色々定義されているけれど, これだけでも雰囲気は伝わると思う. 
+要するに &lt;canvas&gt; と JavaScript を使ったベタな GUI ライブラリが "th" の中身だった. </p>
+<p>コンポーネントのツリー構造は, <em>Scene</em> クラスが管理する. </p>
+<pre>
+var Scene = Class.define({
+    uses: [
+        EventHelpers
+    ],
+
+    members: {
+        bus: th_global_event_bus,
+
+        css: {},
+
+        sheetCount: 0,
+        currentSheet: 0,
+        cssLoaded: false,
+        renderRequested: false,
+
+        init: function(canvas) {
+            this.canvas = canvas;
+            ...
+            this.root = new Panel({ id: "root", style: { ... }});
+            this.root.scene = this;
+            ...
+        },
+
+        render: function() {
+            if (!this.cssLoaded) {
+                this.renderRequested = true;
+                return;
+            }
+
+            this.layout();
+            this.paint();
+        },
+};</pre>
+<p>レイアウトはルートのコンポーネント(Panel コンテナ)に移譲される. </p>
+<pre>
+        layout: function() {
+            if (this.root) {
+                this.root.bounds = { x: 0, y: 0, width: this.canvas.width, height: this.canvas.height };
+                this.root.layoutTree();
+            }
+        },</pre>
+<p>描画も同じノリだけれど, ちょっと前準備がある: </p>
+<pre>
+        paint: function(component) {
+
+            ....
+            if (component) {
+                // 自分が透明なら親を描く
+                if (!component.opaque &amp;&amp; component.parent) {
+                    return this.paint(component.parent);
+                }
+
+                // &lt;canvas&gt; から graphics context を取り出して...
+                var ctx = this.canvas.getContext("2d");
+                Bespin.Canvas.Fix(ctx); // ブラウザ互換のワークアラウンド
+
+                ctx.save(); // 状態を push
+
+                // 相対座標を絶対座標に変換
+                var parent = component.parent;
+                var child = component;
+                while (parent) {
+                    ctx.translate(child.bounds.x, child.bounds.y);
+                    child = parent;
+                    parent = parent.parent;
+                }
+
+                // 画面をクリアしてクリッピングの設定をして...
+                ctx.clearRect(0, 0, component.bounds.width, component.bounds.height);
+                ctx.beginPath();
+                ctx.rect(0, 0, component.bounds.width, component.bounds.height);
+                ctx.closePath();
+                ctx.clip();
+                // 描く.
+                component.paint(ctx);
+
+                ctx.restore(); // 状態を pop
+            }
+        },</pre>
+<p>GUI プログラミングをしたことがある人には見慣れた光景だと思う. 
+でもウェブアプリのコードでお目にかかるとは思わなかったなあ...</p>
+<p>描画やレイアウトだけでなく, イベント配信も自前でやる:</p>
+<pre>
+var Bus = Class.define({
+    members: {
+        init: function() {
+            // map of event name to listener...
+            this.events = {};
+        },
+
+        // リスナをイベントに登録する
+        bind: function(event, selector, listenerFn, listenerContext) {
+
+            var listeners = this.events[event];
+            if (!listeners) {
+                listeners = [];
+                this.events[event] = listeners;
+            }
+            ...
+        }
+        ....
+
+        // イベントの発火
+        fire: function(eventName, eventDetails, component) {
+            var listeners = this.events[eventName];
+            ....
+            for (var i = 0; i &lt; listeners.length; i++) {
+                ....
+                    this.dispatchEvent(eventName, eventDetails, component, listeners[i]);
+                ....
+            }
+       },
+
+        dispatchEvent: function(eventName, eventDetails, component, listener) {
+            eventDetails.thComponent = component;
+            ....
+            if (listener.context) {
+                listener.listenerFn.apply(listener.context, [ eventDetails ]);
+            } else {
+                listener.listenerFn(eventDetails);
+            }
+        }
+    }
+});</pre>
+<p>もちろんイベントの出所を辿れば DOM がある. 
+先に登場した Scene オブジェクトが DOM からのイベントをまとめて受けとり,
+それを "th" のイベントとして先の <em>Bus</em> オブジェクトに送りだしている. </p>
+<pre>
+...
+var th_global_event_bus = new Bus();
+...
+var Scene = Class.define({
+     ...
+     members: {
+        ...
+        init: function(canvas) {
+            ...
+            // DOM のイベントリスナを登録. 似たような各イベント用に一通りある.
+            Event.observe(window, "mousedown", function(e) {
+                self.wrapEvent(e, self.root);
+
+                self.mouseDownComponent = e.thComponent;
+
+                th_global_event_bus.fire("mousedown", e, e.thComponent);
+            });
+            ...
+        },
+       ...
+    }
+    ...
+};</pre>
+<p>こうしてみると, &lt;canvas&gt; の上で DOM や CSS のようなレンダリングモデルを再発明するのが
+"th" の仕事というかんじ. </p>
+<p>イベントだけでなく CSS も再発明(というか再実装)している. 
+コンポーネント群のミタメを設定するために, 
+jQuery 由来の <em>CSSParser</em> を使ってスタイルシートを解釈, 適用しようとする. </p>
+<pre>
+// th/th.js
+...
+       processCSS: function(stylesheet) {
+           // ブラウザに頼らず CSS を解釈
+           this.css = new CSSParser().parse(stylesheet, this.css);
+
+           if (++this.currentSheet == this.sheetCount) {
+               this.cssLoaded = true;
+               if (this.renderRequested) {
+                   this.render(); // この中で this.css を使うつもり？
+                   this.renderRequested = false;
+               }
+           }
+       }</pre>
+<p>ただし今のところこの機能を使っているコンポーネントはない. まだつくりかけらしい.
+各コンポーネントはコンストラクタの引数でスタイルづけされている. </p>
+<h4>dashboard</h4>
+<p>レポジトリブラウザ dashboard の GUI は "th" を使い実装されている. 
+<a href="http://hg.mozilla.org/labs/bespin/file/tip/frontend/js/client/dashboard_components.js">client/dashboard_components.js</a> で th のサブクラスを定義し, 
+<a href="http://hg.mozilla.org/labs/bespin/file/tip/frontend/js/client/dashboard.js">client/dashboard.js</a> で
+それらをインスタンス化する. </p>
+<pre>
+// dashboard.js
+...
+Event.observe(document, "dom:loaded", function() {
+    ...
+    scene = new Scene($("canvas"));
+    ...
+    tree = new HorizontalTree({ style: { ... }}); // Finder 風のツリービュー
+    var renderer = new Label({ style: { border: new EmptyBorder({ size: 3 }) } });
+    renderer.paint = function(ctx) { ... };
+
+    ....
+
+    projects = new BespinProjectPanel();
+
+    var topPanel = new Panel();
+    topPanel.add([ projects, tree ]);
+    topPanel.layout = function() { ... };
+    ...
+    var splitPanel = new SplitPanel({ id: "splitPanel", attributes: { ... }});
+    ...
+    scene.root.add(splitPanel);
+    ....
+    // setup the command line
+    _server      = new Bespin.Server();
+    _settings    = new Bespin.Settings.Core();
+    _files       = new Bespin.FileSystem();
+    _commandLine = new Bespin.CommandLine.Interface($('command'), Bespin.Commands.Dashboard);
+    ....
+});
+...</pre>
+<p>現段階で既にレイアウトや描画をフックしているあたり, 
+th の出来は推して知るべしだなあ...そのうち直すんだろうけどね. </p>
+<p>dashboard ではツリービューのダブルクリックを拾い, エディタを開く.</p>
+<pre>
+var go = Bespin.Navigate; // short cut static method
+....
+    scene.bus.bind("dblclick", tree, function(e) {
+        var newTab = e.shiftKey;
+        var path = tree.getSelectedPath();
+        if (path.length == 0 || path.last().contents) return; // don't allow directories either
+        go.editor(currentProject, getFilePath(path), newTab);
+    });</pre>
+<h4>editor</h4>
+<p>というわけでテキストを編集する "editor" へ.</p>
+<p><img src='/images/20090222_1.png' class='diagram'></p>
+<pre>editor/
+  editor.js
+  model.js
+  actions.js
+  undo.js
+  ...</pre>
+<p>"editor" の主だったコードは editor.js にある. UI, API, Scrollbar, Events といったクラスが定義されている. 他のファイルを概観すると, model.js は編集中のテキストを保持する DocumentModel オブジェクトを定義している. actions.js には各種エディタコマンドが, undo.js はアンドゥ可能なコマンドリストを管理する UndoManager が定義されている. </p>
+<p>まず "editor" の facade として <em>Editor.API</em> が定義されている. Editor.API は
+Editor.Xxx クラス群をまとめてインスタンス化し, つなぎあわせている.</p>
+<pre>
+
+Bespin.Editor.API = Class.create({
+    initialize: function(container) {
+        ...
+        this.model = new Bespin.Editor.DocumentModel();
+        ...
+        this.ui = new Bespin.Editor.UI(this);
+        this.theme = Bespin.Themes['default']; // set the default which is in themes.js (Coffee)
+        this.cursorPosition = { row: 0, col: 0 }
+        this.editorKeyListener = new Bespin.Editor.DefaultEditorKeyListener(this);
+        this.undoManager = new Bespin.Editor.UndoManager(this);
+        this.customEvents = new Bespin.Editor.Events(this);
+    },
+    ....
+};</pre>
+<p>テキストのデータ構造を実装するのが <em>Editor.DocumentModel</em>:</p>
+<pre>
+Bespin.Editor.DocumentModel = Class.create({
+    ....
+    initialize: function() {
+        this.rows = [];
+    },
+    ....</pre>
+<p>"文字列の配列" という, いたって素朴な構造を使っている. </p>
+<p>描画を支援するために dirty な(変更された)行の管理くらいはしている. </p>
+<pre>
+   setRowDirty: function(row) {
+       if (!this.dirtyRows) this.dirtyRows = new Array(this.rows.length);
+       this.dirtyRows[row] = true;
+   },</pre>
+<p>そのほかエディタっぽいテキスト操作がいくつか実装されている.</p>
+<pre>
+    // 文字列の挿入
+    insertCharacters: function(pos, string) {
+        var row = this.getRowArray(pos.row);
+        while (row.length &lt; pos.col) row.push(" ");
+
+        var newrow = (pos.col &gt; 0) ? row.splice(0, pos.col) : [];
+        newrow = newrow.concat(string.split(""));
+        this.rows[pos.row] = newrow.concat(row);
+
+        this.setRowDirty(pos.row); // ダーティーフラグを立てる
+    },
+
+    // 置換
+    replace: function(search, replace) {
+      for (var x = 0; x &lt; this.getRowCount(); x++) {
+        var line = this.getRowArray(x).join('');
+
+        if (line.match(search)) {
+          var regex = new RegExp(search, "g");
+          var newline = line.replace(regex, replace);
+          if (newline != line) {
+            this.rows[x] = newline.split('');
+          }
+        }
+      }
+      // ダーティーフラグは？
+    },</pre>
+<p>こうした API はエディタのコマンド (action) から利用される. </p>
+<p>モデルの描画を担当するのが <em>Editor.UI</em> クラス. 
+コマンドに応じてスクロール情報やカーソルをなどの UI の状態を更新し, 
+それら UI の状態 と DocumentModel のデータ構造を参照しながら編集領域を描画する.</p>
+<pre>
+Bespin.Editor.UI = Class.create({
+    initialize: function(editor) {
+        this.editor = editor;
+        this.syntaxModel = new Bespin.Syntax.Model(editor);
+        this.selectionHelper = new Bespin.Editor.SelectionHelper(editor);
+        this.actions = new Bespin.Editor.Actions(editor);
+
+        this.toggleCursorFullRepaintCounter = 0;
+        ....
+        // combining them like sane people, but... meh
+        this.horizontalScrollCanvas = new Element("canvas");
+        this.verticalScrollCanvas = new Element("canvas");
+        ...
+    },
+    ....
+});</pre>
+<p>なぜか th のコンポーネントモデルに載らず, 自分で canvas を作っているのがわかる. </p>
+<p>実際 "editor" 全体が "th" に依存していない. コンストラクタに渡された DOM 要素に新しく &lt;canvas&gt; を作り, 
+その canvas に対してエディタの編集領域を描画する.</p>
+<pre>
+Bespin.Editor.API = Class.create({
+    initialize: function(container) {
+        this.container = container;
+        this.model = new Bespin.Editor.DocumentModel();
+
+        $(container).innerHTML = "&lt;canvas id='canvas' moz-opaque='true' tabindex='-1'&gt;&lt;/canvas&gt;";
+        this.canvas = $(container).childElements()[0];
+        ....
+   },
+};</pre>
+<p>編集領域のみならず, ツールバーにも "th" は使われていない. ツールバーは DOM で作ってある. 
+そのへんの一貫性は気にしないのか...</p>
+<p>脇道にそれた. UI クラスに戻ると, ほかにも色々とエディタっぽいメソッドがある. </p>
+<pre>
+    ...
+    // カーソルの点滅
+    toggleCursor: function(ui) {
+        ui.showCursor = !ui.showCursor;
+
+        if (++this.toggleCursorFullRepaintCounter &gt; 0) {
+            this.toggleCursorFullRepaintCounter = 0;
+            ui.editor.paint(true);
+        } else {
+            ui.editor.paint();
+        }
+
+        setTimeout(function() { ui.toggleCursor(ui) }, 250);
+    },
+    ...
+
+    // 範囲選択
+    setSelection: function(e) {
+        var clientY = e.clientY - this.getTopOffset();
+        var clientX = e.clientX - this.getLeftOffset();
+        ...
+
+        // DOM のイベントを内部の範囲指定に変換し, Editor.API に移譲する
+        var down = Bespin.Editor.Utils.copyPos(this.selectMouseDownPos);
+        ....
+        var point = { x: clientX, y: clientY };
+        point.x += Math.abs(this.xoffset);
+        point.y += Math.abs(this.yoffset);
+        var up = this.convertClientPointToCursorPoint(point);
+        ....
+        if (!Bespin.Editor.Utils.posEquals(down, up)) {
+            this.editor.setSelection({ startPos: down, endPos: up });
+        } else {
+            ....
+        }
+    },
+
+    // 文字幅の計算: 等幅フォントを仮定
+    getCharWidth: function(ctx) {
+        if (ctx.measureText) {
+            return ctx.measureText("M").width;
+        } else {
+            return this.FALLBACK_CHARACTER_WIDTH;
+        }
+    },
+
+    ...
+</pre>
+<p>そして編集画面の描画. Editor.UI の山場だ:</p>
+<pre>
+    ...
+    paint: function(ctx, fullRefresh) {
+        ....
+        // 変数宣言色々
+        var c = $(this.editor.canvas);
+        var theme = this.editor.theme;
+        var ed = this.editor;
+        ....
+        // 描画範囲の算出, 座標の変換, ...
+        this.lastCursorPos = Bespin.Editor.Utils.copyPos(ed.cursorPosition);
+        ...
+        ctx.save(); // take snapshot of current context state so we can roll back later on
+        ctx.translate(0, this.yoffset);
+        ...
+        // only paint those lines that can be visible
+        this.visibleRows = Math.ceil(cheight / this.lineHeight);
+        this.firstVisibleRow = Math.floor(Math.abs(this.yoffset / this.lineHeight));
+        lastLineToRender = this.firstVisibleRow + this.visibleRows;
+        ...
+        for (currentLine = this.firstVisibleRow; currentLine &lt;= lastLineToRender; currentLine++) {
+
+            // 部分書き換え: ふつうはこっち.
+            if (!refreshCanvas) {
+                if (!dirty[currentLine]) { // 書き換え不要な行はスキップ
+                    y += this.lineHeight;
+                    continue;
+                }
+                ....
+                // 行の部分だけをクリップして...
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x + (Math.abs(this.xoffset)), y, cwidth, this.lineHeight);
+                ctx.closePath();
+                ctx.clip();
+            }
+
+            // 選択部分の背景を塗って...
+            var selections = this.selectionHelper.getRowSelectionPositions(currentLine);
+            if (selections) {
+                tx = x + (selections.startCol * this.charWidth);
+                tw = ....
+                ctx.fillStyle = theme.editorSelectedTextBackground;
+                ctx.fillRect(tx, y, tw, this.lineHeight);
+            }
+
+            // 構文ハイライトモジュールに行の着色情報を問合せて
+            var lineInfo = this.syntaxModel.getSyntaxStyles(currentLine, this.editor.language);
+            for (ri = 0; ri &lt; lineInfo.regions.length; ri++) {
+                var styleInfo = lineInfo.regions[ri];
+                // 色ごとにテキストを描く.
+                for (var style in styleInfo) {
+                    if (!styleInfo.hasOwnProperty(style)) continue;
+
+                    var thisLine = "";
+                    // 該当色でない部分は空白を詰める
+                    var styleArray = styleInfo[style];
+                    var currentColumn = 0; // current column, inclusive
+                    for (var si = 0; si &lt; styleArray.length; si++) {
+                        var range = styleArray[si];
+                        for ( ; currentColumn &lt; range.start; currentColumn++) thisLine += " ";
+                        thisLine += lineInfo.text.substring(range.start, range.stop);
+                        currentColumn = range.stop;
+                    }
+
+                    // ようやくテキスト描画
+                    ctx.fillStyle = this.editor.theme[style] || "white";
+                    ctx.font = this.editor.theme.lineNumberFont;
+                    ctx.fillText(thisLine, x, cy);
+                }
+             }
+            ....
+            y += this.lineHeight; // 次の行へ
+        }
+
+        // カーソルやスクロールバーを描くコードが続く...
+        ...
+    },
+    ....</pre>
+<p>行の描画をスタイル単位でやっているのは面白い. font の変更が高くつくのか, 
+fillText() が重いのか. </p>
+<h4>syntax</h4>
+<p>編集領域の描画に利用している構文ハイライトモジュールは, "syntax" ディレクトリにある.  
+今のところ大したものではない(とコメントに書いてある). 
+たとえば HTML の構文ハイライトを実装した
+<em>HTMLSyntaxEngine</em> のコードを見てみよう. </p>
+<pre>
+// syntax/html.js
+
+Bespin.Syntax.HTMLSyntaxEngine = Class.create({
+    keywordRegex: "/*(html|head|body|doctype|link|script|div|span|img|h1|h2|h3|h4|h5|h6|ul|li|ol|blockquote)",
+...
+    highlight: function(line, meta) {
+        if (!meta) meta = {};
+        ...
+        var regions = {};
+        ...
+        var currentRegion = {}; // should always have a start property for a non-blank buffer
+        var buffer = "";
+        ...
+        for (var i = 0; i &lt; line.length; i++) {
+            var c = line.charAt(i);
+
+            ... // コメントの内側かどうかをチェック...
+
+            if (this.isWhiteSpaceOrPunctuation(c)) { // 字句の区切れ目なら...
+                if (buffer != "") {
+                    currentRegion.stop = i;
+
+                    if (currentStyle != K.STRING) {
+                        if (buffer.match(this.keywordRegex)) { // キーワードだった
+                            // the buffer contains a keyword
+                            currentStyle = K.KEYWORD; // キーワードである旨を記録
+                        } else {
+                            currentStyle = K.OTHER;
+                        }
+                    }
+                    // 字句の region と種別を 追記
+                    this.addRegion(regions, currentStyle, currentRegion);
+                    currentRegion = {};
+                    stringChar = "";
+                    buffer = "";
+                    // i don't clear the current style here so I can check if it was a string below
+                }
+                ...
+            }
+            ...
+            buffer += c;
+        }
+
+        ...
+        return { regions: regions, meta: { inMultilineComment: multiline } };
+    },
+
+    addRegion: function(regions, type, data) { // region はスタイル種別毎の表である.
+        if (!regions[type]) regions[type] = [];
+        regions[type].push(data);
+    },
+    ...
+
+
+
+// グローバルなレジストリにオブジェクトを登録
+Bespin.Syntax.EngineResolver.register(new Bespin.Syntax.HTMLSyntaxEngine(), ['html', 'htm', 'xml', 'xhtml']);</pre>
+<p>基本的に行単位で文字列を字句にばらし, それをスタイル種別毎の region 集合に分解している. 
+コメントの内外判定など行をまたぐ継続は 引数と戻り値の meta プロパティに含まれている. </p>
+<p>html 以外に css と javascript の構文ハイライトに対応している. 
+どちらもおよそ似たような作りだった. </p>
+<h4>action とキーマップ</h4>
+<p>エディタ実装の定石(伝聞ですが)として, キー入力イベントをそのまま
+内部モデルに渡すことはしない. 
+かわりにキーと API を対応づけるオブジェクトをはさんでカスタマイズの余地を残す. 
+<em>Editor.DefaultEditorKeyListener</em> がその対応づけを受け持つ. </p>
+<pre>
+// editor/editor.js
+...
+Bespin.Editor.DefaultEditorKeyListener = Class.create({
+    initialize: function(editor) {
+        this.editor = editor;
+        this.actions = editor.ui.actions;
+        this.skipKeypress = false;
+
+        this.defaultKeyMap = {};
+
+         // Allow for multiple key maps to be defined
+        this.keyMap = this.defaultKeyMap;
+    },
+
+...
+    // this.keyMap に action 関数を登録する
+    bindKey: function(keyCode, metaKey, ctrlKey, altKey, shiftKey, action) {
+        this.defaultKeyMap[[keyCode, metaKey, ctrlKey, altKey, shiftKey]] =
+            (typeof action == "string") ?
+                function() {
+                    var toFire = Bespin.Events.toFire(action);
+                    document.fire(toFire.name, toFire.args);
+                } : action.bind(this.actions);
+    },
+
+    // bindKey() の指定に文字列を使うためのヘルパ
+    bindKeyString: function(modifiers, keyCode, action) {
+        var ctrlKey = (modifiers.toUpperCase().indexOf("CTRL") != -1);
+        ....
+        return this.bindKey(keyCode, metaKey, ctrlKey, altKey, shiftKey, action);
+    },
+
+    // キー入力に応じた action 関数を this.keyMap から検索して呼び出す.
+    onkeydown: function(e) {
+        ...
+        var action = this.keyMap[[e.keyCode, e.metaKey, e.ctrlKey, e.altKey, e.shiftKey]];
+        ...
+        if (typeof action == "function") {
+            hasAction = true;
+            action(args);
+            this.lastAction = action;
+        }
+
+        // ブラウザとしての挙動を保つため, 一部のイベントをブラウザに横流しする
+        // If a special key is pressed OR if an action is assigned to a given key (e.g. TAB or BACKSPACE)
+        if (e.metaKey || e.ctrlKey || e.altKey || hasAction) {
+            this.skipKeypress = true;
+            this.returnValue = true;
+            if (hasAction || !Bespin.Key.passThroughToBrowser(e)) Event.stop(e);
+        }
+    },
+...
+};</pre>
+<p>デフォルトのキーバインドは別のところで登録される: </p>
+<pre>// editor/editor.js
+
+    installKeyListener: function(listener) {
+        // ついでに listener を DOM に登録する
+        this.oldkeydown = listener.onkeydown.bindAsEventListener(listener);
+        this.oldkeypress = listener.onkeypress.bindAsEventListener(listener);
+
+        Event.observe(document, "keydown", this.oldkeydown);
+        Event.observe(document, "keypress", this.oldkeypress);
+
+        // キーバインドへのアクションの登録
+        ...
+        listener.bindKeyString("CTRL", Key.K, this.actions.killLine);
+        listener.bindKeyString("CTRL", Key.L, this.actions.moveCursorRowToCenter);
+
+        listener.bindKeyString("", Key.BACKSPACE, this.actions.backspace);
+        listener.bindKeyString("", Key.DELETE, this.actions.deleteKey);
+        listener.bindKeyString("", Key.ENTER, this.actions.newline);
+        listener.bindKeyString("", Key.TAB, this.actions.insertTab);
+
+        listener.bindKeyString("APPLE", Key.A, this.actions.selectAll);
+        listener.bindKeyString("CTRL", Key.A, this.actions.selectAll);
+        ...
+   }</pre>
+<p>リスナ登録される action 関数群は <em>Editor.Actions</em> に定義されている:</p>
+<pre>
+// editor/actions.js
+Bespin.Editor.Actions = Class.create({
+    initialize: function(editor) {
+        this.editor = editor;
+        this.ignoreRepaints = false;
+    },
+    ....
+    // 右にカーソル移動
+    moveCursorRight: function(args) {
+        // end of the line, so go to the start of the next line
+        if (_settings.isOn(_settings.get('strictlines')) &amp;&amp;
+            (this.editor.cursorPosition.col &gt;= this.editor.model.getRowLength(args.pos.row))) {
+            var originalRow = args.pos.row;
+            this.moveCursorDown(args);
+            if (originalRow &lt; this.editor.model.getRowCount() - 1) this.moveToLineStart(args);
+            return;
+        }
+
+        this.editor.cursorPosition.col = args.pos.col + 1;
+        this.handleCursorSelection(args);
+        this.repaint();
+    },
+    ....
+}</pre>
+<p>このレイヤで再描画を意識するのは茨の道な気がするなー...</p>
+<h4>見ていないところと雑感</h4>
+<p>これで内部モデル、描画からイベント受取まで、
+一通り Bespin のテキスト編集を眺めた. さくさく読める小さなコードでいい気晴らしになった. 
+レポジトリブラウザの dashboard はちゃんと見てないし, 
+Emacs の minibuffer みたいな commandline も見てないけれど, 
+どちらも特に面白くなかったので割愛いたします. </p>
+<p>Mozilla 自身がプロトタイプだと強調するとおり, Bespin 自身はまだ先は長い仕事という印象. 
+機能が少いとか日本語が使えないとかはさておき, 
+構造が練られている感じがしない. 特にエディタや IDE は歴史が長く
+ユーザのこだわりもある分野だから, 
+もうちょっと素敵設計になっていないと寂しい. 外野が拡張していける夢を感じない. 
+いまはミタメやデモ映えを重視している風なので, 
+バージョンを重ねる時には構造も洗練して欲しいと思う. 
+もっともコードの規模が小さい今のうちからフォローするのは
+成長を見届ける意味で面白いかも知れない. 
+腕に覚えがあれば patch の寄稿もしやすいだろう. 他の言語の構文ハイライトとかね.</p>
+<p>&lt;canvas&gt; を使い倒すアイデアは気に入った. &lt;canvas&gt; はけっこう前からある機能だし,  
+<a href="http://d.hatena.ne.jp/gyuque/20090211">ソフトウェアの 3D レンダリングをやっている人もいる</a> くらいだから
+それなりの性能が出ることは知っていたはずなのに, 
+なんとなくナナメに線が引けるくらいの印象しかなかった. 
+でも editor を読んで, アプリケーションの描画を任せていいかも知れないという感触を持った. </p>
+<p>どこまで &lt;canvas&gt; を使うべきかはよくわからない. 
+個人的には "th" のように GUI ライブラリを作るのは
+やりすぎな気がする. たぶん DOM を使う方が楽だろうし, 反応速度も上だろう. 
+ウィンドウサイズを変えたときなど, HTML 部分のレイアウト変更から一息遅れて 
+th の描画部分が更新される. 
+ライブラリとして使いまわすときも DOM の方がインテグレートしやすそうだ. 
+せめて &lt;canvas&gt; をネストできて, 
+Flash の DisplayObject のようなイベント配信や描画順制御をしてくれれば, 
+DOM の延長として扱いやすいだろうにね. </p>
+<p>エディタの編集領域や, あとはドローツールやチャートのように, 
+描画を細かく制御したいものには &lt;canvas&gt; の方が苦労は少いだろう. 
+IE が対応しない限り仕事では使えないけれど, 
+趣味のコードには Flash より &lt;canvas&gt; の方が宗教上の嗜好と合う. 
+JavaScript と ActionScript を往復せずに済むのも
+ウェブの技術がよくわからない年寄りに(比較的)優しい. </p>
+<p>その昔, Windows プログラミングの時代のこと. 
+MFC はよくわかんないけど OpenGL や Direct3D ならわかるプログラマが
+ウィンドウの枠やメニューを出すためだけに MFC を使って, 
+主な描画は OpenGL/Direct3D でやるという選択肢があった. 
+今なら DOM はよくわかんないけど線を引いたり色を塗ったりするのは得意なプログラマが
+最低限の枠組みだけを HTML/DOM で作って, 
+あとは &lt;canvas&gt; でがんばるという選択肢もあるんだね. </p>
+<h4>まとめ:</h4>
+<p>Bespin は &lt;canvas&gt; で色々がんばってるウェブ上のテキストエディタ</p>
+<ul>
+<li>&lt;canvas&gt; 上に GUI をつくる "th" モジュールを実装<ul>
+<li>レウアウト, 描画, イベント配信ぜんぶ自前</li>
+<li>レポジトリブラウザの "dashboard" は "th" を使った作り</li>
+</ul></li>
+<li>テキストエディタの "editor" モジュールは "th" とは独立して &lt;canvas&gt; に描画<ul>
+<li>構文色付けと基本的なコマンド機構はある</li>
+</ul></li>
+<li>サーバサイドはしらねーよ<ul>
+<li>GREE オフィスは六本木駅六番出口から首都高下を溜池山王方面だよ</li>
+</ul></li>
+</ul>

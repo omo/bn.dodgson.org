@@ -1,0 +1,240 @@
+---
+title: "JavaScript の暗黒面を覗く"
+date: 2006-04-02
+---
+<h3>近況</h3>
+<p><a href="http://shibuyajs.org/">Shibuya.js のイベント</a> に申しこんだ. 
+が, メールアドレスを間違えたらしく登録確認のメールが来ない. 
+再申しこみをしようとしたら満員御礼. がっくり. 
+JavaScript なんて嫌いだ. 今日は JavaScript の悪口を書こう. </p>
+<h3>JavaScript の暗黒面を覗く</h3>
+<p>"Ajax IN ACTION" を読んで以来 AJAX 界隈を信じきれずにいる. 
+ただ私も他人をとやかく言えるほど JavaScript のことをよく知らない. 
+Bookmarklet を書いたり仕事のデモを作る程度. 
+文法の知識もいいかげんで, 型なし Java のサブセットのように使っていた. </p>
+<p>そこで不信感を晴らすべく少し JavaScript を勉強してみることにした. 
+Web アプリケーションで仕事をしている友達に教えを乞うと, 
+仕様書がいちばんわかりやすいとのこと: "<a href="http://www.ecma-international.org/publications/standards/Ecma-262.htm">ECMAScript Language Specification (3rd Edition)</a>". 
+読んでみるとたしかに詳しい. (あたりまえ.) 
+そしてやはり知らないことは多い. せっかくなので以下にそれを並べてみた. </p>
+<p>先に "悪口" と言ったのは, いまいちな感じの新発見が多かったから. 
+私と同じように考える人はそれなりにいるらしく, 
+次バージョンの JavaScript にそれらの機能を変更するよう求める記事もあった: 
+"<a href="http://www.mozilla.org/js/language/evolvingJS.pdf">JavaScript 2.0: Evolving a Language for Evolving Systems(PDF), Waldemar Horwat</a>". 
+これもあわせてちょっとだけ紹介.  </p>
+<h4>セミコロンの自動挿入</h4>
+<p>この仕様には驚いた. </p>
+<pre>var x = hello()</pre>
+<p>が</p>
+<pre>var x = hello();</pre>
+<p>として解釈される. ";" が増えているのに注目. </p>
+<p>基本的には, ";" がなくて文法エラーがあったとき, 
+";" を入れることで文法違反が解消されるなら ";" を勝手に補ってくれるというもの. 
+たぶん onclick のようなイベントハンドラ用属性にインラインでスクリプトを
+書くための機能だろう. </p>
+<pre>&lt;div onclick="hello()"&gt;←これを OK にしたい.&lt;/div&gt;</pre>
+<p>困るのは仕様がアグレッシブすぎること. 
+仕様書からの例をひくと</p>
+<pre>return
+a + b</pre>
+<p>が</p>
+<pre>return;
+a + b;</pre>
+<p>になったりする. 勢いあまってバグになりそうだ. 
+たとえばうっかり改行を入力してしまうだけで戻り値が undefined になってしまう. 
+インラインスクリプトを認めるという目的のためなら
+プログラムの最後にだけセミコロンを補完すれば十分. これはやりすぎだと思う. </p>
+<p>Waldemar は "strict mode" を提案しており, 
+このモードでは semicolon insertion はかなり制限されることになっている.</p>
+<h4>値型とオブジェクト型</h4>
+<p>ECMAScript では, 整数や文字列のような基本的なデータ型の表現が
+値型とオブジェクト型で二通りある. 
+Java にプリミティブ型の int とオブジェクトの Integer があるようなもの. </p>
+<pre>log("val:" + typeof(1.0)); // val:number
+log("obj:" + typeof(new Number(1.0))); // obj:object</pre>
+<p>なんだかまぎらわしい. どちらか一方でいいとおもう. 
+Waldemar も primitive type はやめて object に統一しろと言っている.</p>
+<p>Java にプリミティブ型があるのはもっぱら性能上の理由からだが, 
+ECMAScript で速度を気にしても仕方ない. 
+それに, Ruby のように数値型のオブジェクトを効率よく扱うことはできる. </p>
+<p>Java ではプリミティブ型があってもただ面倒なだけだった. 
+型付けが動的で型変換も多い JavaScript だとより厄介なことがおこる. 
+次に示す等価演算子はその典型例. </p>
+<h4>二種類の等価比較</h4>
+<p>JavaScript には等価演算子がふたつある. 
+ふつうの比較は "=" ふたつ, もうひとつの比較である厳密な比較は "=" みっつ.</p>
+<p>まず普通の比較:</p>
+<pre>log(1 == 1); // true</pre>
+<p>型変換もしてくれる:</p>
+<pre>log(1 == new Number(1)); // true</pre>
+<p>型変換をしてくれるのが嬉しいとは限らない. たとえば:</p>
+<pre>log("1" == 1); // true</pre>
+<p>また, undefined 周辺は謎が多い:</p>
+<pre>log(undefined == null); // true
+log(0 == null); // false</pre>
+<p>逆に厳密な比較は型変換をしない:</p>
+<pre>log(1 === new Number(1)); // false</pre>
+<p>保持する値が一緒でもオブジェクトが違っていてはダメ:</p>
+<pre>log((new String("Hello")) === (new String("Hello"))); // false</pre>
+<p>でも値同士の比較は OK.</p>
+<pre>log("Hello" === "Hello"); // true</pre>
+<p>Java でいう Object#equals() と 
+比較演算子 の違いに似ている気もするけれど, 型変換があるので混乱する. 
+がんばって一本化してほしい. </p>
+<h4>配列</h4>
+<p>JavaScript の配列が hash であるというのは聞いたことがあったけれど, 
+試してみると思っていたより違和感があった. </p>
+<p>まず普通に使ってみる.</p>
+<pre>var arr = new Array();
+arr[0] = "hello";
+log(propertyNameList(arr).join()); // "0"</pre>
+<p>添字の値が大きいと配列は自動的に拡張される, ように見える.</p>
+<pre>arr[10] = "hello";</pre>
+<p>しかし配列の実体は hash なので, 単に hash の要素が一つ増えるだけ.</p>
+<pre>log(propertyNameList(arr).join()); // "0,10"</pre>
+<p>とはいえ配列らしく振る舞うために length は適当な値に更新される.</p>
+<pre>log(arr.length); // 11</pre>
+<p>ここからが妙なところ. まず末尾の要素を削除.</p>
+<pre>arr.shift();
+log(arr.length); // 10</pre>
+<p>正しい気もする. ただここで思いだして欲しいのは, 配列が単なる hash だということ. 
+この配列は実際のところ arr[0] の要素しか持っていない. それなのに 
+arr.length は 10. ちょっときもちわるい...</p>
+<p>続けて, 実体が hash なら, といたずらをしてみたら不思議なことがおこる.</p>
+<pre>arr.baz = "Baz";
+log(propertyNameList(arr).join()); // "0,1,2,3,4,5,6,7,8,9,baz"
+log(arr.length); // 10</pre>
+<p>これは一体どう説明すれば...と思ったものの, firefox と ie では挙動が違った. 
+標準仕様というわけではないらしい. </p>
+<p>添字の型変換にもたじろぐ. </p>
+<pre>arr[2] = "bye";
+log(arr["2"]); // "bye"</pre>
+<p>添字が文字列になっている点に注目. 逆も可能.</p>
+<p>便利な気もする型変換だが, やはり期待通りに振る舞ってくれない.</p>
+<pre>var arr2 = new Array();
+arr2[1.5] = "hoge";
+log(arr2.length); // 0
+log(propertyNameList(arr2)); // "1.5"</pre>
+<p>整数に丸めてくれればいいのに...</p>
+<p>つづけて Number オブジェトを添字にしてみる. </p>
+<pre>var arr3 = new Array();
+arr3[(new Number(2.5))] = "hoge";
+log(arr3.length); // 0
+log(propertyNameList(arr3)); // "2.5"
+arr3[(new Number(5))] = "fuga";
+log(arr3.length); // 6
+log(propertyNameList(arr3)); // "2.5,5"</pre>
+<p>値が整数なら配列の要素として扱われ, 
+端数があると "hash の" 要素にはなっても "配列の" 要素にはならない. 
+浮動小数点の誤差で困りそう. </p>
+<h4>中途半端な Prototype</h4>
+<p>JavaScript のオブジェクトは Prototype という隠しプロパティを持っている. 
+これはプロトタイプ指向の継承を実現するためにある, というようなことが
+仕様書には書いてあるのだが, それが何なのか私はよく知らなかった. </p>
+<p>そこでもう一つのプロトタイプ指向言語である 
+<a href="http://research.sun.com/self/language.html">Self</a> 
+のチュートリアルや記事を眺めてみた. 
+Self と JavaScript のオブジェクトモデルはよく似ている. 
+どちらも hash みたいなオブジェクトとメッセージの移譲連鎖がある. 
+Self のオブジェクトには "parent" というスロット(プロパティ)があり, 
+オブジェクト自身に存在しないスロット名の検索は parent に移譲される. 
+parent スロットは JavaScript の Prototype 隠しプロパティに相当する. </p>
+<p>JavaScript のイディオムでは 
+Prototype プロパティをクラスオブジェクト(関数ポインタテーブル)のように使う. 
+しかし Self では親クラスで定義されたプロパティを保持するのに使っている. 
+メソッドを定義するには traits(mixin) という別の仕組みを使う. </p>
+<p>JavaScript には traits がない. 
+これはプロトタイプ指向の継承をするには道具が足りていないとも言える. 
+そこで<a href="http://www.sitepoint.com/blogs/2006/01/17/javascript-inheritance/">無理矢理に継承を実現</a>するのは, 
+C 言語でオブジェクト指向を実現するのに似ている. 
+できなくはないけれどあまりやりたくない. 
+この気分は gtk+ を使ったことのある人ならわかってもらえると思う. </p>
+<p>(こんな話をしたら, そもそもオブジェクト指向では実装の継承はよくないものであって
+無理に継承をする必要はない. 移譲を使うのが望ましいのだと
+件の Web アプリプログラマに諭された. そうかも.)</p>
+<p>ちなみに Waldemar はおとなしく class を導入しろという. 
+それはそれでつまらない気もする...</p>
+<h4>with 文</h4>
+<pre>var obj = new Object();
+obj.foo = "Foo";
+with(obj) {
+  log(foo); // "Foo"
+}</pre>
+<p>使い道がよくわからない...</p>
+<p>ホスト環境で with 文をフックできるなら, 
+Java の synchronized や C# の using のように
+排他制御などスコープ単位の操作を実現できるのかもしれない. 
+ただ今のところそういう機能はなさそう.</p>
+<p>何かいい使い道を知っていたら教えてください. </p>
+<h4>Function オブジェクトの引数</h4>
+<p>Function オブジェクトのコンストラクタは自身が定義する関数の引数名を指定する. 
+そのアイデアに不満はないけれど...</p>
+<pre>var baz = new Function("a,b", "c", "log('baz(' + [a,b,c].join() + ')');");
+log(baz.length); // 3
+baz(1,2,3); // "baz(1,2,3)"</pre>
+<p>これはエラーでいいと思う. </p>
+<h4>ラベル文</h4>
+<p>知らなかった機能の中で唯一気に入った機能がラベル文. </p>
+<pre>  var n = 10;
+label_n:
+  while (0 &lt; n) {
+    var m = 10;
+label_m:
+    while (0 &lt; m) {
+      log("m:" + m); // 一度だけ "m: 10" とプリント
+      m--;
+      break label_n;
+    }
+    log("n:" + n); // プリントされない
+    n--;
+  }</pre>
+<p>一種の goto として使える. 外側にしかジャンプしないから goto より安全だ. 
+JavaScript は catch が例外の型を指定できないため throw が使いづらい.
+局所的なエラーからの脱出はラベルと break を使う方がいいかもしれない. </p>
+<h3>Writing Solid JavaScript (が欲しい)</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/WRITING-SOLID-Microsoft-Programming-Series/dp/1556155514%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1556155514' class='bookcover'><img data:asin='1556155514 ' class='asin image-right' src='http://ecx.images-amazon.com/images/I/5148TK6JCVL.jpg'></span></a></span></p>
+<p>こうして見ると一見シンプルな JavaScript にもけっこう落とし穴がある. 
+エラーにして欲しいところで何なく動いてしまったり, 
+ふだんは正しくうごくけど時々変になったり, 
+そういう機能がいくつかある. あまり安全な言語ではない. 
+モジュール化のための仕組みもないから, 大規模コードが破綻する危険も大きい. 
+慎重に使わないとあぶない言語だと思う. </p>
+<p>それでもウェブブラウザではもっぱら JavaScript しか動かない以上
+避けて通るのは難しい. それに, 忌み嫌うほどひどい言語といわけでもない. </p>
+<p>だから, 派手な UI を作るのも楽しいけれど, 
+それとは別に JavaScript の持つプログラミング言語としての難しさを明らかにして, 
+堅牢で生産性の高い JavaScript プログラミングのためのプラクティスを
+作る人がいていいと思う. 勢いだけで使うには落とし穴が多過ぎる. 
+私はまだ堅牢な JavaScript コードを想像できない. 
+JavaScript 版の "Writing Solid Code" や "Effective C++" が欲しい. 
+そいういう本があったら紹介してください. </p>
+<h3>ちぐはぐさとウェブらしさ</h3>
+<p>個人的には, JavaScript は変な言語だと思う. 
+仕様書を読んでいるとなんというかちぐはぐなかんじ. 
+勢いで実装してしまって, 標準化するというので
+あたふたとフォーマルな体裁を整えたのではなかろうか. 
+ただ, 言語は変でもウェブページに動的な性格を与えるという
+アイデアには革新性があったのは明らかだ.
+Netscape の全盛期に開発された技術の風格がある. </p>
+<p>ここからはまったくの想像なのだけれど, 
+JavaScript を作った当時, 
+開発者は一刻も早くそれを製品(ブラウザ)に搭載するよう迫られていたのだと思う. 
+ベンチャー企業は絶え間無い技術革新で顧客や投資家を繋ぎとめる必要があるからだ. </p>
+<p>そうした圧力の下で言語処理系を洗練させるのが難しいのは想像がつく. 
+とりあえず動くところまで辿りつくのが最優先. 
+デモの翌月にはもうリリースで, 
+その後も波のように打ち寄せる機能追加と不具合修正の嵐. 
+処理系本体の修正もままならない. 
+そのうえ上司やマーケティングの人々は, 文法エラーを許せ, 
+このサイトの(おかしな)コードを動くようにしろと無茶を迫ってくる. 
+そうして "とりあえず動く" コードは "無茶な要求を乗り切る" ための
+ハックを重ね, 現在の JavaScript 辿りついた...のだとしたら, 
+この妙な仕様は不可避なものなのかもしれない. 
+そう思うと少しは共感もめばえてくる. </p>
+<p>結局<a href="http://www.dreamsongs.com/WorseIsBetter.html">動くものが正しい</a>
+のだから, 市場の判断を無視してケチをつけても仕方ない. 
+むしろこのでっちあげハックなかんじも含めて JavaScript を楽しむ方が
+今時の若者っぽくてよさそうな気もする. ぼちぼち使っていきたい. 
+(という発言が既に年寄りじみてるけど...)</p>
+<h4>追記</h4>
+<p>よく見ると Shibuya.js からの確認メールは届いてました. よかった.</p>

@@ -1,0 +1,247 @@
+---
+title: "Martin Fowler は(多分)やっていないこと"
+date: 2009-01-30
+---
+<h3>Martin Fowler は(多分)やっていないこと</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/ThoughtWorks%E3%82%A2%E3%83%B3%E3%82%BD%E3%83%AD%E3%82%B8%E3%83%BC-%E2%80%95%E3%82%A2%E3%82%B8%E3%83%A3%E3%82%A4%E3%83%AB%E3%81%A8%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E6%8C%87%E5%90%91%E3%81%AB%E3%82%88%E3%82%8B%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A7%E3%82%A2%E3%82%A4%E3%83%8E%E3%83%99%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3-ThoughtWorks-Inc/dp/487311389X%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D487311389X' class='bookcover'><img data:asin='487311389X' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51FOBZPjz-L.jpg'></span></a></span></p>
+<p><a data:asin='487311389X' href='http://www.amazon.co.jp/ThoughtWorks%E3%82%A2%E3%83%B3%E3%82%BD%E3%83%AD%E3%82%B8%E3%83%BC-%E2%80%95%E3%82%A2%E3%82%B8%E3%83%A3%E3%82%A4%E3%83%AB%E3%81%A8%E3%82%AA%E3%83%96%E3%82%B8%E3%82%A7%E3%82%AF%E3%83%88%E6%8C%87%E5%90%91%E3%81%AB%E3%82%88%E3%82%8B%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A7%E3%82%A2%E3%82%A4%E3%83%8E%E3%83%99%E3%83%BC%E3%82%B7%E3%83%A7%E3%83%B3-ThoughtWorks-Inc/dp/487311389X%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D487311389X'>ThoughtWorks アンソロジー</a> を読んでいたら 
+Ruby を使った DSL の話が載っており, 
+仕事でうっかり Ruby DSL を作ってしまった私は興味深く読んだ. 
+特段目新しい話じゃないものの, 
+(DSL と言えば聞こえはいいけれど要は設定ファイルですからね.) 
+オレオレ DSL を作る際には "Martin Fowler もやっている" と言えば
+説得力もあるってもんだろう. </p>
+<p>説得力はさておき, Martin Fowler は私の DSL が抱える問題に答えてくれなかった. 
+最近の私は Ruby DSL の文書化に困っている. 
+その DSL/設定ファイル はもともと余興にちまちま作っていたもので, 
+思ったより出来がよくなったため実プロジェクトで使いはじめたところだった. 
+ちゃんと使ってみると案の定ぼろぼろと問題がでて, 後始末のために残業が続いている. 
+まあドッグフードの自業自得は仕方ない. (隣の同僚はとばっちりも著しいがドンマイとする.)</p>
+<p>文書化は山ほどみつかった問題の一つだ. 
+DSL 言語自体の文書化ではなく, DSL で書かれた設定内容の文書化を求められている. 
+DSL を持ち込んだ動機の一つは簡潔な表記と高可読性だから, 
+もともと他形式での文書化は乗り気でない. 
+DSL なんて趣味的なものを表立って使う予定もなかった. 
+それを一見した出来の良さに気を良くして実プロジェクトに投入したところ, 
+やんごとなき書式での文書化を求められて立ち往生している. </p>
+<h4>Ruby DSL 文書化問題の例</h4>
+<p>Martin Fowler の記事にあるように, 
+問題の DSL もメソッド呼び出しとブロックを中心に記述されている. 
+仮に JCFL(神保町カレー愛好言語) を考えよう. </p>
+<pre>
+shop("ethiopia") do
+  type(:indian)
+  since(1988)
+  address(:city =&gt; "Tokyo", :address=&gt; "chiyoda-ku, kanda....")
+  menu() do
+    curry(:beef) { price(880).limit(70) }
+    curry(:chicken) { price(880).limit(70) }
+    curry(:vegetable) { price(930).limit(70).may_with(:beef, :chicken) }
+  end
+end</pre>
+<p>多くのプログラミング言語と同じく, JCFL もコメントとして文書を埋め込んでいる. </p>
+<pre>
+
+shop("ethiopia") do
+  # 便宜的なもので, 典型的なインド風とは異なる
+  type(:indian)
+  # 昭和 63 年
+  since(1988)
+  # @param city 東京
+  # @param address 千代田区神田小川町...
+  address(:city =&gt; "Tokyo", :address=&gt; "chiyoda-ku, kanda....")
+  menu() do
+    # @param limit 4 倍くらいがせいぜい
+    # @param price まわりの店も似たようなもの.
+    curry(:beef) { price(880).limit(70) }
+    curry(:chicken) { price(880).limit(70) }
+    # @param may_with 肉が欲しいら :vegetable ではなく :beef を頼むと良い.
+    curry(:vegetable) { price(930).limit(70).may_with(:beef, :chicken) }
+  end
+end</pre>
+<p>rdoc 風じゃなくて javadoc 風なあたりに ruby 愛の低さが露呈している. </p>
+<h4>ruby_parser</h4>
+<p>さて, このコメント部分と言語本体から, どうやってやんごとなきオフィス文書を生成しよう? 
+Ruby DSL は自分でパーサを持たないから, 
+コメント部分を解釈できない. 
+Ruby のクラスやメソッド定義を注釈しているわけではないから rdoc も使えない. 
+仕方ないからコメントではなくヒアドキュメントを使うか, 正規表現と手動でがんばるか...
+などと悩みながらぐぐっていたら, 
+<a href="http://parsetree.rubyforge.org/">ruby_parser</a> というライブラリがあった. 
+pure ruby の ruby パーサで, 構文木を作ってくれるらしい. 
+試してみよう.</p>
+<pre>
+#! ruby -rubygems
+require 'ruby_parser'
+
+TEXT = &lt;&lt;EOF
+# 縮めました.
+shop("ethiopia") do
+  # 便宜的なもので, 典型的なインド風とは異なる
+  type(:indian)
+  # 昭和 63 年
+  menu() do
+    # @param limit 4 倍くらいがせいぜい
+    # @param price まわりの店も似たようなもの.
+    curry(:beef) { price(880).limit(70) }
+  end
+end
+EOF
+
+p RubyParser.new.parse(TEXT)</pre>
+<p>実行するとこうなる:</p>
+<pre>omo:~/work/jcfl$ ruby hello.rb
+s(:iter, s(:call, nil, :shop, s(:arglist, s(:str, "ethiopia"))), nil,
+  s(:block, s(:call, nil, :type, s(:arglist, s(:lit, :indian))),
+    s(:iter, s(:call, nil, :menu, s(:arglist)), nil,
+      s(:iter, s(:call, nil, :curry, s(:arglist, s(:lit, :beef))), nil,
+         s(:call, s(:call, nil, :price,
+           s(:arglist, s(:lit, 880))), :limit, s(:arglist, s(:lit, 70)))))))</pre>
+<p>構文木がとれた! (適当に整形してある.) でもコメントは失われている...</p>
+<pre>
+...
+exp = RubyParser.new.parse(TEXT)
+p exp.comments
+p exp[1].comments</pre>
+<p>実行しても...:</p>
+<pre>omo:~/work/jcfl$ ruby hello.rb
+nil
+nil</pre>
+<p>class や def のコメントはとれる. </p>
+<pre>
+...
+TEXT2 = &lt;&lt;EOF
+#=begin
+# JCFL object model
+#=end
+class Curry
+  #=begin
+  # チーズが恋しい
+  #=end
+  def bondi(); end
+end
+EOF
+
+exp = RubyParser.new.parse(TEXT2)
+p exp.comments</pre>
+<p>実行:</p>
+<pre>omo:~/work/jcfl$ ruby hello.rb
+"#=begin\n# JCFL object model\n#=end\n"</pre>
+<p>字句解析オブジェクトはコメントを保持しているようなので, 
+パーサを適当にフックしてメソッド呼び出しのコメントを横取りできないか. 
+こんなかんじ:</p>
+<pre>
+class CallCommentedParser &lt; RubyParser
+  def new_call(recv, meth, args = nil)
+    c = lexer.comments
+    c.empty? ? super : super &lt;&lt; s(:comment, c)
+  end
+end
+
+p CallCommentedParser.new.parse(TEXT)</pre>
+<p>実行:</p>
+<pre>omo@contentiss:~/work/jcfl$ ruby hello.rb
+s(:iter, s(:call, nil, :shop, s(:arglist,
+  s(:str, "ethiopia")), s(:comment, "# \347\270....\n")), nil,
+    s(:block, s(:call, nil, :type, s(:arglist, s(:lit, :indian)),
+      s(:comment, "# \344\276\277\...\n"), ...)))</pre>
+<p>できた! エスケープが邪魔だけど..</p>
+<pre>
+e = CallCommentedParser.new.parse(TEXT)
+print e[1][4][1]</pre>
+<pre>nilomo@contentiss:~/work/jcfl$ ruby hello.rb
+# 縮めました.</pre>
+<p>メソッド呼び出しに紐づくコメントを取得できた. </p>
+<h4>AST-XML</h4>
+<p>一番面倒そうだった部分は ruby_parser がなんとかしてくれた. 
+けれど ruby_parser の出力は sexp.rb という Ruby 版 S 式になっている. 
+(実際は配列の入れ子.) これは扱いにくい. 
+Twitter で愚痴っていたら, 
+scheme には SXPath があるから gauche を呼ぶといいんじゃないかと教わった. 
+あいにくの Scheme 力不足ににつきそれは難しいけれど, XPath を使うアイデアはよさそうだ. 
+この S 式(?) を XML に直そう. </p>
+<pre>
+class XMLTreeBuilder
+  attr_reader :doc
+
+  def initialize() @doc = REXML::Document.new("&lt;tree /&gt;"); end
+
+  def build(exp)
+    traverse(doc.root, exp)
+    doc
+  end
+
+  def traverse(parent, exp)
+    with_element(parent, exp[0].to_s) do |elem|
+      exp[1..-1].each_with_index do |t, i|
+        case t
+        when Sexp
+          traverse(elem, t)
+        when Symbol, Fixnum
+          elem.add_attribute("at" + i.to_s, t.to_s)
+        when String
+          elem.add(REXML::CData.new(t))
+        when nil
+          elem.add_element("nil")
+        else
+          raise "Unexpected term:#{t}"
+        end
+      end
+    end
+  end
+
+  def with_element(parent, name, &amp;block)
+    parent.add(REXML::Element.new(name))
+    block.call(parent.children.last)
+  end
+end
+
+exp = CallCommentedParser.new.parse(TEXT)
+doc = XMLTreeBuilder.new.build(exp)
+doc.write(STDOUT, 1)</pre>
+<p>やる気のないコードだけれど ruby_parser の AST 相手ならこんなもんでよかろう. </p>
+<pre>nilomo@contentiss:~/work/jcfl$ ruby hello.rb
+&lt;tree&gt;
+ &lt;iter&gt;
+  ...
+  &lt;nil/&gt;
+  &lt;block&gt;
+   ...
+   &lt;iter&gt;
+    ...
+    &lt;iter&gt;
+     &lt;call at1='curry'&gt;
+      &lt;nil/&gt;
+      &lt;arglist&gt;
+       &lt;lit at0='beef'/&gt;
+      &lt;/arglist&gt;
+      &lt;comment&gt;
+       &lt;![CDATA[# @param limit 4 倍くらいがせいぜい
+# @param price まわりの店も似たようなもの.
+]]&gt;
+      &lt;/comment&gt;
+     &lt;/call&gt;
+     ...
+    &lt;/iter&gt;
+   &lt;/iter&gt;
+  &lt;/block&gt;
+ &lt;/iter&gt;
+&lt;/tree&gt;</pre>
+<p>XML になった! これで XPath が使える. めでたい. </p>
+<h4>やんごとなきまであとすこし</h4>
+<p>コメントつき構文木が XML になれば, それを DSL や文書の要件に応じて
+やんごと形式に変換するのは普段のスクリプティングの範疇に収まる. 続きはそのうち進めよう. </p>
+<p>ただ構文木をトラバースしだすと, 
+オブジェクトモデルさえ同じならミタメをあれこれ試せる Ruby DSL の利点は
+いくらか失われてしまう. 
+AST-XML からのコンバータは木のレイアウトに依存せざるを得ないからだ. 
+だからコンバータを書くときはこの AST だけを頼らず実際のオブジェクトモデルも構築し, 
+そのモデルにコメントをマージするようなスタイルが良い気がする. 
+それなら AST を使うのはコメントとモデルを関連づける部分に限られるから, 
+なんとか保守していけるだろう. </p>
+<p>そのほか ruby (ruby_parser) はツリーづくりで色々とトリッキーなことをしているらしく, 
+DSL 側の書き方によってはパーサのコールバック順序が期待したもの
+(ツリートラバースの順序)にならないことがある. 
+そのへんのやりくりは少し面倒だけれど, 
+場当たり的な対応も内部 DSL の面白さのうち, ということにしておこう...</p>
+<p>そんなわけで, Ruby DSL の文書化には ruby_parser が使えそうだよという話でした. </p>

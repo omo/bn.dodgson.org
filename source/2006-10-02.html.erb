@@ -1,0 +1,103 @@
+---
+title: "RDB の FTS 拡張"
+date: 2006-10-02
+---
+<h3>近況</h3>
+<p>sqlite を眺めていたとき私がもともと何をしていたかというと, 
+RDB への全文検索(Fulltext Search: FTS)をつなぎ方を探していた. </p>
+<p>flino で使った HSQL は FTS に対応していない. 
+以前 Lucene あたりを繋げないものかとコードを覗いたけれど, 敷居は高そうだった. 
+(Java のくせに sqlite より modular でない気がする.) 
+よく見ると HSQL は BLOB にも対応していない. 
+結局ファイルと Lucene をアプリケーション側で管理している. いまいち. 
+で, 今回はそのリベンジを目論んでいたのだった. 
+(結局 sqlite をいじっているうちにストレス解消は完了.) </p>
+<h3>RDB の FTS 拡張</h3>
+<p>世の中を眺めてみると, RDB に FTS を繋ごうとする試みは多い. 
+MySQL や PostgreSQL は FTS に対応していると書いたけれど, 
+標準機能とは別に FTS ライブラリを繋ごうとする人達がいる. </p>
+<p>ざっとぐぐった結果:</p>
+<ul>
+<li><a href="http://pgestraier.projects.postgresql.org/">pgestraier</a> : PostgreSQL x HE</li>
+<li><a href="http://pgrast.projects.postgresql.org/">pg_rast</a> : PostgreSQL x Rast</li>
+<li><a href="http://dev.razil.jp/project/pg_senna/">pg_senna</a> : PostgreSQL x Senna</li>
+<li><a href="http://www.sai.msu.su/~megera/postgres/gist/tsearch/V2/">TSearch2</a> : PostgreSQL x GiST</li>
+<li><a href="http://poocs.net/2006/4/6/introducing-acts-as-searchable">act_as_searchable</a> : ActiveRecord x HE</li>
+<li><a href="http://qwik.jp/senna/mysql_binding.html">senna MySQL バインディング</a> : MySQL x senna</li>
+<li><a href="http://www.ibphoenix.com/main.nfs?a=ibphoenix&amp;page=ibp_dotlucene">DotLuceneFbDirectory</a> : Firebird x DotLucene</li>
+</ul>
+<p>GiST はアルゴリズムの名前(テキスト以外も扱える汎用インデクス)だからちょっと違うかな...
+まあいいや. とにかくいっぱいある. 教材にはこと欠かないけどしんどいなあ...
+もっとぬるい資料はないかと探していてみつけたのが Java 製 RDBMS である Derby の Wiki.
+(see <a href="http://wiki.apache.org/db-derby/LuceneIntegration">LuceneIntegration</a>.) 
+Derby は FTS をサポートしておらず, がんばって Lucene を繋ごうぜという提案がある. 
+このページでは統合方法を 3 段階に分類している. とりあえずこの切り口に倣ってみよう. </p>
+<h4>Loose Coupling : インデクスも文書本体も DB の外側へ</h4>
+<p>要するにアプリケーションで頑張れ, ということ. 
+RDB とアプリケーションの間に層があれば, そこで吸収してもいい. 
+rails の act_as_searchable はこのパターン. 
+ActiveRecord の中でこそっと HyperEtraier を使っている. 
+<a href="http://trac.poocs.net/plugins/browser/trunk/acts_as_searchable/lib/acts_as_searchable.rb">コード</a>をみると after_xxx というフック一式をつかっているのがわかる. 
+Rails は色々できるねえ...</p>
+<p>この疎結合路線は, RDB に手を入れずにすむ利点がある. 
+JDBC や ODBC のように RDB へのインターフェイスが共通化されていれば 
+RDB の実装に依存しない. 
+かわりに RDB を活用する操作はできないのが欠点. たとえば join は使えない. 
+act_as_searchable も全文検索には fulltext_search() という
+専用メソッドを使うことになっている. </p>
+<h4>Moderate Coupling : インデクスだけ外側へ</h4>
+<p>転置インデクスは外部の FTS ライブラリを使い, データ本体は RDB の中に入れておく路線. 
+Senna の MySQL binding はこのパターン. 
+先の Wiki によると RDB 本体のトランザクションをあてに出来るのが利点とある. </p>
+<p>ただ現実をみるとそう甘くはなくて, 
+たとえば MySQL 標準の FTS はトランザクションのない 
+MyISAM エンジンでしか利用できないらしい. 
+(最新版はどうなんだろう. 
+<a href="http://bugs.mysql.com/bug.php?id=13979">#13979</a> はオープンになってる.) 
+外部 FTS を使えば直る問題でもないけれど, 先の一般論があてにならないのも事実. </p>
+<h4>Tight Coupling : 文書本体も Index も RDB へ.</h4>
+<p>転置インデクスもテキストも RDB に入れてしまうパターン. sqlite fts1 はこれだね. 
+トランザクションが同期するため, データの更新が即時に検索に反映される利点があるという. </p>
+<p>これもちょっと怪しい. 
+<a href="http://www.sqlite.org/cvstrac/wiki?p=FullTextIndex">FTS1</a> の説明をみると, 
+高速化したかったら synchrounous フラグを off にしろと書いてある. 
+これだと即時更新というわけにもいかないだろう. 
+同期にしとけばいいじゃんという主張も考えられるけれど, 
+全文検索のためのインデクス作りが重いのは無視できない事実だろう. </p>
+<p>...</p>
+<p>個人的な印象だと, 実装に依存しない Loose Coupling とそれ以外の間に大きな断絶がある. 
+逆に Moderate と Tight のどちらを選ぶかは
+理論的なトレードオフ以前に RDBMS の実装に大きく依存する気がしている. 
+たとえば sqlite は仮想テーブルがあったから Tight Coupling が簡単にできるわけだし, 
+逆に MySQL が組込みで FTS を持っていたから senna は Moderate Coupling を選べた. 
+インデクスとテーブルがべったりくっついた実装だったらインデクスだけ切り離すのは難儀だろう. 
+一方でテーブルと SQL エンジンはべったりでインデクスは付属品という
+実装もあるかもしれない (ないかな...) 
+Derby に FTS をつなぐにしても, 実はそんなに選択の余地はないんじゃないかと邪推している. 
+だから悩んでいないでささっとつないでほしいなー. </p>
+<h3>インピーダンス・ミスマッチ 場外編</h3>
+<p>以前 O'reilly Radar で "Database War Stories" という連載があった. 
+その <a href="http://radar.oreilly.com/archives/2006/05/brian_aker_of_mysql_responds.html">最終回</a> に紹介されている <a href="http://krow.net/">Brian Aker</a> (MySQL のエライ人らしい) のメッセージが印象に残っている. </p>
+<blockquote><p>Its also obvious that no one has fulltext done in a manner 
+which is really right yet. 
+...
+The technology is there, but no one has found the common language 
+that is required to make this work just yet.</p>
+</blockquote>
+<p>要するに, みんな LAMP で CRUD なアプリを作る方法はわかってきたけど, 
+そこに全文検索をのせるうまい方法って知られてないよねこまったね, という話. </p>
+<p>この意見はもっともだと思う. 
+RDB と別枠で検索対象のテキストを管理するのは面倒だし, 
+かといって RDB にくっつけるのも大変だ. 
+たとえば HE や Lucene は時々データの compation をしてやる必要がある. 
+でも可用性の高いシステムと強く結びついていたら
+いつ compaction をすればいいんだろう. あまり自明でない. </p>
+<p>また FTS は大抵独自の問合せ言語を持っている. 
+RDBMS が FTS 拡張を持つとき, その言語と SQL が混ざってしまうのはどうにもみっともない. 
+select * from entries where body match '"Star Wars" - kid AND site:www.xxx.com' and read &lt;&gt; 1 ... なんて書きたくない. </p>
+<p>最近はこれをある種のインピーダンス・ミスマッチだと考えるようになった. 
+RDB をコードから叩くのに OR マップで試行錯誤するように, 
+全文検索と RDB の間にも溝があるのだろう. 
+しばらくの間はトレードオフを探る試行錯誤が続くのだと思う. 
+まあこれは素人目の意見なので実態を反映していないかもしれない. 
+実際にウェブ・アプリケーションを作っている人達はどう考えているのだろうね. </p>

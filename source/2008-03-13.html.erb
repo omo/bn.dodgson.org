@@ -1,0 +1,132 @@
+---
+title: "Singular Value Decomposition"
+date: 2008-03-13
+---
+<h3><a href="http://en.wikipedia.org/wiki/Singular_value_decomposition">Singular Value Decomposition</a></h3>
+<p>応用:</p>
+<ul>
+<li>擬似逆行列, linear least square を解く</li>
+<li>range, rank, null space を求める : range とか null space ってなんだっけ？</li>
+<li>モデルの分離 (よくわからん.)</li>
+<li>天気予報 (よくわからん)</li>
+<li>Principal Component Analysis</li>
+<li>latent Semantic Indexing (しらね)</li>
+</ul>
+<p>証明はパス.</p>
+<ul>
+<li>幾何的な解釈 : おもろい</li>
+</ul>
+<p>計算:</p>
+<ul>
+<li>LAMPACK とか. 素朴な実装は unstable</li>
+</ul>
+<p>ほか:</p>
+<ul>
+<li>色々な省略バージョンがある</li>
+<li>高次への拡張がある</li>
+</ul>
+<p>歴史:</p>
+<ul>
+<li>百年以上前: 1874 年とか.</li>
+<li>アルゴリズムも昔: 1954, 1965</li>
+</ul>
+<p>よし. だいたいわかった気がする.</p>
+<h4>ユニタリ行列</h4>
+<ul>
+<li><a href="http://oshiete1.goo.ne.jp/qa1205869.html">http://oshiete1.goo.ne.jp/qa1205869.html</a></li>
+<li><a href="http://en.wikipedia.org/wiki/Unitary_matrix">http://en.wikipedia.org/wiki/Unitary_matrix</a></li>
+<li>内積(エルミート内積)を保つ変換</li>
+<li>量子力学とかはパス...</li>
+</ul>
+<p>しかしぐぐって日本語の教えて goo がひっかかるのはいいな. 
+自分の数学レベルがいかに低いかってことだけど, そりゃ仕方ない. </p>
+<h3><a href="http://en.wikipedia.org/wiki/Dimensionality_reduction">Dimension reduction</a></h3>
+<ul>
+<li>Feature Selection</li>
+<li>Reature Extraction</li>
+</ul>
+<p>ようわからん. PCA を先に読んだ方が良さそう.</p>
+<h3>PCA</h3>
+<ul>
+<li><a href="http://ibisforest.org/index.php?cmd=read&amp;page=%E4%B8%BB%E6%88%90%E5%88%86%E5%88%86%E6%9E%90&amp;word=%E4%B8%BB%E6%88%90%E5%88%86%E5%88%86%E6%9E%90">bisforest</a> あっさりすぎ.</li>
+<li>Wikipedia は紛争中なのでパス: <a href="http://en.wikipedia.org/wiki/Principal_components_analysis">http://en.wikipedia.org/wiki/Principal_components_analysis</a></li>
+<li>解説記事リンク from wikipedia<ul>
+<li><a href="http://www.cs.cmu.edu/~elaw/papers/pca.pdf">http://www.cs.cmu.edu/~elaw/papers/pca.pdf</a></li>
+<li><a href="http://lsa.colorado.edu/papers/dp1.LSAintro.pdf">http://lsa.colorado.edu/papers/dp1.LSAintro.pdf</a></li>
+</ul></li>
+<li>LSA が類似の概念. <a href="http://en.wikipedia.org/wiki/Latent_semantic_analysis">http://en.wikipedia.org/wiki/Latent_semantic_analysis</a></li>
+<li>Bishop の本では下巻の範囲だった...</li>
+</ul>
+<p>とりあえず Wikipedia の LSA を読んで, わからんかったら PDF をあたろう....</p>
+<p>とりあえず(教師なし)次元縮約の一種ではあるらしい. 
+まず教師がいるのか...</p>
+<p>しごとしよ...</p>
+<h3>[Book] <a href="http://ibisforest.org/index.php?Book%2FData%20Mining%20-%20Concepts%20and%20Techniques">Data Mining: Concepts and Techniques@朱鷺の杜Wiki</a></h3>
+<p>Database 寄りかー. やっぱしいずれは読まんとね. 
+しかし統計寄り, DB 寄り, 機械学習寄りと派閥があるのか. 
+当然 DB 寄りが love だよな.</p>
+<ul>
+<li><a href="http://www-sal.cs.uiuc.edu/~hanj/bk2/">http://www-sal.cs.uiuc.edu/~hanj/bk2/</a></li>
+</ul>
+<p>目次とか.</p>
+<h3><a href="http://www.daniel-lemire.com/fr/abstracts/SDM2005.html">Slope-One</a></h3>
+<p>読み中. 論文は式をノートに書き写しながら読んだ方がいいのではないか, 
+と思いたち, ためしてる. 写経だね. しばらくやってみる. </p>
+<h4>Slope-One</h4>
+<ul>
+<li>Update が速い. user vector (evaluation vector) を参照しないから.</li>
+<li>実装が simple</li>
+</ul>
+<ul>
+<li><a href="http://indiscover.net/">indiscover.net</a> で使われている(た)</li>
+</ul>
+<ul>
+<li>weighed slope-one というのもある. ちょっといい.</li>
+</ul>
+<h4>Bi-polar Slope-One</h4>
+<p>deviation を求めるとき, アイテム i,j "両方" が好きか, "両方" が嫌いな人のみを使う. 
+どうしてこれが良いのか？ 書いてない.</p>
+<p>結果は pearson よりちょっと悪いくらい. Bi-polar なら同じくらい. </p>
+<h3>LSA</h3>
+<ul>
+<li>term-document の ocurrence matrix を term-concept-document の関連に変換する.</li>
+<li>occurent matrix の low-rank approx をつくる<ul>
+<li>でかすぎると計算機で扱えない</li>
+<li>ノイズ除去になる</li>
+<li>元は sparse すぎる</li>
+</ul></li>
+</ul>
+<ul>
+<li>synonim: 同義語</li>
+<li>polysemy: 多義性</li>
+</ul>
+<ul>
+<li>SVD キターー!</li>
+<li>SVD の実装についても. (何故か SVD の項より詳しい...)<ul>
+<li>近年インクリメタルな実装があらわれた. メモリ食わなくてよいらしい.そのうち読んだ方がいいかも.</li>
+</ul></li>
+</ul>
+<p>制限</p>
+<ul>
+<li>解釈がむずかしい.</li>
+<li>LSA の確率モデルのはなし. よくわからん.<ul>
+<li>ただ問題を解決するのに pLSA (probabilistic LSA)というのを使えと書いてる. むずかしそうなので必要になるまでパス.</li>
+</ul></li>
+</ul>
+<p>よむ？</p>
+<ul>
+<li>DONE: <a href="http://en.wikipedia.org/wiki/Vectorial_semantics">Vectorial semantics</a> : ざっと読んだ. tf-idf みたいな doc-term model のこと.</li>
+<li><a href="http://en.wikipedia.org/wiki/Latent_semantic_mapping">Latent Semantic mapping</a></li>
+<li><a href="http://en.wikipedia.org/wiki/Spamdexing">Spamdexing</a></li>
+</ul>
+<h3>行列</h3>
+<p>正方行列じゃない行列って慣れない...
+なんかこう, 行列の次数に関して根本的に間違った視覚的印象を
+自分の中に持っちゃってるなー. これがトラブルのひとつだな. </p>
+<p>今日はこう, 線形代数の基本的なところの理解が進んだなあ...
+右からかけるとき...横長の行列は, "圧縮して" 出してくる.
+縦長の行列は "薄めて" 出してくる. </p>
+<p>うおー比喩を身につけた! 線形代数レベルが上がった気がする!
+lv.1 -&gt; lv.2 みたいな水準だけど, 妙にうれしい.</p>
+<h3>ねる</h3>
+<p>明日は PCA かなー. まず wikipedia みて, clutter ぽかったらリンク先の PDF みる.</p>

@@ -1,0 +1,638 @@
+---
+title: "V8 祭りつづき"
+date: 2008-09-08
+---
+<h3>V8 祭りつづき</h3>
+<p>前回の続きです. コードは飽きないうちに読め. 
+これまでのあらすじ: プロパティアクセスを速くしたいから JIT をしようぜ. </p>
+<h4>コンパイラ概観</h4>
+<p>V8 のコンパイラは JavaScript の AST を機械語に変換する. (AST はパーサがつくる.)
+AST のツリー構造は, Node クラスのサブクラス一族で構成されている (ast.h) 
+コンパイラは関数の AST である FunctionLiteral オブジェクトをうけとって Code オブジェクトを生成する. 
+AST とコンパイラは(またしても) Visitor パターンでつながる. 
+(Visitor 好きは <a href="http://strongtalk.org/">Strongtalk</a> からの伝統らしい. 
+Strongtalk VM のコンパイラも同じようなことをしている. 20 世紀の残り香が...)</p>
+<p>AST 側は Vistor のインターフェイスを提供する:</p>
+<pre>
+//ast.h
+class Visitor BASE_EMBEDDED {
+...
+//ここで VisitXxx がバババと定義される.
+#define DEF_VISIT(type)                         \
+  virtual void Visit##type(type* node) = 0;
+  NODE_LIST(DEF_VISIT)
+#undef DEF_VISIT
+...
+};
+
+//ここで VisitXxx がバババと定義される.
+class Node: public ZoneObject {
+ public:
+  Node(): statement_pos_(kNoPosition) { }
+  virtual ~Node() { }
+  virtual void Accept(Visitor* v) = 0; // Visitor の受け口
+  ...
+};</pre>
+<p>コンパイラ側のトップレベルクラスである CodeGenerator は Visitor を実装する. </p>
+<pre>
+//codegen.h
+class CodeGenerator: public Visitor {
+  ...
+};</pre>
+<p>各アーキテクチャ毎に CodeGenerator のサブクラスがあり, 
+そのサブクラスで VisitXxx() を実装する. 以下は IA32 の If の例:</p>
+<pre>
+//codegen-ia32.cc
+...
+#define __  masm_-&gt;
+...
+void Ia32CodeGenerator::VisitIfStatement(IfStatement* node) {
+  Comment cmnt(masm_, "[ IfStatement");
+  // Generate different code depending on which
+  // parts of the if statement are present or not.
+  bool has_then_stm = node-&gt;HasThenStatement();
+  bool has_else_stm = node-&gt;HasElseStatement();
+
+  if (FLAG_debug_info) RecordStatementPosition(node);
+  Label exit;
+  if (has_then_stm &amp;&amp; has_else_stm) {
+    Label then;
+    Label else_;
+    // if (cond)
+    LoadCondition(node-&gt;condition(), CodeGenState::LOAD, &amp;then, &amp;else_, true);
+    Branch(false, &amp;else_);
+    // then
+    __ bind(&amp;then);
+    Visit(node-&gt;then_statement());
+    __ jmp(&amp;exit);
+    // else
+    __ bind(&amp;else_);
+    Visit(node-&gt;else_statement());
+
+  } else if (has_then_stm) {
+    ...
+  }
+
+  // end
+  __ bind(&amp;exit);
+}
+</pre>
+<p>冒頭のお茶目なマクロはさておき, やりたいことはわかるかんじ. </p>
+<h4>プロパティアクセス</h4>
+<p>今回の主題はプロパティアクセスなので, 
+関数定義とかホスト側からの呼び出しなんかは省略して本題に進もう. 
+AST 上では Property クラスがプロパティアクセスをあらわしている.</p>
+<pre>
+class Property: public Expression {
+ public:
+  Property(Expression* obj, Expression* key, int pos) // pos は先頭からの文字数(行数?)
+      : obj_(obj), key_(key), pos_(pos) { }
+  ...
+};</pre>
+<p>Visit の実装:</p>
+<pre>
+void Ia32CodeGenerator::VisitProperty(Property* node) {
+  Comment cmnt(masm_, "[ Property");
+
+  if (is_referenced()) { // 大抵はこちらに入る.
+    __ RecordPosition(node-&gt;position()); // 今は無視してね.
+    AccessReferenceProperty(node-&gt;key(), access()); // ここに進む
+  } else { // こっちに来ても, 最終的には上のパスに入る.
+    ASSERT(access() != CodeGenState::STORE);
+    Reference property(this, node);
+    __ RecordPosition(node-&gt;position());
+    GetValue(&amp;property);
+  }
+}</pre>
+<p>ようやく本題:</p>
+<pre>
+void Ia32CodeGenerator::AccessReferenceProperty(
+    Expression* key,
+    CodeGenState::AccessType access) {
+  Reference::Type type = ref()-&gt;type();
+  ...
+  // load か store か (=右辺か左辺か)
+  bool is_load = (access == CodeGenState::LOAD ||
+                  access == CodeGenState::LOAD_TYPEOF_EXPR);
+
+  if (type == Reference::NAMED) { // foo.bar というタイプのアクセス.
+    // Compute the name of the property.
+    Literal* literal = key-&gt;AsLiteral();
+    Handle&lt;String&gt; name(String::cast(*literal-&gt;handle())); // "bar" という文字列(シンボル).
+
+    // Call the appropriate IC code.
+    if (is_load) {
+      // 読み出しのためのランタイム LoadIC_Initialize (?) を呼び出すコード片を取得する.
+      // Code はコードをあらわすオブジェクトで, 関数として呼び出せる.
+      Handle&lt;Code&gt; ic(Builtins::builtin(Builtins::LoadIC_Initialize));
+      Variable* var = ref()-&gt;expression()-&gt;AsVariableProxy()-&gt;AsVariable(); // 変数 (foo) の取得
+      // Setup the name register.
+      __ Set(ecx, Immediate(name)); // プロパティ名 (bar) を引数に詰み...
+      if (var != NULL) {
+        ASSERT(var-&gt;is_global());
+        // 取得したコード片を呼び出す.
+        // receiver は既にスタックに積んであることを期待している.
+        __ call(ic, code_target_context);
+      } else {
+        __ call(ic, code_target); // 上とほぼ同じ. (relocation のモードが違うだけ.)
+      }
+    } else {
+      // 値を store するケース. load の逆になる. 今回は省略.
+    }
+  } else { // foo[bar] というタイプのアクセス. 今回は省略.
+    // Access keyed property.
+    ....
+  }
+  __ push(eax);  // IC call leaves result in eax, push it out
+}</pre>
+<pre>
+// assembler-ia32.cc
+void Assembler::call(Handle&lt;Code&gt; code,  RelocMode rmode) {
+  EnsureSpace ensure_space(this);
+  last_pc_ = pc_;
+  ASSERT(is_code_target(rmode));
+  EMIT(0xE8);
+  emit(reinterpret_cast&lt;intptr_t&gt;(code.location()), rmode);
+}
+</pre>
+<p>call() は call 命令を書き出しているだけ. 
+要するに(receiver がスタックにいること期待しつつ)プロパティのキーを積み, 何かの関数を呼び出している. 
+Builtins::builtin(Builtins::LoadIC_Initialize) で戻るコードの中身が肝のようだ. </p>
+<p>Builttins::builttin() 関数はあらかじめ用意された Code オブジェクトを返している. </p>
+<pre> 
+ // builtins.h
+ static Code* builtin(Name name) {
+   // Code::cast cannot be used here since we access builtins
+   // during the marking phase of mark sweep. See IC::Clear.
+   return reinterpret_cast&lt;Code*&gt;(builtins_[name]);
+ }</pre>
+<p>この Code オブジェクトは LoadIC::GenerateInitialize() 関数がつくる. </p>
+<pre>
+// ic.cc
+void LoadIC::GenerateInitialize(MacroAssembler* masm) {
+  Generate(masm, ExternalReference(IC_Utility(kLoadIC_Miss)));
+}</pre>
+<p>C++ のくせに python/scheme ばりの高階関数ワールドになってきた. 
+ここでは LoadIC::Miss() 関数をあわらす定数を引数に LoadIC::Generate() を呼び出す. 
+ここでようやく何かしらのコードが生成される: </p>
+<pre>
+void LoadIC::Generate(MacroAssembler* masm, const ExternalReference&amp; f) {
+  // ----------- S t a t e -------------
+  //  -- ecx    : name
+  //  -- esp[0] : return address
+  //  -- esp[4] : receiver
+  // -----------------------------------
+
+  __ mov(eax, Operand(esp, kPointerSize));
+
+  // Move the return address below the arguments.
+  __ pop(ebx);
+  __ push(eax);
+  __ push(ecx);
+  __ push(ebx);
+
+  // Perform tail call to the entry.
+  __ TailCallRuntime(f, 2);
+}</pre>
+<p>レシーバ, プロパティ名をスタックに積み, 更に MacroAssembler::TailCallRuntime() を呼び出す. 
+ここでは引数の個数(2)を eax につめて...</p>
+<pre>
+void MacroAssembler::TailCallRuntime(const ExternalReference&amp; ext,
+                                    int num_arguments) {
+  mov(Operand(eax), Immediate(num_arguments));
+  JumpToBuiltin(ext);
+}</pre>
+<p>ようやくどこかに jmp している.... CEntryStub は先に積んだスタックやレジスタを整理して
+ebx の関数ポインタを呼び出し可能な状態にするコードを吐く. コードの中身は本題に関係ないので省略します. </p>
+<pre>
+
+void MacroAssembler::JumpToBuiltin(const ExternalReference&amp; ext) {
+  // Set the entry point and jump to the C entry runtime stub.
+  mov(Operand(ebx), Immediate(ext));
+  CEntryStub ces;
+  jmp(ces.GetCode(), code_target);
+}</pre>
+<p>jmp なあたりが tail call なんだろうか.</p>
+<p>それにしても機械語はややこしくて疲れるね... AccessReferenceProperty() のあたりから復習すると, 
+ここでは LoadIC_Miss() を呼びだすべく, 以下のようなコードを生成していた:</p>
+<ul>
+<li>まず生成中の関数とは別に, 最終的には最終的に LoadIC_Miss() を呼び出すコード(Code オブジェクト)を生成した.<ul>
+<li>生成した Code オブジェクトは, LoadIC::Generate() によって作られた.</li>
+<li>LoadIC::Generate() は実際に呼び出したい関数の ID (kLoadIC_Miss) を引数にとり, ID の示す関数 (LoadID_Miss()) を呼び出すコード片を生成した.</li>
+</ul></li>
+<li>こうして作られた "LoadIC_Miss() を呼びだす Code" を呼びだす命令を, 元の関数の中で出力した.</li>
+</ul>
+<h4>instruction cache</h4>
+<p>結局, 実行時に呼ばれるのは LoadIC_Miss() (を呼び出すコード片) ということになる.
+この LoadIC_Miss() はどんな関数だろう. </p>
+<pre>
+Object* LoadIC_Miss(Arguments args) {
+  NoHandleAllocation na;
+  ASSERT(args.length() == 2);
+  LoadIC ic;
+  IC::State state = IC::StateFrom(ic.target(), args[0]);
+  return ic.Load(state, args.at&lt;Object&gt;(0), args.at&lt;String&gt;(1));
+}</pre>
+<p>LoadIC::Load() を呼び出すだけのアダプタだった. LoadIC::Generate() が生成するコードは, 
+呼び出し先の関数が Argument 引数をとることを前提に, Argument を引数に渡すようなコード片をつくる. 
+この Argument に詰め込まれた引数の実体をとりだすのが LoadIC_Miss() の仕事だった. </p>
+<p>実質的な仕事(=プロパティアクセス)をする LoadIC::Load() は...:</p>
+<pre>
+// ic.cc
+Object* LoadIC::Load(State state, Handle&lt;Object&gt; object, Handle&lt;String&gt; name) {
+  ... // エラーチェック
+
+  if (FLAG_use_ic) {
+   ... // receiver が String/Array/Function だった場合の特別ケース. 今回は省略
+  }
+
+  // 添字が整数値だった場合の特別パス.
+  // (整数値をキーとしたプロパティは通常のプロパティとは別扱いされ, element フィールドに保存されている.)
+  uint32_t index;
+  if (name-&gt;AsArrayIndex(&amp;index)) return object-&gt;GetElement(index);
+
+  /*
+   * ここからが本題
+   */
+
+  // Named lookup in the object.
+  LookupResult lookup;
+  object-&gt;Lookup(*name, &amp;lookup);
+
+  // If lookup is invalid, check if we need to throw an exception.
+  if (!lookup.IsValid()) {
+    ... // エラー処理
+  }
+
+  // Update inline cache and stub cache.
+  if (FLAG_use_ic &amp;&amp; lookup.IsLoaded()) {
+    UpdateCaches(&amp;lookup, state, object, name);
+  }
+  ...
+  // Get the property.
+  return object-&gt;GetProperty(*object, &amp;lookup, *name, &amp;attr);
+}</pre>
+<p>あら. JIT したコードも 結局は Object::GetProperty() を呼び出している...  </p>
+<p>が, その手前で呼ばれている UpdateCaches() にトリックがある. 
+UpdateCaches() は改めてコード生成をしている: </p>
+<pre>
+void LoadIC::UpdateCaches(LookupResult* lookup,
+                          State state,
+                          Handle&lt;Object&gt; object,
+                          Handle&lt;String&gt; name) {
+  ...
+  Handle&lt;JSObject&gt; receiver = Handle&lt;JSObject&gt;::cast(object);
+
+  // Compute the code stub for this load.
+  Object* code = NULL;
+  if (state == UNINITIALIZED) {
+    ...
+  } else {
+    // Compute monomorphic stub.
+    switch (lookup-&gt;type()) {
+      case FIELD: { // プロパティが properties 配列に保存されたオブジェクトの場合
+                    // 新ためて何かのコードを生成する
+        code = StubCache::ComputeLoadField(*name, *receiver,
+                                           lookup-&gt;holder(),
+                                           lookup-&gt;GetFieldIndex());
+        break;
+      }
+      case ...
+        ...
+      default:
+        return;
+    }
+  }
+
+  ...
+
+  // Patch the call site depending on the state of the cache.
+  if (state == UNINITIALIZED || state == PREMONOMORPHIC ||
+      state == MONOMORPHIC_PROTOTYPE_FAILURE) {
+    set_target(Code::cast(code)); // 初回はこっちに進む
+  } else if (state == MONOMORPHIC) {
+    set_target(megamorphic_stub()); // こっちに進む場合は後述.
+  }
+  ...
+}</pre>
+<p>生成したコードは, IC::set_target() (IC は LoadIC の親クラス.) でどこかにセットされている. 
+どこにセットしたかはさておき, まずどんなコードを生成しているのか見てみよう.</p>
+<pre>
+Object* StubCache::ComputeLoadField(String* name,
+                                    JSObject* receiver,
+                                    JSObject* holder,
+                                    int field_index) {
+  Code::Flags flags = Code::ComputeMonomorphicFlags(Code::LOAD_IC, FIELD);
+  Object* code = receiver-&gt;map()-&gt;FindInCodeCache(name, flags); // 既に生成されたコードがないか調べる
+  if (code-&gt;IsUndefined()) { // なければ生成
+    LoadStubCompiler compiler;
+    code = compiler.CompileLoadField(receiver, holder, field_index);
+    ...
+    Object* result = receiver-&gt;map()-&gt;UpdateCodeCache(name, Code::cast(code)); // 保存
+    ...
+  }
+  return Set(name, receiver-&gt;map(), Code::cast(code)); // 別の場所にも保存. 用途は後述. 戻り値は code.
+}</pre>
+<p>実際の生成を請け負うのは LoadStubCompiler::CompileLoadField(). 
+コードをみてもいいかげんしんどいので, 生成されるコードを疑似コードで書いてみる:</p>
+<pre>
+  if (this typeof int)
+    goto miss;
+  if (this-&gt;map != receiver-&gt;map) // "receiver" 変数はコード生成時のレシーバ. "this" は実行時のレシーバ.
+    goto miss;
+  return this-&gt;properties[index];
+miss:
+  return LoadIC_Miss(...);</pre>
+<p>コード中の "this" や "this-&gt;receiver", そして "index" 変数は, 
+コード生成時にわかっている定数である点に注目してほしい. 
+要するに, 最初の呼び出し時(=コード生成時)と同じ Map をもつオブジェクトかどうかをチェックして, 
+もしそうならオブジェクトの properties フィールドを直にロードし, 
+オフセット(配列)アクセスをして値を返す, というコードを出力する. 
+チェックに失敗したら例の(遅いパスである) LoadIC_Miss() に進む. 
+レシーバがグローバル変数の場合や, 
+プロパティがプロトタイプチェインの上流にあったものの場合, チェックはもう少し複雑なものになる. </p>
+<p>さて, めでたく配列アクセスを行うネイティブコードが生成されたけれど, 
+今は実行時, プロパティアクセスの最中で, LoadIC::Load() の中にいることを思いだしてほしい. 
+プロパティアクセスの最中にプロパティアクセスのコードを出力している. なんだそりゃ. 
+トリックは先に見過してきた IC::set_target() にある. </p>
+<pre>
+class IC {
+  ...
+  // Set the call-site target.
+  void set_target(Code* code) { SetTargetAtAddress(address(), code); }
+}
+...
+void IC::SetTargetAtAddress(Address address, Code* target) {
+  ASSERT(target-&gt;is_inline_cache_stub());
+  Assembler::set_target_address_at(address, target-&gt;instruction_start());
+}
+...
+void Assembler::set_target_address_at(Address pc, Address target) {
+  int32_t* p = reinterpret_cast&lt;int32_t*&gt;(pc);
+  *p = target - (pc + sizeof(int32_t));
+  CPU::FlushICache(p, sizeof(int32_t));
+}</pre>
+<p>IC::set_target() は, Assembler のメソッドで機械語を書き替えている. 
+set_target_address_at() の "pc" 引数(=IC::address() の戻り値)は, 
+今実行しているの関数 LoadIC_Miss() の呼出元のスタックフレームから
+読み出したプログラムカウンタの値が入っている. 
+このプログラムカウンタは, LoadIC_Miss() を呼び出す call 命令のあたりを指している. </p>
+<p>つまり, LoadIC_Miss() 関数はその内部で自分の呼出元を書き換え, 
+<em>速いバージョンのコードに差し替えている</em>というわけ. 
+この書き換えの仕組みが, V8 の instruction cache の核となっている. 
+どのへんが cache かというと, call の operand に速いバージョンのアドレスを "cache" しているからかな. 
+(命名は <a href="http://portal.acm.org/citation.cfm?id=800017.800542">Salltalk80 の実装</a> に由来しているようだ. 
+この記事の中では "inline caching" と呼んでいるけどね.) </p>
+<p>どうやってスタックフレームを読むのか, 
+プロトタイプの処理や変数をつかったプロパティアクセス (例:foo[bar]), メソッド呼び出しがどうなるのかなど, 
+細かい話は色々ある. でも色々ありすぎるので割愛させていただきます. </p>
+<h4>多態なケースへの対応</h4>
+<p>さて, ここにも気になることがある. プロパティの receiver が多態性をもっているとき; 
+つまり receiver の Map が呼出し毎にかわるとき, 素朴につくると毎回キャッシュミスがおこる. 
+コード生成が逆に速度の足をひきずってしまう. </p>
+<p>V8 の instruction cache は, そういう時もしぶとく喰いさがる. 
+UpdateCaches() の後半, 生成したコードとは別のパスがあったのを思いだそう. </p>
+<pre>
+void LoadIC::UpdateCaches(LookupResult* lookup,
+                          State state,
+                          Handle&lt;Object&gt; object,
+                          Handle&lt;String&gt; name) {
+  ....
+  if (state == UNINITIALIZED || state == PREMONOMORPHIC ||
+      state == MONOMORPHIC_PROTOTYPE_FAILURE) {
+    set_target(Code::cast(code));
+  } else if (state == MONOMORPHIC) {
+    set_target(megamorphic_stub()); // こっちのことね
+  }
+  ...
+}</pre>
+<p>この "state == MONOMORPHIC" のパスに入るのは, いま cache されているコードが
+"MONOMORPHIC" であるとき, つまり単一の型向けのコードであるときだ. 
+MONOMORPHIC なコードの実行中に UpdateCaches() にいるなら, 
+receiver の型が変化してキャッシュミスがおきている. 
+つまり今動いているのは複数の型のオブジェクトを受け付ける, 現実に多態性を持つコードだということがわかる. 
+その時, V8 は 多態をうけつけるバージョンのコードを生成する. 呼び出し元はこのコードに差し替えられる: </p>
+<p>megamorphic_stub() から呼ばれるコード生成のメソッド: </p>
+<pre>
+void LoadIC::GenerateMegamorphic(MacroAssembler* masm) {
+  // ----------- S t a t e -------------
+  //  -- ecx    : name
+  //  -- esp[0] : return address
+  //  -- esp[4] : receiver
+  // -----------------------------------
+
+  __ mov(eax, Operand(esp, kPointerSize));
+
+  // Probe the stub cache.
+  Code::Flags flags = Code::ComputeFlags(Code::LOAD_IC, MONOMORPHIC);
+  StubCache::GenerateProbe(masm, flags, eax, ecx, ebx);
+
+  // Cache miss: Jump to runtime.
+  Generate(masm, ExternalReference(IC_Utility(kLoadIC_Miss)));
+}</pre>
+<p>StubCache::GenerateProbe() で何か悪足掻きするコードを用意して, 
+そこでうまくいかなかったらまた LoadIC_Miss() に落ち着く, というコードを出力するようだ. </p>
+<p>どんな悪足掻きをするのか. 疲れたのでコードの引用はさぼるけれど, 
+StubCache::ComputeLoadField() の最後で生成したコードを保存していたのを思いだそう. 
+Map のポインタとプロパティ名をキーに Code を保存していた. 
+GenerateProbe() では, 渡ってきた receiver の Map とプロパティ名から, 
+保存しておいた Code オブジェクトを検索する. そして見つかったコードを実行している. 
+ハッシュの検索を機械語で書くなんておぞましい. ただ幸いこれはキャッシュに過ぎないから, 
+開番地だの連鎖だの面倒なことはしていない. まあ十分複雑だけどね...</p>
+<p>雰囲気を味わうためにハッシュを検索する部分だけ引用してみる. 
+引数の offset がハッシュ値(の modulo) で, これは手前で計算している. </p>
+<pre>
+static void ProbeTable(MacroAssembler* masm,
+                       Code::Flags flags,
+                       StubCache::Table table,
+                       Register name,
+                       Register offset) {
+  ExternalReference key_offset(SCTableReference::keyReference(table));
+  ExternalReference value_offset(SCTableReference::valueReference(table));
+
+  Label miss;
+
+  // Save the offset on the stack.
+  __ push(offset);
+
+  // Check that the key in the entry matches the name.
+  __ cmp(name, Operand::StaticArray(offset, times_2, key_offset));
+  __ j(not_equal, &amp;miss, not_taken);
+
+  // Get the code entry from the cache.
+  __ mov(offset, Operand::StaticArray(offset, times_2, value_offset));
+
+  // Check that the flags match what we're looking for.
+  __ mov(offset, FieldOperand(offset, Code::kFlagsOffset));
+  __ and_(offset, ~Code::kFlagsTypeMask);
+  __ cmp(offset, flags);
+  __ j(not_equal, &amp;miss);
+
+  // Restore offset and re-load code entry from cache.
+  __ pop(offset);
+  __ mov(offset, Operand::StaticArray(offset, times_2, value_offset));
+
+  // Jump to the first instruction in the code stub.
+  __ add(Operand(offset), Immediate(Code::kHeaderSize - kHeapObjectTag));
+  __ jmp(Operand(offset));
+
+  // Miss: Restore offset and fall through.
+  __ bind(&amp;miss);
+  __ pop(offset);
+}
+</pre>
+<p>えらく面倒なことをしてるんだなー程度の理解で良いのではないでしょうか. </p>
+<h4>実験</h4>
+<p>で, この instruction cache の効き目を実験する...のは, ちょっと難しい. 
+うまく VM をだましてキャッシュミスをおこすコードがすぐには思いつかない. 
+とりあえず MONOMORPHIC のケースの MEGAMORPHIC のケースを比べてみよう.</p>
+<p>MONOMORPHIC:</p>
+<pre>
+function Hello() { this.foo = 1; this.bar = 2; }
+
+var n = 0;
+var arr = [new Hello(), new Hello()];
+
+for (var i=0; i&lt;10000; i++) {
+  for (var j=0; j&lt;10000; j++) {
+    var obj = arr[(i+j)%2];
+    n += obj.foo + obj.bar;
+  }
+}
+
+print(n);</pre>
+<p>実行.</p>
+<pre>omo@contentiss:~/src/v8/trunk$ time ./shell hello.js
+300000000
+
+real    0m31.466s
+user    0m31.438s
+sys     0m0.000s</pre>
+<p>31.5 秒. </p>
+<p>MEGAMORPHIC:</p>
+<pre>
+function Hello() { this.foo = 1; this.bar = 2; }
+function Bye() { this.foo = 1; this.bar = 2; }
+
+var n = 0;
+var arr = [new Hello(), new Bye()];
+
+for (var i=0; i&lt;10000; i++) {
+  for (var j=0; j&lt;10000; j++) {
+    var obj = arr[(i+j)%2];
+    n += obj.foo + obj.bar;
+  }
+}
+print(n);</pre>
+<p>実行.</p>
+<pre>omo@contentiss:~/src/v8/trunk$ time ./shell hello.js
+300000000
+
+real    0m36.185s
+user    0m36.158s
+sys     0m0.012s</pre>
+<p>36.2 秒.</p>
+<p>このうちプロパティアクセス以外の部分でかかっている時間は...:</p>
+<pre>
+function Hello() { this.foo = 1; this.bar = 2; }
+function Bye() { this.foo = 1; this.bar = 2; }
+
+var n = 0;
+var arr = [new Hello(), new Hello()];
+
+for (var i=0; i&lt;10000; i++) {
+  for (var j=0; j&lt;10000; j++) {
+    var obj = arr[(i+j)%2];
+    n += 1;
+  }
+}</pre>
+<pre>omo@contentiss:~/src/v8/trunk$ time ./shell hello.js
+100000000
+
+real    0m28.045s
+user    0m28.034s
+sys     0m0.004s</pre>
+<p>28.0 秒.</p>
+<p>というわけで, プロパティアクセスの速度は (31.4-28.0)/(36.2-28.0) = 0.41. 
+MEGAMORPHIC のコードより MONOMORPHIC のコードの方が倍以上速いことがわかった. 
+どっちもランタイム呼び出しに比べたらカスみたいなものだろうけどね. </p>
+<p>...そのあとちょっと調べてみたら "--nouse-ic" というオプションがあった. </p>
+<p>MONOMORPHIC の例を動かしてみると:</p>
+<pre>omo@contentiss:~/src/v8/trunk$ time ./shell --nouse-ic hello.js
+300000000
+
+real    5m35.973s
+user    5m34.097s
+sys     0m1.264s</pre>
+<p>あらら...ループだけだと:</p>
+<pre>omo@contentiss:~/src/v8/trunk$ time ./shell --nouse-ic hello.js
+100000000
+
+real    2m13.345s
+user    2m13.320s
+sys     0m0.016s</pre>
+<p>なんだか色々 nouse になってしまうフラグみたいだなあ. (コード内では FLAG_use_ic が false になる.) 
+感覚的には JIT off みたいなものかもしらん. </p>
+<p>おまけ:</p>
+<pre>
+#include &lt;cstdio&gt;
+
+struct Hello {
+  int foo, bar;
+  Hello() : foo(1), bar(2) {}
+};
+
+int main() {
+  int n = 0;
+  Hello* arr[2];
+  arr[0] = new Hello();
+  arr[1] = new Hello();
+  for (int i=0; i&lt;10000; i++) {
+    for (int j=0; j&lt;10000; j++) {
+      Hello* obj = arr[(i+j)%2];
+      n += obj-&gt;foo + obj-&gt;bar;
+    }
+  }
+
+  delete arr[0], arr[1];
+  printf("%d", n);
+  return 0;
+}</pre>
+<pre>omo@contentiss:~/src/v8/trunk$ time g++ -O0 hello.cc
+
+real    0m0.129s
+user    0m0.096s
+sys     0m0.036s
+omo@contentiss:~/src/v8/trunk$ time ./a.out
+300000000
+real    0m1.000s
+user    0m0.992s
+sys     0m0.000s</pre>
+<p>他意しかありません.</p>
+<h4>まとめと所感</h4>
+<p>プロパティアクセスを題材に V8 の JIT を眺め, 
+以下のようなアイデアで instruction cache が実装されているのを確かめました. </p>
+<ul>
+<li>最初のコンパイルではランタイム呼び出しを生成.</li>
+<li>初回のプロパティアクセスで, ランタイム内から "型チェック+ 配列への直接アクセス" のコードを生成, 呼出元を書き換え.</li>
+<li>型チェックに失敗したら, スタブキャッシュを検索. あれば実行.</li>
+<li>なければランタム呼び出しへ進み, ここでまたコード生成+書き換え.</li>
+</ul>
+<p>TraceMonkey と比べてどうかというと, 動的型付けの言語に対する JIT という視点では 
+TraceMonkey の(元ネタである Tracing Tree アルゴリズム) の方が筋は良いと思う. 
+Tracing JIT も instruction cache も, 型チェックをしてから特定の型専用のコードを実行するという点では変わらない. 
+<a href="http://research.sun.com/self/papers/implementation.html">Sun の Self</a> でも, 
+似たような手法を "message splitting" と呼んで紹介していた. </p>
+<p>メソッド単位でチェックを行う instruction cache や message splitting と違い, 
+Tracing Tree はツリーのルートから葉まで, 
+一度チェックしたオブジェクトの型は保存されている. だから型チェックの回数をへらすことができる. 
+これはループなどでは特に差がでるところだと思う. ループの前にチェックできる可能性があるからね. </p>
+<p>一方で map transition は他の JS 処理系にはないアイデアなのだと思う. (ちゃんと調べてないけど.)
+逆に map transition に類する暗黙の型付けの仕組を導入すれば, SpiderMonkey など他の処理系も高速化の余地がある. </p>
+<p>V8 はこの他にも色々な工夫がある. 
+大きな目玉以外にも, よく使われる型(Array,String,...)を特別扱いしてチューニングするなど, 細々とした工夫が多い. 
+速度のために手を汚すことを厭わない気概を感じる. まあもうちょっと清潔感を持ってほしい気もするけれど. </p>
+<p>そんな V8 に刺激をうけて他の処理系が速くなれば, ユーザとしてはハッピーに違いない. 
+なにしろ Google Chrome には <a href="http://userscripts.org/scripts/show/8551">Autopagerize</a> も 
+<a href="https://addons.mozilla.org/en-US/firefox/addon/1532">delicious extension</a> もないからなあ...
+などとウェブっ子ぶったところで祭りはおしまいです. </p>

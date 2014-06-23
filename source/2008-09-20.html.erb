@@ -1,0 +1,241 @@
+---
+title: "MySQLPlus と NeverBlock"
+date: 2008-09-20
+---
+<h3>MySQLPlus と NeverBlock</h3>
+<p><a href="http://steps.dodgson.org/?date=20080818">前に Rails がマルチスレッドになっても MySQL のドライバとかがブロックしたらダメじゃないの？</a> 
+という話をちらっと書いた. やっぱりダメというのが結論らしい. 
+<a href="http://github.com/espace/mysqlplus/tree/master">MySQLplus</a> は
+そんな問題に対処する ruby の MySQL ドライバ拡張だというので眺めてみた. 
+MySQL の API がブロッキングで困るだなんて, まったく他人事には思えない. </p>
+<p>MySQL ドライバの API は基本的にマルチスレッド+ブロッキングを前提とした設計をしており, 刺さりそうな場所は多い. 
+中でも一番困りそうなのは 
+<a href="http://dev.mysql.com/doc/refman/5.1/en/mysql-query.html">mysql_query()</a> や
+<a href="http://dev.mysql.com/doc/refman/5.1/en/mysql-real-query.html">mysql_real_query()</a> だろう. 
+ばしっとクエリーを投げて結果を受けとるこれらの API は, MySQL から返事が戻ってくるまでデータを待ち続ける. 
+MySQL/Ruby もこの API を使っている. </p>
+<p>普通に考えるとお手上げに見えけど, MySQLPlus ではどう解決するのだろう. 
+<a href="http://github.com/espace/mysqlplus/tree/master/lib/mysqlplus.rb">該当個所</a> を見てみる:</p>
+<pre>
+class Mysql
+  def async_query(sql)
+    send_query(sql)
+    select [ (@sockets ||= {})[socket] ||= IO.new(socket) ], nil, nil, nil
+    get_result
+  end
+end</pre>
+<p>send_query() なんてのがあるのか。C 側を見てみると...:</p>
+<pre>
+/* send_query */
+static VALUE send_query(VALUE obj, VALUE sql)
+{
+   MYSQL* m = GetHandler(obj);
+   Check_Type(sql, T_STRING);
+   if (GetMysqlStruct(obj)-&gt;connection == Qfalse) {
+     rb_raise(eMysql, "query: not connected");
+   }
+  if (mysql_send_query(m, RSTRING_PTR(sql), RSTRING_LEN(sql)) != 0)
+  mysql_raise(m);
+  return Qnil;
+}</pre>
+<p>mysql_send_query() を呼んでいる. どんな API なのかとぐぐってみるがほとんどヒットしない. 
+MySQL のドキュメントにも載っていない. でも mysql.h にはエントリがある. プチ裏口 API というところだろうか. 
+get_result() の中では mysql_read_query_result() を呼んでいる. これもプチ裏口. 
+つまり MySQLPlus はクエリの送受信を 送信(mysql_send_query()) と
+受信 (mysql_read_query_result()) に分割し, 
+送受信の間はソケットを select() して待つことでブロックを回避している. 
+この select() は Ruby 処理系を経由するので, スレッド同期用のジャイアントロックは解除される. おかげで刺さらない. </p>
+<p>結果として, 
+MySQL.async_query() は C で書かれた mysql_real_query() の処理を ruby 側に移した感じになっている. 
+(MySQL では select() しないけど.)</p>
+<pre>
+/* client.c */
+int STDCALL
+mysql_real_query(MYSQL *mysql, const char *query, ulong length)
+{
+ ...
+  if (mysql_send_query(mysql,query,length))
+    DBUG_RETURN(1);
+  DBUG_RETURN((int) (*mysql-&gt;methods-&gt;read_query_result)(mysql));
+}</pre>
+<p>不思議なのは select() の引数に渡している socket 変数だ。これはどこから取ってきたの？</p>
+<pre>
+static VALUE socket(VALUE obj)
+{
+  MYSQL* m = GetHandler(obj);
+  return INT2NUM(vio_fd(m-&gt;net.vio));
+}</pre>
+<p>わーおい. こんなのよく見付けたなあ. 
+抽象化がダダ漏れだ...おかげでブロックせずに済むんだから, 文句は言えない. </p>
+<p>C++ でもこれを真似すればいいかと思ったけれど, 不安が残る. 
+受信の開始を待たないおかげで一番長いブロックは避けられるものの, 
+他にも怪しいところがある. たとえば mysql_read_query_result() に続く
+結果取得の API は相変わらずブロックするだろう. 
+"select * from hello" みたいに大きな結果を受信するクエリーが刺さることはありそうだ. 
+mysql_real_connect() なんかも不安. 
+やっぱりスレッドをわけて接続プールにした方が確実そうだなあ... 
+シングルスレッド/ノンブロッキングの代表格 Twisted も
+データベースの接続はスレッドプールに逃げていたから, こればかりは仕方がないのだろう. </p>
+<h4>NeverBlock</h4>
+<p>と, 憂鬱な話はここまで. </p>
+<p>MySQLPlus の作者は <a href="http://www.espace.com.eg/neverblock">NeverBlock</a> というライブラリも作っている. 
+世間的にはこっちが注目を集めているようだ. 
+NeverBlock は <a href="http://doc.loveruby.net/refm/api/view/class/Fiber">Fiber</a> を
+使ったノンブロッキングな並列コードをユーザ透過な方法で実現する仕組みらしい...よくわからない... </p>
+<p>Fiber は ruby-1.9.x が提供する協調型マルチスレッドの仕組で, いわゆるコルーチンの一種. 
+スタックのコピーなんかをしているところを見ると, 
+1.8.x のスレッドからプリエンプティブを取ったようなものらしい. 
+(<a href="http://blade.nagaokaut.ac.jp/cgi-bin/scat.rb/ruby/ruby-dev/30827">開発者本人の紹介</a>にもそう書いてあった.)
+NeverBlock は Thread のかわりに Fiber を使って色々やろうとする. 
+具体的には Rails を multi-threading するかわりに mult-fibering する. 
+(NeverBlock のフレームワークは Rails 専用ではないけれど, 主な用途は Rails だとおもう.)</p>
+<p>NeverBlock は MySQLPlus もフレームワークに組み込んでいる. 
+たとえば select() で Thread を譲りわたしていたオリジナルの MySQLPlus に対し, 
+NeverBlock 版は Fiber.yield() する.</p>
+<pre>
+# fibered_mysql_connection.rb
+  class FiberedMysqlConnection &lt; Mysql
+    ...
+    def query(sql)
+       begin
+       ...
+          send_query sql
+          @fiber = Fiber.current
+          Fiber.yield # これ
+          get_result
+       ...
+      end
+    end
+  ...
+  end</pre>
+<p>yield() した fiber は, どこかで resume() しないと眠り続けてしまう. 
+NeverBlock は EventMachine というノンブロッキング IO の
+フレームワーク (select や epoll などのラッパ) をイベントループの基盤に使っており, 
+この EventMachine から通知を受け取って Fiber を呼び起こす. </p>
+<p>通知を受け取るための登録は初期化の途中で済ませている. </p>
+<pre>
+# fibered_mysql_connection.rb
+  class FiberedMysqlConnection &lt; Mysql
+    ...
+    def reconnect
+      unregister_from_event_loop
+      super
+      init_descriptor
+      register_with_event_loop(@loop)  # ここで登録
+    end
+    ...
+    def register_with_event_loop(loop)
+      ...
+        @em_connection = EM::attach(@io,EMConnectionHandler,self)
+      ...
+    end
+    ...
+  end</pre>
+<p>EM::attach() の引数にわたす @io 変数には 
+MySQL Driver のソケット記述子がバインドされている. leaky abstraction から拾いだしたやつね. 
+これのおかげでデータが届いたソケットの通知を EventMachine に任せることができる. </p>
+<pre>
+  class FiberedMysqlConnection &lt; Mysql
+    ...
+    def resume_command
+      @fiber.resume # 無事復帰
+    end
+  ...
+  end
+  ...
+  module EMConnectionHandler
+    def initialize connection
+      @connection = connection
+    end
+    def notify_readable # これが呼ばれる
+      @connection.resume_command
+    end
+  end</pre>
+<p>通知を処理する EMConnectionHandler を経て Fiber が resume() されている. めでたしめでたし. </p>
+<p>...といいたいところだけど, EventMachine のようなノンブロック IO フレームワークは
+誰かがイベントループを回してやる必要がある. 
+ところが Rails (の動いているウェブサーバ)は自分で制御ループを持っている. 
+それが Fiber フレンドリーとは限らない. 
+むしろ Rails がマルチスレッドに対応するなら, マルチスレッド(1 接続 1 スレッド)で作る方が自然に思える. 
+その方針は Fiber 化と衝突する. </p>
+<p>NeverBlock がどうしているかというと, 実行時にウェブサーバをぱちっている. 
+今のところ <a href="http://mongrel.rubyforge.org/">Mongrel</a> と
+<a href="http://code.macournoyer.com/thin/">Thin</a> に対応しているようだ. </p>
+<p>Mongrel だと...</p>
+<pre>
+# lib/never_block/servers/mongrel.rb
+module Mongrel
+  class MongrelProtocol &lt; EventMachine::Connection
+  ...
+  class HttpServer
+  ...
+  class HttpRequest
+  ...
+  class HttpResponse
+  ...
+  class Configurator
+  ...
+end
+</pre>
+<p>と軒並書き換える. Mongrel が合計 4-5000 行に対し, この patch は 250 行. 
+多いのか少いのか...</p>
+<p>Thin はもともと EventMachine を使っているため, ずっとあっさり統合されている: </p>
+<pre>
+# lib/never_block/servers/thin.rb
+module Thin
+  ...
+  class Connection &lt; EventMachine::Connection
+    def process
+      @request.threaded = false
+      @backend.server.fiber_pool.spawn{post_process(pre_process)}
+    end
+  end # Connection
+
+end # Thin</pre>
+<p>ちなみに Thin の元コードはこんなの:</p>
+<pre>
+# connection.rb
+module Thin
+  ...
+  class Connection &lt; EventMachine::Connection
+    ...
+    def process
+      if threaded?
+        @request.threaded = true
+        EventMachine.defer(method(:pre_process), method(:post_process))
+      else
+        @request.threaded = false
+        post_process(pre_process)
+      end
+    end
+    ...
+  end
+  ...
+end</pre>
+<p>比べてみると, &lt;中で yield() しそうな処理の呼出し元を FiberPool#spawn() でくるむ&gt; という 
+NeverBlock 化の手口がよくわかる. </p>
+<h4>Fiber vs. Thread</h4>
+<p>NeverBlock はただ Fiber を使うだけでなく, FiberPool のようなちょっと凝った機構も用意している. 
+スレッドと張り合う意欲が溢れている. Ruby はシングルコアのマルチスレッドなので, 
+理屈の上では Thread でも Fiber でも性能に大差はない. 
+NeverBlock の blog にあった
+<a href="http://www.espace.com.eg/neverblock/blog/2008/08/28/neverblock-mysql-support/">ベンチマーク結果</a> 
+も均衡している. 性能差がないのになぜ Thread ではなく Fiber が良いのか. 
+<a href="http://www.espace.com.eg/neverblock">NeverBlock のページ</a>によれば</p>
+<ul>
+<li>実行時のスレッドのオーバーヘッド</li>
+<li>スレッド安全と同期要件の複雑さ</li>
+</ul>
+<p>というマルチスレッドの欠点を乗り越えるためだという. 
+ほんとにスレッドのオーバーヘッドなんてあるのかよという疑問もあるけれどそこは火薬庫なので近付かないとして, 
+Fiber にも欠点はある. 現実的に一番苦労しそうなのは
+Fiber.resume()/FiberPool.spawn() や Fiber.yield() を呼んでやらなければいけないところだろう. 
+resume() を呼ぶには Mongrel や Thin のようにアプリケーションサーバを書き換える必要がある. 
+同様に, yield() を呼ぶには MySQLPlus のようにライブラリを書き換える必要がある. 
+Web API を使うなら HTTP を, ファイルを読むならファイルを, 
+ブロックしうる入出力を片っぱしから直していかないとゴールは達成できない. けっこうな茨の道に見える. 
+一方で NeverBlock 作者の馬力を見ていると, なんとかしてしまいそうな気もする. 
+File と Socket を書き換えるくらいのことはやりかねないオーラがあるからね...
+Twisted だって根性で非同期スタイルの API を揃えまくったわけだし, 
+体力と根性で片付く問題領域の広さを侮るなかれ, とおもう. </p>
+<p>今日の結論: 根性があれば Fiber, なければ Thread. </p>

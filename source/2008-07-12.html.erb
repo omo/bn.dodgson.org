@@ -1,0 +1,891 @@
+---
+title: "Protocol Buffers"
+date: 2008-07-12
+---
+<h3>近況</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E8%8D%89%E3%81%AE%E4%B8%8A%E6%98%9F%E3%81%AE%E4%B8%8B-%E3%82%AF%E3%82%A4%E3%83%BC%E3%83%B3%E3%82%BA%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%E3%82%B9-%E8%B0%B7%E5%B7%9D-%E5%8F%B2%E5%AD%90/dp/4088654838%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4088654838' class='bookcover'><img data:asin='4088654838' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41osPbVqlPL.jpg'></span></a></span></p>
+<p>新刊が多く慌しい. 谷川史子の "<a data:asin='4088654838' href='http://www.amazon.co.jp/%E8%8D%89%E3%81%AE%E4%B8%8A%E6%98%9F%E3%81%AE%E4%B8%8B-%E3%82%AF%E3%82%A4%E3%83%BC%E3%83%B3%E3%82%BA%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%E3%82%B9-%E8%B0%B7%E5%B7%9D-%E5%8F%B2%E5%AD%90/dp/4088654838%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4088654838'>草の上星の下</a>", 
+岩本ナオの "<a data:asin='4091316921' href='http://www.amazon.co.jp/%E7%94%BA%E3%81%A7%E3%81%86%E3%82%8F%E3%81%95%E3%81%AE%E5%A4%A9%E7%8B%97%E3%81%AE%E5%AD%90-2-%E3%83%95%E3%83%A9%E3%83%AF%E3%83%BC%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%E3%82%B9%E3%82%A2%E3%83%AB%E3%83%95%E3%82%A1-%E5%B2%A9%E6%9C%AC-%E3%83%8A%E3%82%AA/dp/4091316921%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4091316921'>町でうわさの天狗の子</a>", 
+あとは Google の "<a href="http://code.google.com/apis/protocolbuffers/">Protocol Buffers</a>". 
+谷川史子の洗練を綴るには余白が狭過ぎる. かわりに Protocol Buffers の話をすこし. </p>
+<h3>Protocol Buffers</h3>
+<p>Protocol Buffers (以下 protobuf) は Google 製のオブジェクトシリアライザ. 
+名前からは RPC を連想しそうだけれど, RPC そのものではない. 
+もっともオブジェクトを直列化して送受信するのが RPC だから, あとは送受信だけあればいい. 
+実装は含まれないものの, protobuf にも RPC を前提としたインターフェイスがいくつか含まれている. 
+...といった細かい話は 
+<a href="http://code.google.com/apis/protocolbuffers/docs/overview.html">ドキュメント</a> 
+や
+<a href="http://jp.youtube.com/watch?v=K-e8DDRwVUg">インタビュー</a> 
+を見ればわかる. 
+今日はコードを見てみることに. </p>
+<p>なお, 例の <a href="http://google-styleguide.googlecode.com/svn/trunk/cppguide.xml">Style Guide</a> から
+想像できるとおり, protobuf は特段モダンな C++ ではない. 
+boost が好みの先鋭的 C++ 愛好家には物足りないだろう. 
+主題もオブジェクトのシリアライザという再発明の親玉なので, 食傷気味の人は多いとおもう. (ほんとに...) 
+とはいえ少しは面白いところもあったので紹介してみたい.  </p>
+<h4>概観</h4>
+<p>まず行数から.</p>
+<pre>omo@contentiss:~/src/protobuf-2.0.0beta$ lines.rb -d src/
+     6006 /google/protobuf/compiler/cpp
+      923 /google/protobuf/compiler/python
+     3690 /google/protobuf/compiler/java
+    16312 /google/protobuf/compiler
+     6534 /google/protobuf/io
+      496 /google/protobuf/testing
+     3940 /google/protobuf/stubs
+    55766 /google/protobuf
+    55766 /google
+     1814 /gtest/internal
+    10125 /gtest
+    65891</pre>
+<p>6.5 万行くらいある. これは C++ の部分だけで, python や java のランタイムは含まない. </p>
+<p>compiler 以下は .proto ファイルのコンパイラ. 
+stubs 以下は Google 社内のツリーから抜粋したと思しき細かなユーティリティ. 
+io 以下は stream の実装. testing は単体テストのヘルパ. 残りがランタイムになる. 
+テストやら何やらを除いたランタイム本体は, およそ 2 万行くらいの感触. </p>
+<p>ランタイムのコードの多くは C++ のオブジェクトに対するリフレクションの実装に割かれている. 
+protobuf の生成するオブジェクトは, このランタイムによって reflective に操作できるようになる. </p>
+<h4>みどころ</h4>
+<p>オブジェクトのシリアライザや RPC には, 実装を特徴づける設計上の意思決定がある. 
+コード本体を眺める前にいくつか列挙しておく. 
+こういうのを気にしながら読んでます, という参考まで. </p>
+<p><em>直列化の自己記述度:</em> 
+直列化の書式がどれだけ自己記述的か. 
+バイト列を見ただけで何のデータかわかるデータは自己記述的だ. HTML や XML は自己記述的なデータの代表例. 
+構造体を memcpy() しだけのデータは, ふつう中身をみてもさっぱりわからない. 自己記述的でない. 
+各種画像フォーマットはその間くらい. フォーマットを知らなければさっぱり読めないけれど, 
+フォーマットがわかれば画像のサイズやピクセル幅, そのほか各種メタデータをとりだすことができる. 
+Java オブジェクトの直列化書式もそれなりに自己記述的で, 
+たとえばクラス名やバージョン, プロパティのデータ型などがひとそろい入っている. 
+自己記述度が高いほど空間効率や速度は下がる. </p>
+<p><em>バージョニングへの対処:</em> 
+古いデータを新しいコードで読みこめるか. 逆に新しいデータを古いコードで読めるか. 
+素朴な memcpy() データはまったくバージョニングされていない. 定義が変わると使えなくなる. 
+そもそもバージョン違いを検出できるかも怪しい. 
+HTML はかなり堅牢. 昔のブラウザで最新のページを見ても, いちおう文章くらいは拾える. 上位互換はほぼ完璧. 
+Java のオブジェクトもそこそこ頑張っており, プロパティが追加されたくらいならスルーしてくれる. </p>
+<p><em>オブジェクトグラフの自由度:</em> 
+直列化するオブジェクトが他のオブジェクトを参照しているときどうするか. 
+特に, 参照の循環や合流がおきたらどうなるか. 
+合流がコピーになり, 循環を許さない実装がある一方で, 
+そうした複雑なオブジェクトグラフを保存できる実装もある. Java は後者 (だったはず...)</p>
+<p><em>オブジェクトモデルの自己記述度:</em> 
+C++ 固有の話題として, 独自実装したリフレクションの表現能力やオーバーヘッドが気になる. 
+フィールドを取得するにはどうするのか. メソッドは呼べるのか. アクセス制限, 継承関係は再現されるのか. 
+リフレクションを実現するために個々のオブジェクトが消費するオーバーヘッドはどれだけか. 
+シリアライザを作るだけならリフレクションいらなくね？ など. 
+C++ 以外の言語 (protobuf なら Java や Python) はふつう言語レベルから reflective なので, 
+こういう悩みは少ない. 言語機能を使えば済む. </p>
+<p><em>ランタイムとコード生成の役割分担:</em> 
+各種高級言語のシリアライザがを見ればわかるとおり, 
+オブジェクトが reflective ならシリアライザにコード生成は必要ない. 
+けれど性能上の理由で自動生成を使うことはある. こうしたトレードオフの線引きが個性になる</p>
+<h4>Message: オブジェクトモデル</h4>
+<p>protobuf のコンパイラ protoc で生成されるクラスは, 
+すべて Message インターフェイス(状態をもたない抽象クラス)を実装している. </p>
+<pre>
+// message.h
+class LIBPROTOBUF_EXPORT Message {
+ public:
+  ....
+  virtual Message* New() const = 0;
+  ...
+  virtual void MergeFrom(const Message&amp; from);
+  ...
+  virtual bool MergePartialFromCodedStream(io::CodedInputStream* input);
+  ...
+  virtual bool SerializeWithCachedSizes(io::CodedOutputStream* output) const;
+  virtual int GetCachedSize() const = 0;
+  ...
+  virtual const Descriptor* GetDescriptor() const = 0;
+  ...
+  virtual const Reflection* GetReflection() const = 0;
+  ...
+ };</pre>
+<p>まず多態を実現する最低限の仕組みとして, コンストラクタに相当する New() と Clone() の亜種 MergeFrom() がある. 
+ファクトリでなくオブジェクト自身に New() があるたりは設計に prototype 指向のノリが混じっている. </p>
+<p>リフレクションは GetReflection() や GetDescriptor() でとりだしたオブジェクトを介して行う. 
+Descriptor オブジェクトが Java の 
+<a href="http://java.sun.com/javase/6/docs/api/java/lang/Class.html">Class</a> 
+オブジェクトに相当し, メタクラスを記述する. 
+Reflection オブジェクトは Message オブジェクトごとにインスタンス化され, 
+リフレクションで使うオブジェクト単位の状態を保持する. ちょっとややこしい. </p>
+<p>肝心の直列化は SerializeWithCachedSizes() が, 復元は MergePartialFromCodedStream() が受け持つ. 
+この二つが純粋仮想関数でないのは面白い. (低級言語だと典型的なシリアライザはこの部分のコードを生成するよね.) 
+実装ではリフレクションを使い直列化を行う. </p>
+<pre>
+// message.cc
+bool Message::MergePartialFromCodedStream(io::CodedInputStream* input) {
+  return WireFormat::ParseAndMergePartial( // WireFormat はいわゆるヘルパクラス
+    GetDescriptor(), input, GetReflection());
+}
+...
+bool Message::SerializeWithCachedSizes(io::CodedOutputStream* output) const {
+  return WireFormat::SerializeWithCachedSizes(
+    GetDescriptor(), GetReflection(), GetCachedSize(), output);
+}</pre>
+<p>Message には様々なユーティリティメソッドが定義されており, 
+ファイルや配列への直列化を行うこともできる. こうしたユーティリティはどれも
+最終的に上の二つの仮想関数を呼びだす. </p>
+<pre> 
+  // Message class
+  ...
+  // Serialize the message and store it in the given byte array.  All required
+  // fields must be set.
+  bool SerializeToArray(void* data, int size) const;
+  // Serialize the message and write it to the given file descriptor.  All
+  // required fields must be set.
+  bool SerializeToFileDescriptor(int file_descriptor) const;
+  ...
+</pre>
+<h4>Reflection: リフレクションのインターフェイス</h4>
+<p>Message オブジェクトに対する reflective な操作は, Reflection インターフェイスに分離されている. </p>
+<pre>
+class LIBPROTOBUF_EXPORT Message::Reflection {
+ public:
+  ...
+  virtual const UnknownFieldSet&amp; GetUnknownFields() const = 0;
+  ...
+  virtual bool HasField(const FieldDescriptor* field) const = 0;
+  ...
+  virtual void ListFields(vector&lt;const FieldDescriptor*&gt;* output) const = 0;
+  ...
+  virtual int32  GetInt32 (const FieldDescriptor* field) const = 0;
+  ...
+  virtual string GetString(const FieldDescriptor* field) const = 0;
+  ...
+  virtual const Message&amp; GetMessage(const FieldDescriptor* field) const = 0;
+   ...
+  virtual void SetInt32 (const FieldDescriptor* field, int32  value) = 0;
+  ...
+  virtual int32  GetRepeatedInt32 (const FieldDescriptor* field,
+                                   int index) const = 0;
+  ...
+  virtual void SetRepeatedInt32 (const FieldDescriptor* field,
+                                 int index, int32  value) = 0;
+  ...
+  virtual void AddInt32 (const FieldDescriptor* field, int32  value) = 0;
+  ...
+ private:
+  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(Reflection);
+};
+</pre>
+<p>FieldDescriptor が Java でいう 
+<a href="http://java.sun.com/javase/6/docs/api/java/lang/reflect/Field.html">Field</a> クラス.  
+SetXxx() や GetXxx() で該当フィールドの値を操作する. </p>
+<p><em>repepated field:</em></p>
+<p>SetRepeatedInt32() などの repeated メソッドは, 要するに配列. 
+"配列" というオブジェクトを用意するかわりに, "repepated field" という概念を持ち込んでいる. 
+ださい気はするけど効率はいいかも. ちなみに連想配列は用意されていない. </p>
+<p><em>optional field:</em></p>
+<p>protobuf には optional フィールドという概念があり, 特定のフィールドを空にしておくことができる. 
+空のフィールドは直列化されない. この仕組みと MergeFrom() を使ったオブジェクトの上書きによって, 
+プログラマの利便性を損ねずに空間効率の高い直列化を実現できる. たとえば差分の保存や送信がやりやすい. 
+HasField() は, その(オプション)フィールドがセットされているかを確認する. </p>
+<p><em>unknown field:</em></p>
+<p>protobuf には "unknown field" という概念があり, バージョニングや互換性の扱いを支援している. 
+直列化されたデータを読み込む際に定義にないフィールドがみつかると, 
+Message は "unknown field" としてそれを保存しておく. 再び直列化するときは, unknown field も書き出される. 
+そのため, 古いバージョンのプログラムが新しいデータを読み書きしても内容が損われることはない. </p>
+<h4>GeneratedMessageReflection : リフレクションの実装</h4>
+<p>Reflection インターフェイスを実装しているのは GeneratedMessageReflection クラス. </p>
+<pre>
+class LIBPROTOBUF_EXPORT GeneratedMessageReflection : public Message::Reflection {
+
+  ... // メソッド定義がずらずら
+
+  const Descriptor* descriptor_;
+  void* base_;
+  const void* default_base_;
+  const int* offsets_;
+  ...
+  uint32* has_bits_;
+  ExtensionSet* extensions_;
+  ...
+  UnknownFieldSet unknown_fields_;
+  ....
+};</pre>
+<p>void* を見て嫌な予感がしている人は正しい. たとえば base_ は対応する Message インスタンスの this を指している. 
+offsets_ は this の中にある各フィールドへのオフセット配列. </p>
+<p>GetInt32() などの reflective な操作は, 
+巡り巡って GeneratedMessageReflection::GetField() メソッドを呼ぶ. 
+(const なしの MutableField() メソッドもある. 実装は同じ.)</p>
+<pre>
+// These simple template accessors obtain pointers (or references) to
+// the given field.
+template &lt;typename Type&gt;
+inline const Type&amp; GeneratedMessageReflection::GetRaw(
+    const FieldDescriptor* field) const {
+  const void* ptr = reinterpret_cast&lt;const uint8*&gt;(base_) +
+                    offsets_[field-&gt;index()];
+  return *reinterpret_cast&lt;const Type*&gt;(ptr);
+};</pre>
+<p>だいたい想像どおりだったと思う... 
+まあ言語の上でバイト列に構造を与えようとすれば, こうなるのは仕方ない. 
+MySQL のレコードなんかも大枠では似たようなかんじだった, はず. </p>
+<p>offset_ 配列の値は生成されたコードが静的に計算し, 外側から GeneratedMessageReflection に与えられる. 
+あと unknown_fields_ は Message (のサブクラス) じゃなくてこっちに持たせておくんだね. </p>
+<h4>Descriptor: メタクラス</h4>
+<p>既に述べたように, Descriptor は Java の 
+<a href="http://java.sun.com/javase/6/docs/api/java/lang/Class.html">Class</a> 
+クラスに相当する. 
+同様のクラスとして FileDescriptor, EnumDescriptor, FieldDescriptor, EnumDescriptor などが
+用意されている. それぞれが .proto ファイルにあらわれる construct に対応している. 
+これらのクラスはコンパイラでも使われる. 
+だからメタクラスと見てもいいし, .proto ファイルの抽象構文木だと思ってもいい. 
+データ中心の立場からスキーマとみなすこともできる. </p>
+<p>各 descriptor クラスには, 対応する protobuf メッセージが用意されている. (descriptor.proto 参照)
+たとえば Descriptor には DescriptorProto メッセージクラスがある. </p>
+<pre>
+// descriptor.proto
+...
+// Describes a message type.
+message DescriptorProto {
+  optional string name = 1;
+
+  repeated FieldDescriptorProto field = 2;
+  repeated FieldDescriptorProto extension = 6;
+  ...
+}
+...</pre>
+<p>これらのメッセージを使って各 descriptor を永続化することができる. </p>
+<pre>
+// descriptor.h
+class LIBPROTOBUF_EXPORT Descriptor {
+  ...
+  void CopyTo(DescriptorProto* proto) const;
+};</pre>
+<p>メッセージからの復元は DescriptorBuilder が行う. </p>
+<pre>
+// descriptor.cc
+class DescriptorBuilder {
+ ...
+ // FileDescriptor は java の package に相当. 自身の内包する各 descriptor を持つ.
+ const FileDescriptor* BuildFile(const FileDescriptorProto&amp; proto);
+ ...
+};</pre>
+<p>Message のメタクラス自身が Message になれる再帰性がちょっと面白い. オブジェクトモデルの醍醐味. 
+面白いだけでなく使い道もある. 後でみるように, protobuf の直列化書式は効率重視で注釈が乏しい. 
+しかし直列化したメッセージに直列化した Descriptor を添付すれば, 
+アプリケーションレベルで自己記述的なデータを作ることができる. </p>
+<p><em>DescriptorPool:</em></p>
+<p>descriptor は DescriptorPool に登録する...というよりは, DescriptorPool が Descriptor の
+ファクトリになっている. Java の類比でいくと ClassLoader みたいなもの. 
+特殊なインスタンスとして, protoc で生成したクラスを登録する generated_pool() というシングルトンがあるようす.</p>
+<pre>
+class LIBPROTOBUF_EXPORT DescriptorPool {
+  ...
+  static const DescriptorPool* generated_pool();
+  ...
+  const FileDescriptor* FindFileByName(const string&amp; name) const;
+  ...
+  const FileDescriptor* BuildFile(const FileDescriptorProto&amp; proto);
+  ...
+  scoped_ptr&lt;Tables&gt; tables_;
+  ...
+};</pre>
+<h4>生成されたコード</h4>
+<p>ランタイムをざっと眺めたのはいいけれど, 生成されたコードはランタイムをどう使うのだろう. 
+examples に入っている addressbook.proto をコンパイルし, 
+生成された addressbook.pb.h と addresssbook.pb.cc を見てみる. </p>
+<p>コンパイルするのはこんなの:</p>
+<pre>
+// addressbook.proto
+message Person {
+  required string name = 1;
+  required int32 id = 2;        // Unique ID number for this person.
+  optional string email = 3;
+  ...
+}
+...
+message AddressBook {
+  repeated Person person = 1;
+}</pre>
+<p>クラスの概観を眺め, descriptor の構築方法と直列化ルーチンの実装を覗けば
+生成されたコードがどんなものかわかるだろう. </p>
+<p>というわけで, まず概観を求めヘッダファイルから:</p>
+<pre>
+// addressbook.pb.h
+class Person : public ::google::protobuf::Message { // Message の subclass
+  ...
+  inline static const Person&amp; default_instance() { // プロトタイプの根っこ.
+    return default_instance_;
+  }
+
+  // メソッドの宣言がずらずらと...
+
+  // フィールドのアクセサ
+  // required string name = 1;
+  inline bool has_name() const;
+  inline void clear_name();
+  inline const ::std::string&amp; name() const;
+  inline void set_name(const ::std::string&amp; value);
+  inline void set_name(const char* value);
+  inline ::std::string* mutable_name();
+  ....
+
+private:
+  ::google::protobuf::internal::GeneratedMessageReflection _reflection_;
+  mutable int _cached_size_; // シリアライズ時のサイズ.
+
+  // フィールドの実体.
+  ::std::string* name_;
+   static const ::std::string _default_name_;
+  ::google::protobuf::int32 id_;
+  ::std::string* email_;
+  static const ::std::string _default_email_;
+  ::google::protobuf::RepeatedPtrField&lt; ::tutorial::Person_PhoneNumber &gt; phone_;
+  ...
+  static const Person default_instance_;
+  static const int _offsets_[4]; // reflection で使うフィールドへのオフセット.
+
+  ::google::protobuf::uint32 _has_bits_[(4 + 31) / 32]; // optional を実現するフラグ
+  ....
+}</pre>
+<p>Message インターフェイスを実装するメソッドの他, 
+フィールドへのアクセサやいくつかの static method が生成されている. 
+フィールド本体以外にも, has_bits_ など Message インターフェイスの規定するオブジェクトモデルを
+実現するための値がいくつかある. </p>
+<p><em>Descriptor のインスタンス化:</em></p>
+<p>次に descriptor の構築方法を調べよう. とりあえず GetDescriptor() から追いかけていく. </p>
+<pre>
+// addressbook.pb.cc
+const ::google::protobuf::Descriptor* Person_PhoneNumber::GetDescriptor() const {
+  return descriptor();
+}</pre>
+<p>はいはい...</p>
+<pre>
+....
+const ::google::protobuf::Descriptor* Person_PhoneNumber::descriptor() {
+  if (Person_PhoneNumber_descriptor_ == NULL) proto_BuildDescriptors_addressbook_2eproto();
+  return Person_PhoneNumber_descriptor_;
+}</pre>
+<p>はいはい...</p>
+<pre>
+...
+void proto_BuildDescriptors_addressbook_2eproto() {
+  ...
+  const ::google::protobuf::FileDescriptor* file = pool-&gt;InternalBuildGeneratedFile(
+    "\n\021addressbook.proto\022\010tutorial\"\332\001\n\006Person"
+    "\022\014\n\004name\030\001 \002(\t\022\n\n\002id\030\002 \002(\005\022\r\n\005email\030\003 \001("
+    "\t\022+\n\005phone\030\004 \003(\0132\034.tutorial.Person.Phone"
+    "Number\032M\n\013PhoneNumber\022\016\n\006number\030\001 \002(\t\022.\n"
+    "\004type\030\002 \001(\0162\032.tutorial.Person.PhoneType:"
+    "\004HOME\"+\n\tPhoneType\022\n\n\006MOBILE\020\000\022\010\n\004HOME\020\001"
+    "\022\010\n\004WORK\020\002\"/\n\013AddressBook\022 \n\006person\030\001 \003("
+    "\0132\020.tutorial.PersonB)\n\024com.example.tutor"
+    "ialB\021AddressBookProtos", 342);
+  Person_descriptor_ = file-&gt;message_type(0);
+  Person_PhoneNumber_descriptor_ = Person_descriptor_-&gt;nested_type(0);
+  ::google::protobuf::MessageFactory::InternalRegisterGeneratedMessage(
+    Person_PhoneNumber_descriptor_, &amp;Person_PhoneNumber::default_instance());
+  ....
+}</pre>
+<p>はて. これは何をしているのだろう. </p>
+<pre>
+// descriptor.cc
+const FileDescriptor* DescriptorPool::InternalBuildGeneratedFile(
+   const void* data, int size) {
+  ...
+  FileDescriptorProto proto;
+  GOOGLE_CHECK(proto.ParseFromArray(data, size));
+  const FileDescriptor* result = BuildFile(proto);
+  GOOGLE_CHECK(result != NULL);
+
+  return result;
+}</pre>
+<p>なるほど. コンパイラは直列化した FileDescriptorProto をコードに埋め込んでおき, 
+実行時にはそれを解釈して FileDescriptor を作っている. 
+FileDescriptor を構築する "コード" 自体は出力しないんだね. ちょっと面白い. 
+コンパイラも内部モデルに descriptor を使っているから, 簡単に descriptor の直列化バイト列を生成できる. 
+このへんはうまい設計だと思う. </p>
+<p>ところでシングルトンの初期化がスレッドセーフじゃないのが気になった人もいるとおもう. </p>
+<pre>
+// addressbook.pb.cc
+// Force BuildDescriptors() to be called at static initialization time.
+struct StaticDescriptorInitializer_addressbook_2eproto {
+  StaticDescriptorInitializer_addressbook_2eproto() {
+    proto_BuildDescriptors_addressbook_2eproto();
+  }
+} static_descriptor_initializer_addressbook_2eproto_;</pre>
+<p>グローバル変数のコンストラクタを使ったイディオムを使って初期化時に登録を済ませている. 
+各種組込み機器への移植を考えていた人は残念でした...</p>
+<p><em>オフセットの計算:</em></p>
+<p>よりみちで, Reflection が参照していたオフセットの計算方法も覗いておく. </p>
+<pre>
+// addressbook.pb.cc
+const int Person::_offsets_[4] = {
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(Person, name_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(Person, id_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(Person, email_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(Person, phone_),
+};</pre>
+<pre>
+// generated_messagere_flection.h
+#define GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(TYPE, FIELD)    \
+  (reinterpret_cast&lt;const char*&gt;(                             \
+     &amp;reinterpret_cast&lt;const TYPE*&gt;(16)-&gt;FIELD) -             \
+   reinterpret_cast&lt;const char*&gt;(16))</pre>
+<p>コメントによれば, 0 を使うと gcc が NULL だと怒るから 16 らしい. あとは align してないとダメだとか. </p>
+<p><em>直列化:</em></p>
+<p>いよいよ直列化のコードをみよう...と思ったけれど直列化より復元の方が面白そうなので, そっちを覗くことにした. 
+(直列化はだいたいこの逆になる.)</p>
+<pre>
+bool Person_PhoneNumber::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!(EXPRESSION)) return false
+  ::google::protobuf::uint32 tag;
+  while ((tag = input-&gt;ReadTag()) != 0) {
+    switch (::google::protobuf::internal::WireFormat::GetTagFieldNumber(tag)) {
+      // required string number = 1;
+      case 1: {
+        if (::google::protobuf::internal::WireFormat::GetTagWireType(tag) !=
+            ::google::protobuf::internal::WireFormat::WIRETYPE_LENGTH_DELIMITED) {
+          goto handle_uninterpreted;
+        }
+        DO_(::google::protobuf::internal::WireFormat::ReadString(input, mutable_number()));
+        if (input-&gt;ExpectTag(16)) goto parse_type;
+        break;
+      }
+
+      // optional .tutorial.Person.PhoneType type = 2 [default = HOME];
+      case 2: {
+        if (::google::protobuf::internal::WireFormat::GetTagWireType(tag) !=
+            ::google::protobuf::internal::WireFormat::WIRETYPE_VARINT) {
+          goto handle_uninterpreted;
+        }
+       parse_type:
+        int value;
+        DO_(::google::protobuf::internal::WireFormat::ReadEnum(input, &amp;value));
+        if (::tutorial::Person_PhoneType_IsValid(value)) {
+          set_type(static_cast&lt; ::tutorial::Person_PhoneType &gt;(value));
+        } else {
+          mutable_unknown_fields()-&gt;AddField(2)-&gt;add_varint(value);
+        }
+        if (input-&gt;ExpectAtEnd()) return true;
+        break;
+      }
+      ...</pre>
+<p>基本的にはフィールド ID で switch し, 各 case の中ではフィールドの型に対応した
+WireFormat::ReadXxx() を呼びだしている. エラーの処理は unknown field に戻ったり false を返したり色々. </p>
+<p>未知の ID をもつフィールドは WireFormat::SkipField() で unknown field によけておく. </p>
+<pre>
+      default: {
+      handle_uninterpreted:
+        if (::google::protobuf::internal::WireFormat::GetTagWireType(tag) ==
+            ::google::protobuf::internal::WireFormat::WIRETYPE_END_GROUP) {
+          return true;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+  return true;
+#undef DO_
+}</pre>
+<p>未知のフィールドは一見すると型がわからない. どうやって値を解釈するのだろう. SkipField() は...</p>
+<pre>
+// wire_format.cc
+bool WireFormat::SkipField(io::CodedInputStream* input, uint32 tag,
+                           UnknownFieldSet* unknown_fields) {
+  UnknownField* field = (unknown_fields == NULL) ? NULL :
+    unknown_fields-&gt;AddField(GetTagFieldNumber(tag));
+
+  switch (GetTagWireType(tag)) {
+    ...
+    case WIRETYPE_FIXED64: {
+      uint64 value;
+      if (!input-&gt;ReadLittleEndian64(&amp;value)) return false;
+      if (field != NULL) field-&gt;add_fixed64(value);
+      return true;
+    }
+    ...
+  }
+...
+}</pre>
+<p>んー...</p>
+<pre>
+// wire_format.h
+inline WireFormat::WireType WireFormat::GetTagWireType(uint32 tag) {
+  return static_cast&lt;WireType&gt;(tag &amp; kTagTypeMask);
+}</pre>
+<p>なるほど. tag の値に型が埋めこんであるんだね. よくみると GetTagFieldNumber() も似た処理をしていた. </p>
+<pre>
+// wire_format.h
+inline int WireFormat::GetTagFieldNumber(uint32 tag) {
+  return static_cast&lt;int&gt;(tag &gt;&gt; kTagTypeBits);
+}</pre>
+<p>tag の32bit 整数にはフィールドの ID と型 ID の両方が入っていたわけか. </p>
+<p>さて, デフォルト設定のままだと上のような直列化/復元のコードは生成されない. 
+先に登場した, リフレクションを使う実装の Message::MergePartialFromCodedStream() などが使われる. </p>
+<p>専用の復元コードを出力するには, .proto に以下の行を追加する.</p>
+<pre>
+option optimize_for = SPEED;</pre>
+<p>生成コードとランタイムのトレードオフはユーザが指定するというわけ. </p>
+<h4>CodedOutputStream, CodedInputStream : 直列化プリミティブの実装</h4>
+<p>生成されたコードの中では WireFormat::ReadXxx() が呼ばれていた. 
+この呼び出しは CodedInputStream に移譲される. </p>
+<pre>
+inline bool WireFormat::ReadInt32(io::CodedInputStream* input, int32* value) {
+  uint32 temp;
+  if (!input-&gt;ReadVarint32(&amp;temp)) return false;
+  *value = static_cast&lt;int32&gt;(temp);
+  return true;
+}</pre>
+<p>CodedInputStream はバイト列のストリームである ZeroCopyInputStream から構造化データを読み出すアダプタ. 
+Java でいうと InputStream に対する Reader みたいな関係にある. 
+地味なクラスだけれど, 読み込み処理ループの中心で呼ばれるだけあってちまちまとした高速化がしてある. </p>
+<p>代表例として ReadVarint32() を見てみよう.
+(<a href="http://code.google.com/apis/protocolbuffers/docs/encoding.html#varints">varint</a> は 
+utf8 のような可変長の整数符号化方式で, 実際の値が小さいほど必要なバイト数が小さくなる. 
+亜種はよく使われている. たとえば swf とか abc でも使っていた気がする.)</p>
+<p>さて, 色々な場合わけを追いかけていこう. </p>
+<pre>
+// coded_stream.h
+inline bool CodedInputStream::ReadVarint32(uint32* value) {
+  if (buffer_size_ != 0 &amp;&amp; *buffer_ &lt; 0x80) {
+    *value = *buffer_;
+    Advance(1);
+    return true;
+  } else {
+    return ReadVarint32Fallback(value);
+  }
+}</pre>
+<p>まず符号化結果が 1 バイトに収まるケースを特別扱いし, インライン関数に置いている. </p>
+<p>ここから先も芸が細かい. </p>
+<pre>
+bool CodedInputStream::ReadVarint32Fallback(uint32* value) {
+  if (buffer_size_ &gt;= kMaxVarintBytes ||
+      ...
+      (buffer_size_ != 0 &amp;&amp; !(buffer_[buffer_size_-1] &amp; 0x80))) {
+    // (訳)
+    // 高速なパス: バッファに十分なバイト数があり, 終端をまたないことが保証されているなら
+    // そのチェックを省略する
+    const uint8* ptr = buffer_;
+    uint32 b;
+    uint32 result;
+
+    // 可変長ってかんじだ...
+    b = *(ptr++); result  = (b &amp; 0x7F)      ; if (!(b &amp; 0x80)) goto done;
+    b = *(ptr++); result |= (b &amp; 0x7F) &lt;&lt;  7; if (!(b &amp; 0x80)) goto done;
+    b = *(ptr++); result |= (b &amp; 0x7F) &lt;&lt; 14; if (!(b &amp; 0x80)) goto done;
+    b = *(ptr++); result |= (b &amp; 0x7F) &lt;&lt; 21; if (!(b &amp; 0x80)) goto done;
+    b = *(ptr++); result |=  b         &lt;&lt; 28; if (!(b &amp; 0x80)) goto done;
+
+    // (訳)
+    // もし入力が 32 ビット以上なら, 上位ビットはすべて読み出して捨てる
+    for (int i = 0; i &lt; kMaxVarintBytes - kMaxVarint32Bytes; i++) {
+      b = *(ptr++); if (!(b &amp; 0x80)) goto done;
+    }
+
+    // (訳)
+    // サイズが最大値(10 バイト)を越えている. データが壊れているとみなす.
+    return false;
+
+   done:
+    Advance(ptr - buffer_);
+    *value = result;
+    return true;
+
+  } else {
+    ...
+    while (buffer_size_ == 0) {
+      // (訳) Refresh() を呼ばないとバイト数の限界に届いてしまう場合を検出する
+      if (// (訳) 届いているなら, buffer_size_after_limit_ は非ゼロのはず
+          buffer_size_after_limit_ &gt; 0 &amp;&amp;
+          // (訳) 届いてしまう限界が total_bytes_limit_ でないことを確認する.
+          // その場合も Refresh() を読んでエラーを出力する必要はある.
+          total_bytes_read_ - buffer_size_after_limit_ &lt; total_bytes_limit_) {
+        // バイト数の限界に届いた
+        legitimate_message_end_ = true;
+        return false;
+      }
+
+      // Call refresh.
+      if (!Refresh()) {
+        // ... 細かなエラー状況の確認色々
+        return false;
+      }
+    }
+
+    // Slow path:  Just do a 64-bit read.
+    uint64 result;
+    if (!ReadVarint64(&amp;result)) return false;
+    *value = (uint32)result;
+    return true;
+  }
+}</pre>
+<p>ポイントは, バッファの残量によって処理をわけているところ. 
+ストリームのバッファをコピーしないポリシー(zero copy)でコードが書かれているため, 
+値がバッファの終端をまたく場合に備えて面倒な処理が必要になる. 
+そこで終端をまたがないケースを特別扱いして高速化している. 大半はこっちに入りそうだよね.</p>
+<p>CodedInputStream や CodedOutputStream には
+こんなかんじの細々したコードが入っている. でも長いのでつづきは割愛. </p>
+<h4>DynamicMessage</h4>
+<p>ここまでのコードで, 自分が生成した Message クラスを読み書きする仕組みはおおよそわかったと思う. </p>
+<p>さて, 素朴なシリアライザでは, 直列化したオブジェクトは元のクラスの定義がないと復元できない. 
+protobuf にはクラス定義のないデータを操作するために DynamicMessage というオブジェクトが用意されている. 
+DynamicMessage を使うと, C++ としての定義を持たない Message も descriptor さえあれば復元することができる. 
+復元した Message はリフレクションごしに操作する. 
+この仕組みを使うことで, たとえばデータのビューアのような汎用データ操作プログラムや, 
+異なるバージョン間のフォーマットコンバータのようなクラスベースだとやりにくいコードを書くことができる. </p>
+<p>DynamicMessage クラスは dynamic_message.cc で定義され, クライアントには公開されていない. 
+クライアントは DynamicMessageFactory を通じてこのインスタンスを取り出す. </p>
+<pre>
+// dynamic_message.h
+class LIBPROTOBUF_EXPORT DynamicMessageFactory : public MessageFactory {
+ public:
+  ...
+  const Message* GetPrototype(const Descriptor* type);
+  ...
+}</pre>
+<p>リフレクションに必要な Descriptor は DescriptorProto から構築できたのを思いだそう. </p>
+<p>さて, 肝心の DynamicMessage はどんなクラスなのだろうか.</p>
+<pre>
+// dynamic_message.cc
+class DynamicMessage : public Message {
+ public:
+  ... // 一連のメソッド定義...
+ private:
+  ...
+  const Descriptor* descriptor_;
+  const DescriptorPool* descriptor_pool_;
+  DynamicMessageFactory* factory_;
+  scoped_ptr&lt;ExtensionSet&gt; extensions_;
+  GeneratedMessageReflection reflection_;
+  uint8* base_;
+  const uint8* prototype_base_;
+  const int* offsets_;
+  int size_;
+
+  mutable int cached_byte_size_;
+};</pre>
+<p>reflection には通常のメッセージ同様 GeneratedMessageReflection を使いそうだ. 
+それはさておき, base_, prototype_base_, size_ あたりがあやしい. 
+コンストラクタに進もう. </p>
+<pre>
+DynamicMessage::DynamicMessage(const Descriptor* descriptor,
+                               uint8* base, const uint8* prototype_base,
+                               int size, const int offsets[],
+                               const DescriptorPool* pool,
+                               DynamicMessageFactory* factory)
+  : descriptor_(descriptor),
+    descriptor_pool_((pool == NULL) ? descriptor-&gt;file()-&gt;pool() : pool),
+    factory_(factory),
+    extensions_(descriptor-&gt;extension_range_count() &gt; 0 ?
+                new ExtensionSet(descriptor, descriptor_pool_, factory_) :
+                NULL),
+    reflection_(descriptor, base, prototype_base, offsets,
+                // has_bits
+                reinterpret_cast&lt;uint32*&gt;(base + size) -
+                DivideRoundingUp(descriptor-&gt;field_count(), bitsizeof(uint32)),
+                extensions_.get()),
+    base_(base),
+    prototype_base_(prototype_base),
+    offsets_(offsets),
+    size_(size),
+    cached_byte_size_(0) {
+  // (訳) 各フィールドのコンストラクタを手動で呼び出し, あるならデフォルト値をセットする.
+  // placement new について聞いたことがないなら, 今すぐググるとよい.
+  // 一貫性のため, コンストラクタを持たないプリミティブ型についても placement new を呼ぶ.
+  // (理論上は, 型なしのメモリを型ありのメモリにする時はいつも placement new を使うべきだ.
+  //  しかし実際はコンストラクタの無い型についてそう厳密である必要はない.)
+  for (int i = 0; i &lt; descriptor-&gt;field_count(); i++) {
+    const FieldDescriptor* field = descriptor-&gt;field(i);
+    void* field_ptr = base + offsets[i];
+    switch (field-&gt;cpp_type()) {
+#define HANDLE_TYPE(CPPTYPE, TYPE)                                           \
+      case FieldDescriptor::CPPTYPE_##CPPTYPE:                               \
+        if (!field-&gt;is_repeated()) {                                         \
+          new(field_ptr) TYPE(field-&gt;default_value_##TYPE());                \
+        } else {                                                             \
+          new(field_ptr) RepeatedField&lt;TYPE&gt;();                              \
+        }                                                                    \
+        break;
+
+      HANDLE_TYPE(INT32 , int32 );
+      HANDLE_TYPE(INT64 , int64 );
+      HANDLE_TYPE(UINT32, uint32);
+      HANDLE_TYPE(UINT64, uint64);
+      HANDLE_TYPE(DOUBLE, double);
+      HANDLE_TYPE(FLOAT , float );
+      HANDLE_TYPE(BOOL  , bool  );
+#undef HANDLE_TYPE
+
+      case FieldDescriptor::CPPTYPE_ENUM:
+        ....
+      case FieldDescriptor::CPPTYPE_STRING:
+        ....
+      case FieldDescriptor::CPPTYPE_MESSAGE: {
+        // (訳) オブジェクトがプロトタイプなら, CPPTYPE_MESSAGE フィールドは初期化を
+        // あとまわしにしなければならない. CrossLinkPrototypes() を使う. だからここでは初期化しない.
+        if (!is_prototype()) {
+          if (!field-&gt;is_repeated()) {
+            new(field_ptr) Message*(NULL);
+          } else {
+            ...
+          }
+        }
+        break;
+      }
+    }
+  }
+}
+</pre>
+<p>コメントが丁寧なので特に申しあげることはございません...</p>
+<p>base_ など, いくつかのフィールドがコンストラクタの外側から与えられているのは気になる. 
+呼び出し元を見てみよう. </p>
+<pre>
+Message* DynamicMessage::New() const {
+  uint8* new_base = reinterpret_cast&lt;uint8*&gt;(operator new(size_));
+  memset(new_base, 0, size_);
+
+  return new DynamicMessage(GetDescriptor(), new_base, prototype_base_,
+                            size_, offsets_, descriptor_pool_, factory_);
+}</pre>
+<p>base_ は動的に確保し, 他は自分自身からコピーしている. 
+最初のインスタンス(プロトタイプ)を作るところを探そう. </p>
+<pre>
+const Message* DynamicMessageFactory::GetPrototype(const Descriptor* type) {
+  const Message** target = &amp;prototypes_-&gt;map_[type];
+  if (*target != NULL) {
+    // Already exists.
+    return *target;
+  }
+
+  // (訳)
+  // GeneratedMessageReflection のコンストラクタに渡す構造をすべて作る必要がある.
+  // - メッセージのフィールドを含むメモリブロック
+  // - そのメモリブロック内のフィールドのオフセットをあらわす整数値の配列
+  // - フィールドがセットされているかどうかをあらわしたビットを保持する大きなビットフィールド
+  //
+
+  // Compute size and offsets.
+  int* offsets = new int[type-&gt;field_count()];
+
+  // (訳)
+  // メッセージのフィールドをサイズの降順にソートする.
+  // その順序ならフィールドをタイトに詰め込めるし, 全てのフィールドが正しく整列(align)される.
+  // フィールドは 2 の階乗か, システムのワードサイズの倍数をもつからだ.
+
+  scoped_array&lt;const FieldDescriptor*&gt; ordered_fields(
+    new const FieldDescriptor*[type-&gt;field_count()]);
+  for (int i = 0; i &lt; type-&gt;field_count(); i++) {
+    ordered_fields[i] = type-&gt;field(i);
+  }
+  stable_sort(&amp;ordered_fields[0], &amp;ordered_fields[type-&gt;field_count()],
+              DescendingFieldSizeOrder());
+
+  // Decide all field offsets by packing in order.
+  int current_offset = 0;
+
+  for (int i = 0; i &lt; type-&gt;field_count(); i++) {
+    offsets[ordered_fields[i]-&gt;index()] = current_offset;
+    current_offset += FieldSpaceUsed(ordered_fields[i]);
+  }
+
+  // (訳) 全てのフィールドと has_bits ぶんのメモリを確保する. has_bits は終端にくっつける.
+  int size = current_offset +
+    DivideRoundingUp(type-&gt;field_count(), bitsizeof(uint32)) * sizeof(uint32);
+
+  // (訳)
+  // サイズを 64 ビット境界まで繰り上げる. こうすることで, どんな賢いアロケータも
+  // アラインメントについて気にしなくてよくなる.
+  // これによって has_bits も整列する. has_bits は常に構造体の末尾にくっつけるため.
+  size = DivideRoundingUp(size, sizeof(uint64)) * sizeof(uint64);
+  uint8* base = reinterpret_cast&lt;uint8*&gt;(operator new(size));
+  memset(base, 0, size);
+
+  // Construct message.
+  DynamicMessage* result =
+    new DynamicMessage(type, base, base, size, offsets, pool_, this);
+  *target = result;
+  result-&gt;CrossLinkPrototypes(this);
+
+  return result;
+}</pre>
+<p>コメントが丁寧なので特に申しあげることはございません... CrossLinkPrototypes() は色々やってるけど割愛. </p>
+<p>DynamicMessage はコンパイラばりに自らのフィールドを初期化し, 
+reflective な操作を実現している. これに関数ポインタテーブルを追加すれば, 
+ほとんど言語処理系のオブジェクトモデルと変わらないような気がする. (GC はないけど...)</p>
+<h4>コンパイラ</h4>
+<p>これでランタイムは一通り眺めた. 残るはコンパイラ. 疲れてきたのでささっと済ませます.</p>
+<p>コンパイラの作りはおおよそ次のようになっている: 
+フロントエンド(?)が .proto ファイルを読み込み, descriptor オブジェクトを構築する. 
+descriptor はバックエンド(?)のコード生成器に渡される. 
+コード生成器は指定された descriptor を解釈する Message 実装のソースコードを生成する. 
+コード生成器は C++, Java, Python と言語毎に用意されている. </p>
+<p>中間モデルに descriptor を使い回している作りのため, 
+コンパイラ自身の仕事ほとんど文字列を読んだり書いたりするだけ. あまり面白くない. </p>
+<p>ただ .proto から Descriptor を作る部分はツールとして使えると便利そう. 
+実際, 該当機能は Importer クラスとして公開されている. </p>
+<pre>
+//importer.h
+class LIBPROTOBUF_EXPORT Importer {
+ public:
+  Importer(SourceTree* source_tree,
+           MultiFileErrorCollector* error_collector);
+  ...
+  const FileDescriptor* Import(const string&amp; filename);
+  ...
+};</pre>
+<p>Importer は内部で Parser を利用する. Parser の実装は手書きの再帰下降方式. 面倒なので割愛. </p>
+<h4>みどころ再訪と個人的な印象</h4>
+<p>そんなわけでコードを一通り眺めた. 
+以上をふまえて冒頭に書いた見所を再確認してみる. </p>
+<p><em>直列化の自己記述度:</em> 
+データは基本的にタグと値の列でしかなく, 自己記述度は低い. (そのぶん空間効率は良い.) 
+タグには型の ID が入っているので, オブジェクトは復元できないまでも, 不明な要素を読み飛ばすことはできる. 
+またメタデータである descriptor も直列化できるため, 
+アプリケーションレベルで自己記述度の高いデータを設計するのは難しくない. </p>
+<p><em>バージョニングへの対処:</em> 
+バージョン情報そのものはない. 古いプログラムが新しいデータを復元するときは, 
+新しい追加フィールドを "unknown field" として保持する. unknown field は直列化時に書き戻されるため, 
+データが失われることはない. 古いデータを新しいプログラムが読むときは, 
+新しい追加フィールドが必須のものでない限りエラーにならない. フィールドは空のままになる. </p>
+<p>データ内のフィールドは ID だけで識別されているため, .proto のフィールド宣言で ID を変更すると互換性は失われる. 
+ID が同じで型を変更したフィールドは "unknown field" として扱われる. </p>
+<p>クラスのないオブジェクトを扱う DynamicMessage の仕組みがあり, 
+非互換な変更の行われたデータを手動で変換することができる. やりたくないけど. 
+またメッセージの定義を変更せず付加データを与える extension という仕組みもある. (読んでない.)</p>
+<p><em>オブジェクトグラフの自由度:</em> 
+複雑なオブジェクトグラフは想定されていない. 合流や循環は保存されない. 
+(データを再帰的に読みつつインスタンス化するだけ.)</p>
+<p><em>オブジェクトモデルの自己記述度:</em> 
+自己記述度は高い. .proto の記述内容は descriptor オブジェクトを通して実行時にも参照できる. 
+reflective な操作もできる. DynamicMessage や Importer など, 実行時に型を構築する仕組みがある. 
+ただ, .proto 自体はそれほど表現能力が高くない. IDL のような継承やらメソッドやらはない. </p>
+<p><em>ランタイムとコード生成の役割分担:</em> 
+直列化のコードは, リフレクションとランタイムを使ったコンパクトな実装が標準で用意されている. 
+オプションで専用の直列化コードを生成することもできる. 
+生成されたリフレクション情報 (descriptor) は永続化されたバイナリ形式でソースコードに埋め込まれ, 
+実行時に復元される.</p>
+<p>...</p>
+<p>こうしてみると, 
+C++ で reflective なオブジェクトモデルを作るという宿命的負け戦を適当にしのぎつつ, 
+そこそこ高速で堅牢なデータ定義を実現しているのがわかる. 
+内製ツールという利点もあるのだろう. 
+売り物にしようとしたらもっと色々な機能や高級なオブジェクトモデルが求められ, 
+複雑さを割けるのは難しくなるだろうから. </p>
+<p>統一された寿命管理の仕組みがない点は少し気になった. 
+オブジェクトは静的に確保するものもあるし, 動的にヒープへ確保するものもある. 
+動的なオブジェクトには, 
+呼び出し側が delete しなければいけないものがある一方, 
+prototype や descriptor など delete してはいけないオブジェクトもある. 
+おそらく色々イディオムがあるのだろう. 
+真似をするコードがある中の人はいいけれど, 
+外野がスクラッチで protobuf を使おうとしたら, それなりに苦労するかもしれない. 
+特に非同期や RPC では寿命管理が面倒だからね...</p>
+<h4>おまけ</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E7%94%BA%E3%81%A7%E3%81%86%E3%82%8F%E3%81%95%E3%81%AE%E5%A4%A9%E7%8B%97%E3%81%AE%E5%AD%90-2-%E3%83%95%E3%83%A9%E3%83%AF%E3%83%BC%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%E3%82%B9%E3%82%A2%E3%83%AB%E3%83%95%E3%82%A1-%E5%B2%A9%E6%9C%AC-%E3%83%8A%E3%82%AA/dp/4091316921%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4091316921' class='bookcover'><img data:asin='4091316921' class='asin image-right' src='http://ecx.images-amazon.com/images/I/31CcRMkPwUL.jpg'></span></a></span></p>
+<pre>
+//common.h
+...
+namespace google {
+namespace protobuf {
+
+using namespace std;  // Don't do this at home, kids.
+...</pre>

@@ -1,0 +1,313 @@
+---
+title: "Communications of ACM"
+date: 2010-01-04
+---
+<h3>Communications of ACM</h3>
+<p><img src='http://portalparts.acm.org/1570000/1562764/cover/cover_full.jpg' class='right' />
+年始は食べものの調達が億劫で, 大鍋にカレーを作り三日三晩食べ続けた. 
+量が多過ぎたので最後の夜は友人 M に助けを求めた. 
+鍋を空にすべくたらふく食べたあと土産にもらったチャイをすすりふと見ると, 
+やはり腹ごなしに本棚を物色していた M が CACM の山に目をとめていた. </p>
+<p>CACM: <a href="http://cacm.acm.org/">Communications of ACM</a> は, 
+米国のコンピュータ学会(<a href="http://www.acm.org/">ACM</a>)が発行する月刊の会誌. 
+昔々はこれに論文を載せるのが計算機科学者のステータスだった, らしい. 
+たとえば "<a href="http://portal.acm.org/citation.cfm?id=362929.362947">Goto statement considered harmful</a>" に
+続く一連の論争は CACM の投稿欄で行なわれた. ダイクストラがジャンプ放送局に出てくる雑誌を想像してほしい.
+もうちょっとマシな例だと <a href="http://portal.acm.org/citation.cfm?doid=368637.368709">Quicksort</a> なんかも CACM が初出のよう. 
+最近は分野の細分化が進み, CACM で最先端の研究が発表されることはなくなった. 
+今は ACM 界隈の研究を概観できる総合誌になっている. </p>
+<p>情報系の大学にいた人ならなんとなく知っている話だろう. 
+教員の部屋の片隅に転がっている雑誌. M も見覚えがあったらしく, 
+なんでお前はこんなもんを読んでるんだという顔をしていた. 
+"実は結構面白いんだぜ" という話が頭をよぎったものの 
+そのときは満腹の眠気で朦朧としており, そんなのより <a data:asin='4088464567' href='http://www.amazon.co.jp/%E3%83%99%E3%83%AA%E3%83%BC%E3%83%80%E3%82%A4%E3%83%8A%E3%83%9E%E3%82%A4%E3%83%88-1-%E3%83%9E%E3%83%BC%E3%82%AC%E3%83%AC%E3%83%83%E3%83%88%E3%82%B3%E3%83%9F%E3%83%83%E3%82%AF%E3%82%B9-%E4%B8%AD%E5%8E%9F-%E3%82%A2%E3%83%A4/dp/4088464567%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4088464567'>ベリーダイナマイト</a> を読めと冷たくあしらってしまったごめん. 
+改めて(ベリーダイナマイトではなく) CACM の宣伝してみたい. </p>
+<p>... と思っていたら Amazon で分散システムを作ってる計算機科学者 James Hamilton が Blog で
+<a href="http://perspectives.mvdirona.com/2010/01/02/MapReduceInCACM.aspx">CACM を勧めていた</a>. 
+まず虎の威を借りよう: <em>あの</em> James Hamilton も推薦する CACM を読まないなんて! </p>
+<h4>いまどきの CACM</h4>
+<p>私が大学の頃に読んだ CACM は, 基本的にそれほど面白い雑誌ではなかった記憶がある. 
+インフォメーションエンタープライズ云々という話があったと思えば, 
+何の役に立つんだかわからないしょぼい UI とごっつい数式と謎のグラフをちりばめた論文があり, 
+コラムも何がいいたいんだかわからなかった. そんなイメージ. </p>
+<p>ところが在学中に見栄で ACM に加入したまま惰性で購読を続けていたら数年前から段々と改善のきざしがあり, 
+特に去年は紙面を刷新してバズワード寄りの野次馬や実際のソフトウェアで使われている話, 
+各分野での新しい話題の抜粋などを扱うようになった. <a href="http://queue.acm.org/">ACM Queue</a> とも結託し, だいぶ読むところが増えてきた. 
+かつてはベローチェの壁紙みたいで興醒めだった表紙も格好よくなった. </p>
+<p>というわけで個人的に興味をもった記事や興味のあるプログラマがいそうな記事を 2009 年の発行分から紹介してみる. 
+はじめに ACM ぽくない記事から入って, そのあといかにもなやつをいくつか. </p>
+<h4>プログラミング</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0Erlang-Joe-Armstrong/dp/4274067149%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4274067149' class='bookcover'><img data:asin='4274067149' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51bZh24YhqL.jpg'></span></a></span></p>
+<p>CACM はいかにもな論文だけでなく, ACM Queue の転載などプログラミングの話も "Practice" セクションで扱っている. </p>
+<p>たとえば 3 月号は
+"<a href="http://cacm.acm.org/magazines/2009/3/21784-erlang-for-concurrent-programming/fulltext">Erlang の紹介</a>" が載っていた. 
+書いているのはもともと Amazon S3 の開発者でいまは Google にいる Jim Larson. これは Google が Er(略). 
+内容はまあふつう. 
+直接プログラミングの役には立たないけれど, 
+同じ 3 月号では "<a href="http://cacm.acm.org/magazines/2009/3/21783-better-scripts-better-games/fulltext">ゲームにはゲーム用の言語処理系が必要なんだよ</a>"
+と熱く語る記事も. たしかに文法はともかくランタイムはもっと工夫の余地があるかもね. </p>
+<p>4 月号には DTrace 開発者による "<a href="http://cacm.acm.org/magazines/2009/4/22955-purpose-built-languages/fulltext">オレオレ言語のススメ</a>" が. 
+カーネルデバッガのマクロの歴史を振り返りながら, オレオレ言語はいいものだと主張する. なぜか D の話はナシ. 
+同号には "<a href="http://cacm.acm.org/magazines/2009/4/22957-orm-in-dynamic-languages/fulltext">動的言語の ORM</a>" 
+と題した Groovy の ORM (Grails ORM) の紹介記事も. なぜ ActiveRecord じゃなくての GORM なの? という気はする. 
+若干今更感を感じるのは ACM Queue からの転載だから. </p>
+<p>5 月号の "<a href="http://cacm.acm.org/magazines/2009/5/24646-api-design-matters/fulltext">API Design Matters</a>" 
+も ACM Queue から. (<a href="http://www.dodgson.org/omo/t/?date=20070724">むかし紹介していた</a>.)
+同じ 5 月号には
+"<a href="http://cacm.acm.org/magazines/2009/5/24647-debugging-ajax-in-production/fulltext">Ajax なアプリのデバッグ方法</a>" 
+なんて記事もあり, 非同期のデバッグはろくでもないとぼやいたり arguments.caller を使った疑似スタックトレースの復元方法を紹介したり, 
+ほんとに地味な話をしている. </p>
+<h4>プログラマ読みもの</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Mercurial-Definitive-Guide-Bryan-OSullivan/dp/0596800673%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596800673' class='bookcover'><img data:asin='0596800673' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41psAOzZmcL.jpg'></span></a></span></p>
+<p>プログラミングからは少しはずれたプログラマ向けの読み物も割と多い. 
+1 月号掲載 "<a href="http://cacm.acm.org/magazines/2009/1/15667-the-long-road-to-64-bits/fulltext">64 ビットへの長い道程</a>"
+では, CPU のビット数の変遷を概観する. LP64 と LLP64 というのがあってだな, なんて最近の話は後半のちょっとだけ. 
+IBM には 24bit のアドレッシングモードを今でもサポートしてる CPU があってだな, なんて話と同列に扱われている. CPU 歴史は長いのですね...</p>
+<p>9 月号, "<a href="http://cacm.acm.org/magazines/2009/9/38901-making-sense-of-revision-control-systems/fulltext">わかるバージョン管理システム</a>" は,  
+Mercurial 開発者の Bryan O'Sullivan による DSCM 入門. ツールの使い方ではなく DSCM の有難味に
+重点を置いているのがそこらへんの入門記事と違うところ. cherrypick, bisect, rebase といった
+DSCM 固有のアイデアを駆け足で紹介(cherrypick では Darcs の特徴的な依存モデルにも言及)しつつ, 
+DSCM がもつコードレビューとの親和性の高さにきちんと言及するあたり, さすがにわかってるなあ. 
+(なお Bryan O'Sullivan の熱い SCM 語りは 
+<a href="http://hgbook.red-bean.com/">Mercurial: The Definitive Guide</a> の一章でも楽しむことができます.)</p>
+<p>6 月号では "<a href="http://cacm.acm.org/magazines/2009/6/28491-why-open-source-misses-the-point-of-free-software/fulltext">オープンソースじゃダメなんだ</a>" 
+と題し Stallman が吠えている. </p>
+<p>こうした御意見頂戴的記事が多いのも (専門学会誌と比べた) CACM の特徴かもしれない. 
+4 月号 "<a href="http://cacm.acm.org/magazines/2009/4/22953-computing-as-social-science/fulltext">社会科学としてのコンピューティング</a>" 
+では, 計算幾何学の教科書に溢れるまったく実社会を motivate しない例や説明文を盾に情報科学と現実世界の乖離を嘆き, 
+教育ではもうちっと社会の役に立つところを見せろと説く. </p>
+<p><span class='image'><a href='http://www.amazon.co.jp/Joel-Software-Spolsky/dp/4274066304%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4274066304' class='bookcover'><img data:asin='4274066304' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51YQa%2BrTYPL.jpg'></span></a></span></p>
+<p>"<a href="http://cacm.acm.org/magazines/2009/1/15661-ground-control-to-architect-tom/fulltext">管制よりアーキテクトのトムへ</a>" 
+は, 表題から想像できるようにアーキテクチャ宇宙飛行士の批判. どっかで読んだような...
+参考文献ではちゃんと<a href="http://www.joelonsoftware.com/articles/fog0000000018.html">元ネタ</a> も cite されている. 
+参考文献に漏れがないところは普通の雑誌に比べた学会誌の大きな利点だとおもう. この話自体は割としょーもないけどね. </p>
+<p>ご意見系だけでなくジャーナリズムっぽい記事もある. 
+6 月号 "<a href="http://cacm.acm.org/magazines/2009/6/28497-one-laptop-per-child-vision-vs-reality/fulltext">OLPC の理想と現実</a>"
+は, セミインサイダーによる OLPC の近況報告とポストモーテムじみた lesson learned. 冷静な分析は一読の価値あり.</p>
+<h4>ビジネス読みもの</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A8%E3%82%A2%E4%BC%81%E6%A5%AD%E3%81%AE%E7%AB%B6%E4%BA%89%E6%88%A6%E7%95%A5-%E3%83%9E%E3%82%A4%E3%82%B1%E3%83%AB%E3%83%BBA-%E3%82%AF%E3%82%B9%E3%83%9E%E3%83%8E/dp/4478374813%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4478374813' class='bookcover'><img data:asin='4478374813' class='asin image-right' src='http://ecx.images-amazon.com/images/I/5184CH1Z1PL.jpg'></span></a></span></p>
+<p>学生の頃はまったくどうでもよかったこの手の読みものも, 年をとるとそれなりに楽しめる. 
+書籍 "<a data:asin='4478374813' href='http://www.amazon.co.jp/%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A8%E3%82%A2%E4%BC%81%E6%A5%AD%E3%81%AE%E7%AB%B6%E4%BA%89%E6%88%A6%E7%95%A5-%E3%83%9E%E3%82%A4%E3%82%B1%E3%83%AB%E3%83%BBA-%E3%82%AF%E3%82%B9%E3%83%9E%E3%83%8E/dp/4478374813%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4478374813'>ソフトウエア企業の競争戦略</a>" などの著者である
+経営学者の <a href="http://web.mit.edu/cusumano/www/">クスマノ</a> は,
+CACM にも多く原稿を寄せている. </p>
+<p>クスマノによる "<a href="http://cacm.acm.org/magazines/2009/1/15663-technology-strategy-and-management-the-legacy-of-bill-gates/fulltext">ビルゲイツの伝説</a>" 
+はタイトルだけで目頭があつくなる. (でも後半で微妙に悪口をいってるのは気にいらない. みんな Gates が好きなのに!)
+今年の1月号, 同じくクスマノの
+"<a href="http://cacm.acm.org/magazines/2010/1/55758-the-evolution-of-platform-thinking/fulltext">プラットホーム指向の進化</a>"
+では, プラットホーム大好き論が炸裂する. 
+私はプラットホームをモノポリーのおまけだと思っているので, 
+最初からプラットホームを目指せという人間を全面的に信用していない. 
+だからクスマノの言うことも気に入らないけれど, 
+プラットホーム愛好家の語彙を知っておくのは(罵倒の材料として)悪くない. 
+クスマノの考え方がよくわかるのは,
+08 年 9 月号の "<a href="http://cacm.acm.org/magazines/2008/9/5331-technology-strategy-and-management-the-puzzle-of-apple/fulltext">Apple の不思議</a>"
+という記事. この中でクスマノは 
+"Apple が製品だけじゃなくプラットホームにも力を注いだらもっとシェアをとれたのにね" という主張をしている. まったくろくでもない. 
+(いちおう最後は "Apple の経営陣は両者のバランスをとろうとしている" とか言ってるけれどあからさまに修辞.)
+こういう腹立ちは明日への活力なので読むといいです. </p>
+<p><span class='image'><a href='http://www.amazon.co.jp/Apple-iPod-classic-160GB-MC297J/dp/B002OB3FKU%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3DB002OB3FKU' class='bookcover'><img data:asin='B002OB3FKU' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41eIf3BJUbL.jpg'></span></a></span></p>
+<p>Apple 関係ではむしろ 
+"<a href="http://cacm.acm.org/magazines/2009/3/21799-who-captures-value-in-a-global-innovation-network/fulltext">グローバルなイノベーションで価値を掴むのは誰か？ Apple iPod のケーススタディ</a>"
+が面白かった. iPod を構成する要素技術の原価や利益率を推測し, 
+iPod が売れたときに誰(+どの国)が実際の資金を獲得しているのかを分析する. 
+要するに "実は中国が儲かっちゃってるんじゃないの？" という米国人の心配を調べてみているわけ.
+結論としては Apple や小売店はきっちり儲かってるから
+イノベーションを頑張るのは報われるんだよ, というところに落ち着く. 
+個人的には HDD を通じて日本が Apple の 1/3 程度の取り分をゲットしているのが興味深かった. 
+これはでかい iPod の話だけれど, iPhone なんかはどうなんだろうね? </p>
+<p>ビジネス読み物では他に "CTO Roundtable" といういかにも退屈なかんじの連載がある. 
+ところが Cloud computing を扱った 8 月号では Amazon の CTO である 
+<a href="http://www.allthingsdistributed.com/">Werner Vogels</a>
+がしれっと混じっておりびびった. そりゃあなた CTO だけど...記事自体はエクセクチブな方々向け.</p>
+<p>このようにエクセクチブ/マネジメント向けの記事も多い. 
+"Virtual Extension" と題されたセクションはその方向に焦点を置いているらしい. (クスマノもここ.) 
+Virtual Extension では先のようなコラムの他, 
+マネジメントが興味を持ちそうな調査を紹介している.
+2 月号 "<a href="http://cacm.acm.org/magazines/2009/2/19339-technical-opinion-multitasking-with-laptops-during-meetings/fulltext">ノート PC のマルチタスクとミーティング</a>"
+では, 表題から想像できるとおりの行動について disturb の度合いを調査している. まあダメだよね, という結論.
+ミーティング中にカチャカチャやってる若者をとっちめたい管理職は読むとよいです. 
+でも実際カチャチャやってるのは年寄の方が多いという気もするので, 
+若者こそ CACM を盾に上司をいじめるとよいです.</p>
+<p>同程度にファニーな調査として 
+4 月号の "<a href="http://cacm.acm.org/magazines/2009/4/22969-object-language-and-impression-management/fulltext">オブジェクト言語と印象管理</a>"
+も紹介したい. この調査では, オブジェクト言語=モノを介したコミュニケーションですと最初に言い訳し(つまりタイトルは釣り), 
+"IT 関係者" がまわり(=社内)のユーザにとって接しやすい人間であるためにはどうべきかを調査に基いて説く.
+たとえば机のまわりは綺麗な方がいいとか, 植物がある方がいいとか, 家族の写真が効くとか, 
+デスクトップ PC よりノート PC の方が外交的に見えるとか(ほんとかよ). 
+その上で管理職は部下にオフィスのカスタマイズを許してはどうかと提案する. 
+うかつなカスタマイズはフラットランド住人の写真など逆に敷居を上げてしまう危惧を感じるのは私だけですか. </p>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A8%E3%82%A2%E3%83%BB%E3%82%AF%E3%83%AA%E3%82%A8%E3%82%A4%E3%83%86%E3%82%A3%E3%83%93%E3%83%86%E3%82%A3-%E3%83%AD%E3%83%90%E3%83%BC%E3%83%88%E3%83%BBL%E3%83%BB%E3%82%B0%E3%83%A9%E3%82%B9/dp/4822283925%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4822283925' class='bookcover'><img data:asin='4822283925' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51s7JoyFkDL.jpg'></span></a></span></p>
+<p>そのほか 7 月号
+"<a href="http://cacm.acm.org/magazines/2009/7/32104-the-impact-of-subversive-stakeholders-on-software-projects/fulltext">卓袱台返しのエライ人がプロジェクトに与える影響</a>", 
+9 月号 "<a href="http://cacm.acm.org/magazines/2009/9/38917-modified-agile-practices-for-outsourced-software-projects/fulltext">アジャイル改で挑むアウトソース</a>", 
+12 月号 "<a href="http://cacm.acm.org/magazines/2009/12/52846-why-did-your-project-fail/fulltext">なぜあなたのプロジェクトは失敗するのか</a>" 
+など. 卓袱台...は <a data:asin='4822283925' href='http://www.amazon.co.jp/%E3%82%BD%E3%83%95%E3%83%88%E3%82%A6%E3%82%A8%E3%82%A2%E3%83%BB%E3%82%AF%E3%83%AA%E3%82%A8%E3%82%A4%E3%83%86%E3%82%A3%E3%83%93%E3%83%86%E3%82%A3-%E3%83%AD%E3%83%90%E3%83%BC%E3%83%88%E3%83%BBL%E3%83%BB%E3%82%B0%E3%83%A9%E3%82%B9/dp/4822283925%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4822283925'>ソフトウエア・クリエイティビティ</a> の L.Glass らによる.</p>
+<h4>ハイテク</h4>
+<p>と, ここまでは若干ナナメな記事を紹介してきたけれど, ACM の本気はなんといってもハイテク話. 
+"Research Hilight" セクションでは, 
+大学の研究者に混じり独占的ハイテク企業からの書き手が最近の成果などを割と詳しく紹介している. </p>
+<p>1 月号では Amazon の CTO が
+"<a href="http://cacm.acm.org/magazines/2009/1/15666-eventually-consistent/fulltext">Eventually Consistent</a>" の記事を寄稿している. 
+(要は<a href="http://www.allthingsdistributed.com/2008/12/eventually_consistent.html">これ</a>.) </p>
+<p>2 月号 "<a href="http://cacm.acm.org/magazines/2009/2/19323-improving-performance-on-the-internet/fulltext">インターネットの性能改善</a>"
+では, Akamai のエース科学者が CDN について解説する. 規模に応じた複数の CDN アーキテクチャを概観したあと, 
+Akamai がそのどこに位置しているのか, どこに向かっているのかを示し, その困難とプラクティスを紹介する. </p>
+<p>同号 "<a href="http://cacm.acm.org/magazines/2009/2/19322-parallel-programming-with-transactional-memory/fulltext">トランザクションメモリによる並列化</a>"
+では, Redhat の Ulrich Drepper が TM の話を書いている. 
+TM の話は他にも色々あるけれど, glibc メンテナである Ulrich Drepper 視点なのがちょっと面白い. 
+紹介している実装も gcc のパッチだったりする. </p>
+<p>6 月号
+"<a href="http://cacm.acm.org/magazines/2009/6/28500-securing-frame-communication-in-browsers/fulltext">ブラウザにおけるフレーム間通信のセキュリティ確保</a>"
+は, フラグメントを使った方法などフレーム間通信の手法を概観したあと, 
+そのセキュリティ上の欠陥を指摘, 修正方法を提案する. (大半のブラウザやライブラリに報告の上修正済.) 
+競合条件をつく手口は見事というかなんというか...こんにちはの怖い人は読むとよいです. </p>
+<p>著者のひとり Adam Barth は現在 Google Chrome のチームでセキュリティまわりを見ているらしい. 
+<a href="http://trac.webkit.org/wiki/WebKit%20Team#AdamBarthabarthreview">WebKit のレビュア</a> もやっている. 
+Adam Barth はこのほかに "<a href="http://cacm.acm.org/magazines/2009/8/34494-browser-security/fulltext">Chrome 開発で学んだブラウザセキュリティ</a>" 
+なんてのも書いている. 8 月号. 
+Chrome 関係だと 他に今年 1 月号 
+"<a href="http://cacm.acm.org/magazines/2010/1/55768-native-client-a-sandbox-for-portable-untrusted-x86-native-code/fulltext">可搬で未信頼な x86 サンドボックスのための Native Client</a>" 
+なんて記事もあった. Google も CACM 好きだね. </p>
+<p>12 月号 "<a href="http://cacm.acm.org/magazines/2009/12/52824-thinsight-a-thin-form-factor-interactive-surface-technology/fulltext">ThinSight: 薄型で対話的な Surface 技術</a>" では, MS Research の研究者が安価にマルチタッチの
+"Surface" 型ディスプレイを作る方法を紹介している. 光学センサを LCD に統合するのがポイントらしい(がよくわからず). 
+Surface がはやるといいと思っている人は読むとよいです. </p>
+<h5>MapRecue 対決</h5>
+<p><span class='image'><a href='http://www.amazon.co.jp/GOOGLE%E3%81%AE%E5%85%A8%E8%B2%8C-%E3%81%9D%E3%81%AE%E3%82%B5%E3%83%BC%E3%83%93%E3%82%B9%E6%88%A6%E7%95%A5%E3%81%A8%E6%8A%80%E8%A1%93-%E6%97%A5%E7%B5%8C%E3%82%B3%E3%83%B3%E3%83%94%E3%83%A5%E3%83%BC%E3%82%BF/dp/4822262421%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4822262421' class='bookcover'><img data:asin='4822262421' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41OA3OY-eFL.jpg'></span></a></span></p>
+<p>James Hamilton が絶賛したのは今年の 1 月号に掲載された MapReduce 対決の記事. 
+詳しい内容は <a href="http://perspectives.mvdirona.com/2010/01/02/MapReduceInCACM.aspx">JH のページ</a> に譲りつつ
+野次馬の楽しみを分かちあいたい. </p>
+<p>件の対決記事は二本建になっている. 一本目の
+"<a href="http://cacm.acm.org/magazines/2010/1/55743-mapreduce-and-parallel-dbmss-friends-or-foes/fulltext">MapReduce and Parallel DBMSs: Friends or Foes?</a>" 
+は, DB の大御所 Stonebraker が書いた MapReduce と既存の並列 RDB の比較記事. 
+両者のアーキテクチャを概観した上で, 
+MapReduce のオリジナル論文にあった grep など, いくつかのタスクについて行なったベンチマーク結果を報告する. 
+その結果は "並列 RDB の方がぜんぜん速い" というもの. Stonebaker は勝負をわけた理由を分析しながら, 
+"こうしてみると Hadoop が遅いのは当然だけど RDB と比べてインストールが楽なのは褒めてやんよ. お互い学ぶことはあるからねフフン." 
+と結論する(脚色あり). Google ファンとしては感じわるい. </p>
+<p>Stonebaker は以前 blog で
+<a href="http://databasecolumn.vertica.com/database-innovation/mapreduce-a-major-step-backwards/">MapReduce: A major step backwards</a> 
+という記事を公開し, 物議をかもしたことがある. 
+CACM の記事はアカデミックな体裁で blog の煽り成分を薄めたものだと見ることができる. 
+私はもともと MapReduce がデータベースと対比できるとは思ってもいなかったので, 
+blog の記事を読んだときは言わんとするところがよくわからなかった. 
+CACM の記事で紹介されたベンチマークでようやく意図がわかった. 
+要するに "でかいデータから知りたい情報をひっこぬく" という用途を考えると, 
+MapReduce もデータベースみたいなものと見なせるでしょということらしい. </p>
+<p>さて, 話はここから面白くなる. 
+二本目の記事 "<a href="http://cacm.acm.org/magazines/2010/1/55744-mapreduce-a-flexible-data-processing-tool/fulltext">MapReduce: A Flexible Data Processing Tool</a>" 
+で, Jeffery Dean ら Google のエースエンジニアが Stonebraker の主張に意義を唱えるのだ. とっちめてやってくだせえ親方〜っ. 
+著者らは Stonebraker の主張する MapReduce の欠点ににひとつひとつ反論し, 
+Google 内での MapReduce では指摘されたような欠点を克服済であり, 
+だいたい並列 RDB なんてどのくらい耐故障性あるんだよまったくケッと一蹴する(誇張あり). ほーらごらん! </p>
+<p>まあ現実的には公開されておらず使えもしない実装の話をされても困ってしまうけれど, 
+こうした罵り合いじゃないや議論は読んでいて面白い. 
+また Stonebraker の指摘する欠点は Hadoop ユーザの陥りがちな落とし穴として, 
+Jeff Dean の反論はその解決策として読むこともできるかもしれない. 
+EC2 のインスタンス費がかさんで困っている Hadoop ユーザは読むとよいです. </p>
+<h5>大御所のご神託</h5>
+<p><span class='image'><a href='http://www.amazon.co.jp/Database-Management-Systems-Raghu-Ramakrishnan/dp/0071230572%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0071230572' class='bookcover'><img data:asin='0071230572' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51i8D880drL.jpg'></span></a></span></p>
+<p>ハイテク記事は企業だけでなく, 大学発の研究もある. というか数ではこっちが多いはず. 
+特に親玉級の研究者がガツンと申し上げるホワイトペーパーは, 数はそう多くないけれど CACM らしい内容だと思う. </p>
+<p>6 月号 "<a href="http://cacm.acm.org/magazines/2009/6/28496-the-claremont-report-on-database-research/fulltext">The Claremont Report on Database Research</a>" は, 
+10 年毎に発行されるデータベース研究の指南書のようなもの. 
+(<a href="http://leoclock.blogspot.com/2009/09/claremont-report-on-database-research.html">専門家による紹介</a>.) 
+10 年前は "<a href="http://www.sigmod.org/record/issues/9812/asilomar.html">The Asilomar Report on Database Research</a>" だったらしい. 
+DB 研究者でなくともバズ用語を仕入れて同僚を煙にまきたい先端愛好家は読むといいです.</p>
+<p>10 月号 "<a href="http://cacm.acm.org/magazines/2009/10/42368-a-view-of-the-parallel-computing-landscape/fulltext">A View of the Parallel Computing Landscape</a>" 
+は同じようなノリの並列プログラミング版で, ただ定期刊行物じゃなくてこれが初出. 
+データベースのイケイケな感じにくらべると, どうしたらいいかわからない暗中模索な感じが伝わってきてやや胃が痛い. 
+さっさとケリがついて Concurrency for Dummies みたいのを出せればいいのに. 
+そういえば同じ Berkeley から出ている Cloud computing のホワイトペーパー
+"<a href="http://berkeleyclouds.blogspot.com/">Aboeve the cloud</a>" は CACM は載らなかったね. </p>
+<h5>ハイテクアルゴリズム</h5>
+<p><span class='image'><a href='http://www.amazon.co.jp/Java%E4%B8%A6%E8%A1%8C%E5%87%A6%E7%90%86%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0-%E2%80%95%E3%81%9D%E3%81%AE%E3%80%8C%E5%9F%BA%E7%9B%A4%E3%80%8D%E3%81%A8%E3%80%8C%E6%9C%80%E6%96%B0API%E3%80%8D%E3%82%92%E7%A9%B6%E3%82%81%E3%82%8B%E2%80%95-Brian-Goetz/dp/4797337206%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4797337206' class='bookcover'><img data:asin='4797337206' class='asin image-right' src='http://ecx.images-amazon.com/images/I/511lSU4bcXL.jpg'></span></a></span></p>
+<p>計算機科学といえばアルゴリズムとデータ構造! 
+といいつつ私はだいぶ得意じゃないので流行ものっぽいのを二本だけ紹介. </p>
+<p>5 月号 
+"<a href="http://cacm.acm.org/magazines/2009/5/24654-scalable-synchronous-queues/fulltext">Scalable Synchronous Queues</a>" 
+は java.concurrent とかの lock-free 実装を越えるスーパー並列キューの話. らしい. ごめん途中までしか読んでない. 
+著者には例のごとく Doug Lea がいる. (<a data:asin='4797337206' href='http://www.amazon.co.jp/Java%E4%B8%A6%E8%A1%8C%E5%87%A6%E7%90%86%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0-%E2%80%95%E3%81%9D%E3%81%AE%E3%80%8C%E5%9F%BA%E7%9B%A4%E3%80%8D%E3%81%A8%E3%80%8C%E6%9C%80%E6%96%B0API%E3%80%8D%E3%82%92%E7%A9%B6%E3%82%81%E3%82%8B%E2%80%95-Brian-Goetz/dp/4797337206%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4797337206'>Java並行処理プログラミング</a> の人ですね.) </p>
+<p>10 月号
+"<a href="http://cacm.acm.org/magazines/2009/10/42481-finding-the-frequent-items-in-streams-of-data/fulltext">Finding the Frequent Items in Streams of Data</a>" 
+はストリーム内に登場する最頻要素をみつけるアルゴリズムの簡単なサーベイ. 
+後半に登場する Count Sketch アルゴリズムがよくわからずぐぐったら
+<a href="http://www.radiumsoftware.com/0610.html#061020">Radium Software で紹介されていた</a>. 
+CACM の前に <a href="http://d.hatena.ne.jp/KZR">Radium Software</a> を購読するとよいです. 
+それにしてもストリームアルゴリズムって流行りそうで流行らないかんじだなあ. 専門家は使ってんのかな？</p>
+<p>そういえば一部で大流行りな
+<a href="http://labs.cybozu.co.jp/blog/akky/archives/2007/08/seam-carving.html">Seam Carving</a>
+の元ねた 
+"<a href="http://cacm.acm.org/magazines/2009/1/15672-seam-carving-for-media-retargeting/abstract">Seam Carving for Media Retargeting</a>" 
+も 1 月号に載っていた. (読んでない.)</p>
+<h4>リサーチ</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/CODE-COMPLETE-%E7%AC%AC2%E7%89%88-%E3%82%B9%E3%83%86%E3%82%A3%E3%83%BC%E3%83%96-%E3%83%9E%E3%82%B3%E3%83%8D%E3%83%AB/dp/489100455X%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D489100455X' class='bookcover'><img data:asin='489100455X' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51E1DYKHW7L.jpg'></span></a></span></p>
+<p>ハイテクの話もいいけれど, アカデミックならではの話も読みたい. 
+CACM はそんな欲求にも応えてくれる. といいつつ私にはそういうのをくまなく読めるリテラシーがないので
+ほとんど猫に小判. それでも中には面白い話があった. ここでも 2 本だけ. </p>
+<p>"<a href="http://cacm.acm.org/magazines/2009/8/34500-does-distributed-development-affect-software-quality/fulltext">分散開発はソフトウェアの品質に影響するのか？ Windows Vista の実践ケーススタディ</a>"
+は, Microsoft Research による表題通りの調査. 北米, 欧州, アジアの 21 キャンパス(事務所) に分散した Windows Vista 開発の記録と出荷後のバグ発生件数を元に, 
+分散開発と一箇所での (collocated) 開発の品質を比較する. 
+同様の調査はこれまでもあったが, 大半はいわゆる "オフショア" や "アウトソース" のプロジェクトだった. 
+調査には Microsoft のような単一企業内の対等なチームによる分散開発では何が起こるのか知りたいとう動機があったようだ. 
+データの分析は "ほとんど差がない" という衝撃の事実を明らかにする. 
+著者は考えうる理由としてチームやオフィスの立場や力関係の対等さ, 文化的障壁を下げるための社員派遣, ツールの統一, ライフサイクルを通じて一貫した所有権, 共通のスケジュール, 
+経営を含めた組織の統一性などを挙げている. </p>
+<p>まあ既存の調査が "修正の要求から実際の修正までの時間" といった柔軟性の指標を使っているところに 
+"出荷後のバグ報告数" のような計測可能(かつある程度予防可能)な指標を持ってくるあたりに若干の後ろ暗さを感じなくはないけれど, 
+オレたちソフトウェアを作らせたら凄いんだぜ! という Microsoft の力強い自負は伝わってきた. 
+Vista は失敗だの Azure は継続的なんとかだのと煩い外野に苛立っている MS ファンは読むとよいです. 
+個人的には既存研究も読みたかったけど IEEE (入ってない) だったよ...</p>
+<p>つづき. 9 月号 
+"<a href="http://cacm.acm.org/magazines/2009/9/38908-spamalytics-an-empirical-analysis-of-spam-marketing-conversion/fulltext">Spamalytics: スパム広告コンバーションの実践分析</a>" 
+は, スパムメールの効果のほどを調べるために, ちょっとばかし botnet を拝借してスパムを送ってみましたよ, という話. 
+色々な意味で面白い. </p>
+<p>(おそらく honeypot に飼っている) botnet の中継サーバをクラック(?) して 
+配信すべきメールを自分達のサイトに誘導するよう書き換え, 
+数百万台のワーカー bot から数億通のスパムメールを配信したという. 
+そして偽スパムサイトに辿りつき "buy" をクリックしたユーザを数え, スパムの到達率を計算している. 
+はたしてスパマーはどのくらい左団扇なのか？ スパマーに広告を頼むのは割に合うのか？
+気になる人は読むとよいです.</p>
+<p>私の中ではスパマー=<a href="http://www.wired.com/wired/archive/14.08/spamking.html">スパム王</a>なので, 
+色々と感慨深いよみものでありました. 
+最近のスパム事情(バイアグラを売るかわりに嘘の企業情報を流して株価を操作する Stock Spam)の話や, 
+ハイジャックした botnet である <a href="http://en.wikipedia.org/wiki/Storm_botnet">Storm Botnet</a> の
+アーキテクチャ紹介も面白かった. </p>
+<h4>そのほか</h4>
+<p><img src='http://portalparts.acm.org/1410000/1400214/cover/cover_full.jpg' class='right' /></p>
+<p>と, だいたい面白かった話は紹介したつもりになって気が済んだ. 
+(自分の興味にあったジャンルがないという人は, 単に私の軽薄な偏りが口に合わないだけだと思うので, 
+<a href="http://cacm.acm.org/magazines/">バックナンバー目次</a>を眺めてみると良いかもしれません. 機械学習や NP 完全もあるよ!)</p>
+<p>そのほか ACM がやっているチューリング章を受賞した
+<a href="http://cacm.acm.org/magazines/2009/7/32100-qa-liskov-on-liskov/fulltext">Liskov のインタビュー</a>  
+を読んでめちゃめちゃ現役なのにびびってみたり, 
+Quicksort を発明した 
+<a href="http://cacm.acm.org/magazines/2009/3/21782-an-interview-with-car-hoare/fulltext">Hoare のインタビュー</a>
+を読んでまだ生きてたかとびびってみたり, 
+<a href="http://cacm.acm.org/magazines/2008/11">海に消えた Jim Gray を悼んでみたり</a>, 
+計算機科学有名人の話題にはことかかない. </p>
+<p>ニュース欄もそこらへんのニュースサイトとはちょっとズレたかんじで面白い時がある. 
+(<a href="http://cacm.acm.org/magazines/2009/11/48435-internet-addiction-its-spreading-but-is-it-real/fulltext">インターネット中毒の話</a>とか.)
+あとは SIGGRAPH の宣伝に夏を感じてみたりもできる. </p>
+<p>毎号 100 ページちょっとのコンパクトな体裁なのに, 暇さえあれば隅々まで飽きずに読める盛り沢山な内容で, しかもフルカラー. 
+船便で印刷版が届くほか, 発行直後に PDF 公開のお知らせも届く. 
+ACM 会員になれば ACM Digital Library にもアクセスできるから, 
+ぐぐってみつけた論文が非公開で読めず涙することもなくなる. (IEEE や Springer などのトラップは除く.) 
+まあ CACM に限らずコンピュータ系の読み物はウェブで検索すれば何割かは公開されているのがみつかるんだけれど, 
+CACM については話題の取捨に有難味があると思う.</p>
+<p>すわ購読! と思ったひとは <a href="http://campus.acm.org/public/quickjoin/interim.cfm">オンラインのフォーム</a> 
+から ACM に入るとよいです. </p>
+<h4>学費の見返り</h4>
+<p>CACM を特に勧めたいのは, 情報系の学科出身だけれど仕事はハイテク感がなくて悲しい思いをしているひとたち(=情報系の卒業生大半). 
+世間の多くのプログラムは CS 的な価値観だと trivial なものが大半なので, 
+輪読や実験など辛い思いをした日々や完済遥かな奨学金がいまいち報われない感があるかもしれない. 
+かといってたまに現れる non-trivial な問題と戦える腕もない. 
+こうしてハイテクへの憧れは退屈の埃にまみれ挫折の泥に沈んでいく. 
+けれど CACM を読んで人類の英知と野望の一端を楽しめるのは大学卒業の見返りとして悪くないと思う. 
+煤けた憧れにひとつまみの輝きを呼び戻してくれるから. </p>
+<p>スポーツをしたことがあればプロスポーツ観戦の興奮が高まるように, 
+楽器をやったことがあれば音楽鑑賞の楽しみが増すように, 
+情報科学をかじったことがあればハイテク野次馬の蘊蓄にも磨きがかかるというもの. 
+アルゴリズムがわからいまま適当に実装したらさっぱり動かず卒論の締切間近な四面楚歌だとか, 
+三年前の論文を読んで改良を試していたらもっと良いアルゴリズムが半年前に発表されてた修論の締切間近な五里霧中だとか, 
+そういう心配なしに読む CACM は, 
+最新の面白いコンピュータ話をつまみ食いできる割と楽しい読み物なのでした. ほんとはね. </p>

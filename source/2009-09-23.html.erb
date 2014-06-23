@@ -1,0 +1,136 @@
+---
+title: "会社に鍵と財布を忘れたその夜, 行き場を失った私は自宅の扉に拳を打ち付けた"
+date: 2009-09-23
+---
+<h3>近況</h3>
+<p>会社に鍵と財布を忘れたその夜, 行き場を失った私は自宅の扉に拳を打ち付けた. 
+人生のロードマップを前倒す新宿中央公園デビューも頭をよぎったものの, 
+幸いその日のカバンにはケータイが入っていた. 近所の友達が在宅だったのもまた幸いだった. 
+懇願して寝床を, 脅迫して晩飯を得ることができた. </p>
+<p>腹もふくれ我が家のようにくつろいでいると, Android devphone 1 の箱が目についた. 
+そういえば前に買ったと言っていたっけ...などといいつつ勝手にいじっている私に気付いた友達が, 
+思い出したようにつぶやく - "そういえば, Android のブラウザはちょっと不思議でさあ..." 
+というのは "ページの文章がいつも画面ぴったりに収まるんだよね." そういわれてみると, たしかに文章の幅がぴったりきている. 
+最初はたまたまかと思ったけれど, 
+設定画面をみると "Auto-fit pages: Format Web pages to fit the screen" なんて項目があった. 
+API にも 
+<a href="http://developer.android.com/reference/android/webkit/WebSettings.LayoutAlgorithm.html">WebSetting.LayoutAlgorithm</a>
+なる定数がある. やっぱりブラウザの機能らしい. なかなか便利. 
+iPhone (iPod touch) の Safari にこんな機能はなかったから, Android 固有の機能なのかもしれない.</p>
+<h4>Fit Column To Screen</h4>
+<p>帰宅後に <a href="http://source.android.com/download">Android のツリー</a> をチェックアウトしてみると, 
+たしかに <a href="http://android.git.kernel.org/?p=platform/external/webkit.git">改造 WebKit が入っていた</a>. 
+オリジナル ChangeLog ファイルの日付は今年の 2 月. 以降もツリーはそこそこ変更されており, 
+セキュリティの修正なんかも手でぱちっているかんじ. 割と独自路線な様子. </p>
+<p>件のレイアウト機能は <strong>FCTS(Fit Column To Screen)</strong> と呼ばれ, 
+<strong>ANDROID_LAYOUT</strong> の ifdef で盛り込まれていた. 
+この ifdef は何箇所かにあるけれど, 
+<a href="http://android.git.kernel.org/?p=platform/external/webkit.git;a=blob;f=WebCore/rendering/bidi.cpp;h=3b0e7c4bebf8fba383126ba02ac5be4f8471839e;hb=master">bidi.cpp</a>
+の使われ方がわかりやすい. </p>
+<pre>
+void RenderBlock::layoutInlineChildren(bool relayoutChildren, int&amp; repaintTop, int&amp; repaintBottom)
+{
+    ...
+    if (firstChild()) {
+#ifdef ANDROID_LAYOUT
+        // if we are in fitColumnToScreen mode and viewport width is not device-width,
+        // and the current object is not float:right in LTR or not float:left in RTL,
+        // and text align is auto, or justify or left in LTR, or right in RTL, we
+        // will wrap text around screen width so that it doesn't need to scroll
+        // horizontally when reading a paragraph.
+        const Settings* settings = document()-&gt;settings();
+        bool doTextWrap = settings &amp;&amp; settings-&gt;viewportWidth() != 0 &amp;&amp;
+                settings-&gt;layoutAlgorithm() == Settings::kLayoutFitColumnToScreen;
+        if (doTextWrap) {
+            int ta = style()-&gt;textAlign();
+            int dir = style()-&gt;direction();
+            EFloat cssfloat = style()-&gt;floating();
+            doTextWrap = ((dir == LTR &amp;&amp; cssfloat != FRIGHT) ||
+                    (dir == RTL &amp;&amp; cssfloat != FLEFT)) &amp;&amp;
+                    ((ta == TAAUTO) || (ta == JUSTIFY) ||
+                    ((ta == LEFT || ta == WEBKIT_LEFT) &amp;&amp; (dir == LTR)) ||
+                    ((ta == RIGHT || ta == WEBKIT_RIGHT) &amp;&amp; (dir == RTL)));
+        }
+        bool hasTextToWrap = false;
+#endif
+    }
+    ...
+#ifdef ANDROID_LAYOUT
+                if (doTextWrap &amp;&amp; !hasTextToWrap &amp;&amp; o-&gt;isText()) {
+                    Node* node = o-&gt;element();
+                    // as it is very common for sites to use a serial of &lt;a&gt; or
+                    // &lt;li&gt; as tabs, we don't force text to wrap if all the text
+                    // are short and within an &lt;a&gt; or &lt;li&gt; tag, and only separated
+                    // by short word like "|" or ";".
+                    if (node &amp;&amp; node-&gt;isTextNode() &amp;&amp;
+                            !static_cast&lt;Text*&gt;(node)-&gt;containsOnlyWhitespace()) {
+                        int length = static_cast&lt;Text*&gt;(node)-&gt;length();
+                        // FIXME, need a magic number to decide it is too long to
+                        // be a tab. Pick 25 for now as it covers around 160px
+                        // (half of 320px) with the default font.
+                        if (length &gt; 25 || (length &gt; 3 &amp;&amp;
+                                (!node-&gt;parent()-&gt;hasTagName(HTMLNames::aTag) &amp;&amp;
+                                !node-&gt;parent()-&gt;hasTagName(HTMLNames::liTag))))
+                            hasTextToWrap = true;
+                    }
+                }
+#endif
+            }
+    ...
+#ifdef ANDROID_LAYOUT
+        // try to make sure that inline text will not span wider than the
+        // screen size unless the container has a fixed height,
+        if (doTextWrap &amp;&amp; hasTextToWrap) {
+            // check all the nested containing blocks, unless it is table or
+            // table-cell, to make sure there is no fixed height as it implies
+            // fixed layout. If we constrain the text to fit screen, we may
+            // cause text overlap with the block after.
+            bool isConstrained = false;
+            RenderObject* obj = this;
+            while (obj) {
+                if (obj-&gt;style()-&gt;height().isFixed() &amp;&amp; (!obj-&gt;isTable() &amp;&amp; !obj-&gt;isTableCell())) {
+                    isConstrained = true;
+                    break;
+                }
+                if (obj-&gt;isFloating() || obj-&gt;isPositioned()) {
+                    // floating and absolute or fixed positioning are done out
+                    // of normal flow. Don't need to worry about height any more.
+                    break;
+                }
+                obj = obj-&gt;container();
+            }
+            if (!isConstrained) {
+                int screenWidth = view()-&gt;frameView()-&gt;screenWidth(); // 画面サイズ
+                if (screenWidth &gt; 0 &amp;&amp; width() &gt; screenWidth) {
+                    int maxWidth = screenWidth - 2 * ANDROID_FCTS_MARGIN_PADDING;
+                    setWidth(min(width(), maxWidth));
+                    m_minPrefWidth = min(m_minPrefWidth, maxWidth);
+                    m_maxPrefWidth = min(m_maxPrefWidth, maxWidth);
+                    m_overflowWidth = min(m_overflowWidth, maxWidth);
+                }
+            }
+        }
+#endif
+     ...
+}</pre>
+<p>要するに, 
+<strong>設定が有効で DOM のテキストノードの文字列長が一定を越えていたら inline 要素の折り返し幅を実際の画面幅でクリップしている</strong>.
+こんなことをするとレイアウトが激しく崩れそうだけれど, この時点で親の block 要素の幅は既に計算が済んでいる. 
+inline 要素の幅だけが影響をうける. </p>
+<p>Android のブラウザでは(Android に限らず最近のスマートフォンでは), 
+画面全体のレイアウトにある種の仮想スクリーンを使っているのを思いだしてほしい. 
+画面全体は十分な幅を持った仮想スクリーン上で PC 風にレイアウトさせ, inline 要素に詰まったテキストだけを
+実際の画面幅で折り返している. おかげでページ全体のレイアウトはくずれないのに, テキストは横スクロールなしで読めるわけ. 
+なかなかよくできている. </p>
+<p><img src='/images/20090923_0.png' class='diagram'></p>
+<p>昔, ケータイ版の Opera には <a href="http://www.opera.com/press/releases/2003/02/11/">SSR(Small Screen Rendering)</a> 
+という機能があって(まだあるかも), ページ全体のレイアウトをを小さな画面にあわせ組替えてくれた. 
+これはこれで便利だったけれど, 複数カラム構成のページが増えるにつれて段々と組替えるのが辛くなっていった. 
+Android の FCTS はページ全体のレイアウトを維持したまま
+インライン要素の折り返しだけを制御することで, 今時の複数カラムなページも破綻なく扱えている. あたまいい. 
+どうせなら Webkit 本家にもフィードバックして, Blackberry や Palm に塩を送ればいいのにね. </p>
+<p>なお Android WebKit は FCTS 以外に SSR 風のレイアウトモードも実装しており, 
+これは複数列のテーブルを一列に畳みこんだり, 画像を画面幅に縮小したりできるらしい. 
+でも設定の GUI から選べないとろをみると, あまり良い出来ではないのかも. </p>
+<p>というわけで, iPhone ユーザにコンパス付き Street View を自慢できなくなり悲しんでいる 
+Android ユーザ諸兄は FCTS を自慢するとよいのではないでしょうか. </p>

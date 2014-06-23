@@ -1,0 +1,159 @@
+---
+title: "Mercurial で手軽な共有レポジトリをつくろう"
+date: 2007-05-19
+---
+<h3>Mercurial で手軽な共有レポジトリをつくろう</h3>
+<p>SCM の <a href="http://www.selenic.com/mercurial/wiki/">Mercurial</a> には
+CGI スクリプトがついてくる. これを使うと簡単に共有レポジトリを作ることができる. 
+Web ブラウザからコードを閲覧できるし, 標準の hg コマンドからもさわれる. 
+ためしにこのサーバ(さくらインターネットの賃貸)にインストールしてみたら, 
+<a href="http://dodgson.org/omo/hello-hg/">ちゃんと動いた</a>. 
+せっかくなのでインストール手順を簡単に紹介しておく. </p>
+<p>さて, SCM が CGI として動くのは一部の人にとってキラーな機能かもしれない. 
+ちょっと友達と一緒にコードをいじりたい. 家と学校で設定ファイルやメモを共用したい. 
+そんな時に重宝する. 
+今時の先鋭的な Web の若者は自分の公開サーバがあるだろうけれど, 
+怠惰な中年にそういうものはない. 共有サーバの賃貸がせいぜい. 
+なので CVS や Subversion はあてにできない. 
+有償の Subversion ホスティングに金を払うのも惜しいし, 
+sourceforge や google code に登録するのも面倒だ. 
+そんなあなた(というか私)は Mercurial を試してみていいと思う. 
+以上能書き.</p>
+<p>なお以下で紹介する手順は Mercurial の Wiki にあるのと同じもので, 
+特に落とし穴もなかった. 公式情報が好きなひとはそちらを参照あれ: <a href="http://www.selenic.com/mercurial/wiki/index.cgi/CGI_Install">Setting up a Mercurial CGI Server</a>, <a href="http://www.selenic.com/mercurial/wiki/index.cgi/PublishingRepositories">Publishing Mercurial repositories</a></p>
+<p><em>前提条件</em></p>
+<p>インストールを始める前に以下の点を確認しておく.</p>
+<ul>
+<li>手元に Mercurial がインストールされていること (最新の 0.9.3 が望ましい. 0.9.0 はバグあり.)</li>
+<li>サーバで CGI が動くこと</li>
+<li>サーバでシェルが使える(ssh でログインできる)こと</li>
+<li>サーバで Python 2.3 以降が使えること (python -v で確認)</li>
+<li>サーバで C コンパイラが使えること (which gcc で確認)</li>
+</ul>
+<p><em>入手, 展開, インストール</em></p>
+<p>Mercurial のソースコードをダウンロードして展開,  
+適当なローカルディレクトリにインストールする. </p>
+<pre># サーバ側:
+$cd tmp
+$wget http://www.selenic.com/mercurial/release/mercurial-0.9.3.tar.gz
+$tar xvzf mercurial-0.9.3.tar.gz
+$cd mercurial-0.9.3
+$python setup.py install --home=$HOME/local --force</pre>
+<p><em>レポジトリの準備</em></p>
+<p>サーバ側で公開するレポジトリを手元で作り, サーバにコピーする. 
+その際にサーバ側で必要な設定(hgrc の記述)も済ませておく. </p>
+<pre># クライアント側:
+$mkdir hello-hg
+$hg init hello-hg
+$vi hello-hg/.hg/hgrc</pre>
+<p>hgrc の中味はこんなかんじ：</p>
+<pre>[web]
+push_ssl = false
+allow_push = *</pre>
+<p>"allow_push = *" は任意のユーザにチェックイン(push)を許す設定. 
+アクセス管理は apache に任せるので, ここでは素通ししていい.  
+"push_ssl = false" は push の際に SSL を使わず素の HTTP を許す設定. 
+このサーバは SSL を使えないから仕方なし. </p>
+<p>準備ができたらレポジトリをまとめてサーバにコピーする.</p>
+<pre># クライアント側:
+$tar cvzf hello-hg.tgz hello-hg
+$scp hello-hg.tgz ....</pre>
+<p>サーバ側でそれを適当な場所に展開する. 
+ついでに CGI から書き換え可能なアクセス権を与える.</p>
+<pre># サーバ側:
+$cd ~/work/
+$tar xvzf ~/tmp/hello-hg.tgz # hello-hg ディレクトリができる
+$find hello-hg -type d | xargs chmod 777 # おおざっぱすぎるかも...
+$find hello-hg -type f | xargs chmod 666</pre>
+<p>レポジトリづくりはサーバ側でやってもいいけど, 
+hg コマンドを動かすには環境変数の設定などが面倒. 手元でやる方が楽だった.</p>
+<p><em>CGI の設定</em></p>
+<p>CGI フロントエンドのスクリプトを Web から見える適当なディレクトリにコピーし, 
+設定を書き換える.</p>
+<pre># サーバ側:
+$mkdir ~/www/hello-hg
+$cp ~/tmp/mercurial-0.9.3/hgweb.cgi ~/www/hello-hg/index.cgi
+$chmod 755 ~/www/hello-hg/index.cgi
+$vi ~/www/hello-hg/index.cgi</pre>
+<p>スクリプトの書き換え箇所は二箇所ある.
+まずこのコメントを外して...</p>
+<pre>#import sys
+#sys.path.insert(0, "/path/to/python/lib")</pre>
+<p>Mercurial をインストールしたディレクトリを指定する.</p>
+<pre>import sys
+sys.path.insert(0, "/home/alice/local/lib/python")</pre>
+<p>あとはレポジトリの場所を指定する. 以下を...</p>
+<pre>def make_web_app():
+   return hgweb("/path/to/repo", "repository name")</pre>
+<p>こんな風になおす.</p>
+<pre>def make_web_app():
+   return hgweb("/home/alice/work/hello-hg", "Hello, Mercurial")</pre>
+<p>これで一応の設定は完了している. 
+index.cgi の URL を開いてみよう. エラーでない画面が表示されたら成功. 
+(<a href="http://dodgson.org/omo/hello-hg/">こんなかんじ</a>.)</p>
+<p>チェックアウト (clone) も試そう. </p>
+<pre># クライアント側
+$cd ~/work/
+$hg clone http://www.example.com/hello-hg/index.cgi hello-hg
+requesting all changes
+adding changesets
+adding manifests
+adding file changes
+added 1 changesets with 1 changes to 1 files
+1 files updated, 0 files merged, 0 files removed, 0 files unresolved</pre>
+<p>hg clone で手元にレポジトリをコピーしている. </p>
+<p><em>アクセス制限</em></p>
+<p>現状では匿名でばりばり書き換え可能な状態になっている. 
+Basic 認証くらいはかけておきたい. .htaccess を書こう. 
+(ここから先は普通の CGI の話です.)</p>
+<pre># サーバ側
+$vi ~/www/hello-hg/.htaccess</pre>
+<p>.htaccess の中味はこんなの:</p>
+<pre>DirectoryIndex index.cgi
+
+&lt;Limit POST PUT&gt;
+AuthName Mercurial
+AuthType Basic
+# .htpasswd の作り方は適当にぐぐってください.
+AuthUserFile /home/phantasien/.htpasswd
+Require valid-user
+&lt;/Limit&gt;</pre>
+<p>設定を確認するために変更をチェックイン(push)してみる. </p>
+<pre># クライアント側
+$cd ~/work/hello-hg
+$vi hello.txt
+.... # なんか書く
+# ローカルのレポジトリにチェックイン
+$hg add hello.txt
+$hg ci
+# いざ push. 訊かれるパスワードは .htpasswd で設定したもの.
+$hg push http://www.example.com/hello-hg/index.cgi
+pushing to http://www.example.com/hello-hg/index.cgi
+searching for changes
+http authorization required
+realm: Mercurial
+user: alice
+password:
+adding changesets
+adding manifests
+adding file changes
+added 1 changesets with 1 changes to 1 files</pre>
+<p>無事 push できればインストールはおしまい. 今日から君も Mercurian. 
+クライアントの使い方は本家にある <a href="http://www.selenic.com/mercurial/wiki/index.cgi/Tutorial">チュートリアル</a>(<a href="http://www.selenic.com/mercurial/wiki/index.cgi/JapaneseTutorial">日本語</a>)を眺めてみてください. </p>
+<p><em>proxy の設定</em></p>
+<p>firewall の中にいる人は proxy の設定が必要になる. 
+<a href="http://www.selenic.com/mercurial/hgrc.5.html">マニュアルによると</a>, 
+ローカルレポジトリの .hg/hgrc に設定を書けばいいらしい. (私はまだ試してない.)</p>
+<pre>[http_proxy]
+host = proxy.example.com:8080</pre>
+<p>ざっとみたところ, Mercurial は GET と POST しか使わなそう. 
+この素朴さも Mercurial の利点になるかもしれない. 
+(.htaccess のサンプルは PUT もチェックしてるけど...) 
+Subversion は PROPFIND のようなマイナーメソッドを使うため, 
+保守的な proxy をくぐれないことがある. </p>
+<h4>余談</h4>
+<p>Mercurial は受け入れられつつある. 
+<a href="http://weblogs.mozillazine.org/preed/2007/04/version_control_system_shootou_1.html">Mozilla も移行を決め</a>, <a href="http://www.mozilla.org/projects/tamarin/">Tamarin は一足先に乗り換えた</a>. <a href="http://trac.edgewall.org/wiki/TracMercurial">Trac にも入りそう</a>, <a href="http://www.selenic.com/mercurial/wiki/index.cgi/ProjectsUsingMercurial">他も色々</a>. 
+分散という点ばかり注目されているけれど, 試してみると全体に細々と出来がいい. 
+それにブランチの手間がない Mercurial は私の好みにあう. なのでしばらく応援していきます. 
+まともな GUI クライアントができないかなあ. 会社その他でも勧めやすくなるのに. </p>

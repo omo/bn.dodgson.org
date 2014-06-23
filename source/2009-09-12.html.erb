@@ -1,0 +1,157 @@
+---
+title: "Alcor の Abbreviation Scoring"
+date: 2009-09-12
+---
+<h3>Alcor の Abbreviation Scoring</h3>
+<p>同僚の生産性ツール愛好家が熱に浮かされて言った. 
+"<a href="http://www.blacktree.com/">QuickSilver</a> の検索がすごいんだよ!" 
+どう凄いのかというと, たとえば "Skype を検索するのに &lt;sp&gt; でいい!" らしい. 
+それは凄いのかも. </p>
+<p>私もいちおう QuickSilver を使っているけれど, 素敵機能の類はまったく活用していない. 
+だいたい私の使うアプリケーションはどれも一文字で特定できる. <strong>F</strong>irefox, <strong>E</strong>macs, <strong>i</strong>Term, <strong>A</strong>ctivity Monitor...
+そういえば <em>iT</em>unes は <em>iT</em>erm と被ってる. ためしに &lt;iu&gt; と打ってみたら <strong>i</strong>T<strong>u</strong>nes にマッチする. 
+なんとなく凄い気がしてきた. </p>
+<p>同僚はこのアルゴリズムが気になるらしい. 編集距離の仲間かとも思ったけれど, 違う気がする. </p>
+<p>とりあえずぐぐってみたところ, 
+QuickSilver は 2007 年に <a href="http://code.google.com/p/blacktree-alchemy/">オープンソース</a> 化していた. 
+これなら話が早い. 中身を見てみよう. 
+幸いこのアルゴリズムを JS に移植した先人 <a href="http://github.com/rmm5t/liquidmetal/">LiquidMetal</a> のページからオリジナルコードへのリンクがあった. 
+(<a href="http://code.google.com/p/blacktree-alchemy/source/browse/trunk/Crucible/Code/NSString_BLTRExtensions.m">NSString_BLTRExtensions.m</a>)
+これを読めばいいらしい. </p>
+<h4>ruby で AbbreviationScorer</h4>
+<p>関数は NSString の category として実装されている. 
+self がマッチ対象の文字列 (例:"iTunes") で, 比較用のパターン (例:"iu") を引数にとる.
+そして文字列ととパターンの一致度をあらわした実数のスコアを返す.
+関数名は NSString#scoreForAbbreviation(), 実装したのは Alcor さん. 
+このアルゴリズムは <strong>Alcor の Abbreviation Scoring</strong> と呼ぶことにしよう.</p>
+<p>元のコードは Objective-C で若干しんどい. 
+アルゴリズムはそのままで ruby に直してみた.</p>
+<pre>
+class AbbreviationScorer
+
+  def initialize(toscore)
+    @toscore = toscore
+    @td = toscore.downcase
+  end
+
+  def compute(abbreviation)
+    return 0.9 if abbreviation.empty?
+    return 0.0 if @toscore.size &lt; abbreviation.size
+
+    ad = abbreviation.downcase
+    (0 ... ad.size).inject(nil) do |a, i|
+      a or score_for(ad, ad.size - i)
+    end or 0.0
+  end
+
+  private
+
+  def score_for(abbreviation, pivot)
+    ahead  = abbreviation[0, pivot]
+    atail  = (abbreviation[pivot .. -1] or "")
+    found  = @td.index(ahead)
+    return nil unless found
+    tail = (@toscore[found + pivot .. -1] or "")
+    tail_score = AbbreviationScorer.new(tail).compute(atail)
+    return nil unless 0 &lt; tail_score
+    point = (found + pivot) - penalty(found)
+    return (point + tail_score*tail.size)/@toscore.size
+  end
+
+  def penalty(found)
+    return 0 if 0 == found
+    skipped = @toscore[0, found]
+    if /\s$/ =~ skipped
+      nws = skipped.scan(/\s/).size
+      return (nws + (skipped.size - nws)*0.15)
+    elsif /^[[:upper:]]/ =~ @toscore[found .. -1]
+      nuc = skipped.scan(/[[:upper:]]/).size
+      return (nuc + (skipped.size - nuc)*0.15)
+    else
+      return skipped.size
+    end
+  end
+
+end</pre>
+<p>動かしてみる:</p>
+<pre>
+def print_score(str, pat)
+  width = str.size &lt; 8 ? 5 : 12
+  printf("%-#{width}s &lt;- %-5s = %f\n", str, pat, AbbreviationScorer.new(str).compute(pat))
+end
+
+print_score("hello", "h")
+print_score("hello", "he")
+print_score("hello", "hel")
+print_score("hello", "helo")
+print_score("hello", "hello")
+print_score("hello", "llo")
+print_score("hello", "lo")
+print_score("hello", "ho")
+print_score("hello", "hx")</pre>
+<p>結果:</p>
+<pre>capricious:ascore omo$ ruby ascore.rb
+capricious:ascore omo$ ruby ascore.rb
+hello &lt;- h     = 0.920000
+hello &lt;- he    = 0.940000
+hello &lt;- hel   = 0.960000
+hello &lt;- helo  = 0.800000
+hello &lt;- hello = 1.000000
+hello &lt;- llo   = 0.600000
+hello &lt;- lo    = 0.400000
+hello &lt;- ho    = 0.400000
+hello &lt;- hx    = 0.000000</pre>
+<p>それっぽいかんじ.  なお, 私の手抜きと可読性の都合で性能はよくない. 
+オリジナルは NSRange で部分文字列を表現し, 文字列のインスタンス化を避けている. 
+けれど↑ではじゃんじゃかやっている. ちゃんと作るときは元のからぱくることをお勧めします. </p>
+<h4>アルゴリズム</h4>
+<p>基本的なアイデアは, 比較文字列 (abbreviation) を<strong>語のプレフィクスのリストだと解釈しなおす</strong> こと.
+たとえば "CUR" という abbreviation があったとして, 
+これは "CUR" というプレフィクス一つかもしれないし (CURry), 
+"CU と R" という二つのプレフィクスかもしれないし (CUrry Restrant) , "C と UR" かもしれないし (Curry URbanization), "C と U と R" かもしれない (Curry Unification Registance). 
+abbreviation=<strong>略語は何かの語のプレフィクスのリストを連結したもの</strong>だというわけ. </p>
+<p>こうしたプレフィクス化のパターンを列挙して順に試していき, 
+対象の文字列とマッチすれば=(対処の文字列の略語と見なせるパターンがあれば) 
+その一致具合(=スコア)を返す. 
+スコアは, 対象の文字列が略語としてそれっぽいほど高くなる. 
+どの略語にも含まれない文字が比較対象の文字列に含まれると減点され, 
+略語に含まれている文字が比較対象の文字列に含まれていないと失格する. </p>
+<p>常に全てのパターンを試すわけではなく, 
+一致するものが見つかったらその場で試行を打ち切るのは面白い. 
+性能の都合なのか, 先頭に近い側を優先するのが使いやすいのか. </p>
+<h4>スコア計算の小細工</h4>
+<p>スコアの計算は, 対象文字列を一文字ごとに評価して, 合計を正規化するかんじ. 
+プレフィクスに一致した文字のスコアが 1 点(満点), 略されたらしい部分が 0.9 点, 
+略語として解釈できずスキップした文字
+(対象が "hello", abbreviationが "l" のときの "he" の部分) は 0 点と数える. </p>
+<p>0 点になるはずのスキップ文字を底上げするロジックが面白い. 
+まず, <strong>プレフィクスにマッチした直前に空白文字があったとき, 対象文字列は文章だとみなされる</strong>らしい. 
+このモードでは, 単語の区切りにある空白だけが 0 点になる. 空白以外の文字は 0.85 点扱い. 
+同様に, <strong>マッチの先頭が大文字だった場合, それは CamelCase と見なされる</strong>らしい. 
+そして大文字だけが 0 点で, 小文字は 0.85 点と数えられる. </p>
+<pre>
+print_score("how_are_you", "ay")
+print_score("how are you", "ay")
+print_score("howareyou", "ay")
+print_score("HowAreYou", "ay")</pre>
+<p>結果:</p>
+<pre>how_are_you  &lt;- ay    = 0.345455
+how are you  &lt;- ay    = 0.731818
+howareyou    &lt;- ay    = 0.422222
+HowAreYou    &lt;- ay    = 0.800000</pre>
+<p>複数語からなる長いファイル名を減点しすぎない仕組みなんだろうね. </p>
+<h4>絞りこみ</h4>
+<p>このアルゴリズムは, abbreviation が長くなると遅くなるのが目に見えている. 
+文字列長が N のとき, プレフィクスのリストとして解釈できるパターン数は 2^{N-1}. (...だとおもう. たぶん.) 
+個々のプレフィクス長は N より小さいから指数的というと誹謗中傷の恐れがあるけれど, 
+それなりに重いのは確かだろう. </p>
+<p>幸い実際の N はそれほど大きくない. (私の場合は大半が 1 で, 多くても 3.) 
+また QuickSilver の実装はインクリメンタルサーチをうまく使い, 
+一文字入力の時点で検索した結果だけが二文字目が与えられた時の検索対象になる. 3 文字目以降も同じ. 
+スコアが 0 点の文字列 (略語に一致しない文字を含む文字列) は
+どんどん検索対象から外れるので, 個々のスコア計算が重くなってもなんとかなるということなのだろう. 
+GUI とアルゴリズムに一体感があってかっこいい. </p>
+<h4>まとめ</h4>
+<p>QuickSilver が実装している Alcor の Abbreviation Scoring は
+略語のメタファをコードで実現する素敵アルゴリズムでした. 
+あらあらかしこ.</p>

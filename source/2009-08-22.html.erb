@@ -1,0 +1,453 @@
+---
+title: "WEB+DB PRESS の連載はなんとか打ち切りにならず続行中"
+date: 2009-08-22
+---
+<h3>近況</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/WEB-DB-PRESS-Vol-52-%E7%9F%A2%E9%87%8E/dp/4774139300%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4774139300' class='bookcover'><img data:asin='4774139300' class='asin image-right' src='http://ecx.images-amazon.com/images/I/61COQ0sX37L.jpg'></span></a></span></p>
+<p>WEB+DB PRESS の連載はなんとか打ち切りにならず続行中. 
+読んでもらえているとのフィードバックもいくつかいただき, 
+ありがたいことでございます. 
+今回は CSS 周辺を読んでみました. 
+ようやくブラウザらしくなってきたので興味のある方はごらんください. </p>
+<p>記事の準備と称してコードを読む週末副業も今のところ続行中. 
+遠くに行くのがだんだん億劫になってきたので, 
+近所の安コーヒー屋に通っている. ひきこもり体質の改善はならず.</p>
+<p>連載はこのあとレイアウト, レンダリングと続く予定. 
+その準備にレンダリングまわりのコードを読んでいたら, 
+連載で書くにはややしんどいけれど WebKit らしいコードをみかけた. 
+今日はその話を書いてみたい. </p>
+<h4>Core Animation - Safari の隠し味</h4>
+<p>CSS に <a href="http://www.w3.org/TR/css3-3d-transforms/">CSS 3D Transforms Module</a> という
+策定中の標準があり, WebKit はこれを実装している. </p>
+<p>私はビジュアルな美的感覚を欠いているので, この機能の有難味をよくわかっていなかった. 
+(標準の存在も, <a href="http://d.hatena.ne.jp/gyuque/20090718">派手なデモ</a> を見て驚くまで
+気にとめてすらいなかったことを白状しておく.) 
+一方でビジュアルな美的感覚にうるさい Apple はこの機能に熱心だ. 
+この標準にしたって, 見てのとおり Apple の開発者が書いている. </p>
+<p>ビジュアル音痴なりに類推すると, Apple が 3D Transforms で実現したいのは
+<a href="http://www.apple.com/macosx/what-is-macosx/dock-and-finder.html">Cover Flow や ニョッキリ Dock</a> 
+に代表される Apple ぽい UI なのだと思う. 
+Apple はこれらの派手な UI を実現する Mac OS の下地づくりを地道に進めており, 
+一般のアプリケーション開発者向けにも
+<a href="http://developer.apple.com/referencelibrary/GraphicsImaging/index.html">多くの API を公開している</a>. 
+そうしたミタメ API の一つが
+<a href="http://developer.apple.com/graphicsimaging/coreanimation/">Core Animation</a>. 
+最近の Safari/WebKit はこの Core Animation にレンダリング機構を統合し, 
+ウェブアプリケーションの派手化を推し進めている...というのが本日の趣旨でございます.</p>
+<p>この話は何人かに喋ってみたんだけれどいまいちピンときてもらえなかったので, 
+自分の口頭雑談能力に見切りをつけてここに書いてみることにした. </p>
+<h4>ディスプレイリスト+ツリー</h4>
+<p>例のごとく復習から.</p>
+<p>誤解を恐れつつ平たくいうなら, Core Animation は Flash みたいなものだと思えばいい. 
+もう少し正確にいうと, Flash Player によく似た
+<strong>ディスプレイリスト+ツリー</strong> のレンダリングモデルを
+Mac OS と Objective-C の世界に持ち込んだものだと言える. </p>
+<p>ディスプレイリスト+ツリーのレンダリングモデルでは, 
+ひとまとまりの描画単位をノードに割り当て, それらのノードをつなげてツリーを作る. 
+Flash Player では <strong>DisplayObject</strong> や <strong>Sprite</strong> クラス, 
+Core Animation では <strong>CALayer</strong> クラスがツリーのノードをあらわしている. </p>
+<p>プログラマは各ノードの描画コールバックに自分の描画コードをセットする. 
+そうしたアプリケーションレベルの描画コードが実行されると, 
+各ノードのディスプレイリストが更新され描画コマンドが蓄積される. 
+まだ画面は更新しない. </p>
+<p>Flash Player や Core Animation のランタイムは, 
+適当なタイミング(アニメーションのフレームや, ウィンドウの再描画)で
+ツリーをトラバースし, 各ノードのディスプレイリストを実行する. 
+実際の画面はこのとき更新される.</p>
+<p>ディスプレイリストを評価する際には, 透明度や回転, 
+スケーリングなどの特性を適用することができる. 
+つまりノード単位で透明度を変えたり, 回転拡大縮小などの 3D 効果を加えることができる. </p>
+<p><img src='/images/20090822_0.png' class='diagram'></p>
+<p>素朴なディスプレイリスト+ツリーは, だいたいこんなかんじで動く. </p>
+<h5>ハードウェアの支援</h5>
+<p>ディスプレイリスト+ツリーのモデルは GPU との親和性が高く. 性能上の利点がある. 
+たとえばディスプレイリストの描画コマンドを GPU 側に置き, 
+CPU 時間を浪費せずに描画ができるかもしれない. 
+また写真など描画に使う素材画像をテクスチャとして VRAM に置けば, バスへの負担は下がるだろう. 
+ノードの中身を変えない再描画はディスプレイリストを評価するだけで済む. 
+アプリケーションの描画コードは経由しないぶん速くなる. 
+たとえば各アルバム画像をノードに割り振り Cover Flow 風にページをめくるアニメーションは, 
+典型的な "ノードの中身を変えない再描画" になるだろう. </p>
+<p><img src='/images/20090822_1.png' class='diagram'></p>
+<p>ノードに半透明表示の指定をもつ描画も, GPU 支援を受けるディプレイリスト+ツリーに分がある. 
+ノードが半透明指定を持つとき, そのノードの描画結果は
+一旦独立したオフスクリーンのビットマップに描画され, 
+そのビットマップに透明度を掛けて最終的な画面に合成する. 
+そのビットマップが VRAM 上にあれば, 画面の合成は GPU を頼れる. </p>
+<h5>ビットマップ+ツリー - Flash Player の場合</h5>
+<p>さて, 上で説明した素朴なモデルは GPU への要求が高く, また空間効率も良くはない. 
+そうした問題を回避するため, 現実の実装は何らかの工夫をしているだろう. 
+Flash Player の例を考えてみよう. </p>
+<p>先に <strong>ディスプレイリスト+ツリー</strong> のモデルは Flash Player に似ていると書いた. 
+Core Animation と異り, 従来の Flash Player は
+ディスプレリスト+ツリーを CPU 側だけで実現していた. </p>
+<p>Flash Player のバージョン 10 は DisplayObject の 3D 変換をサポートし, 
+同時に GPU の積極的な活用をはじめた. 
+つまり Flash Player はディスプレイリスト+ツリーを GPU 側に推し進めた...と
+思いたいところだけれど, どうも事情は違うらしい. </p>
+<p><a href="http://www.kaourantin.net/2008/05/what-does-gpu-acceleration-mean.html">中の人によると</a>, 
+Flash Player が使う GPU 支援の範囲は画像合成の計算に限られているようだ. 
+つまりディスプレイストや素材画像は主記憶に置いて CPU で評価する. 
+そして描画結果のビットマップを VRAM に転送, GPU で合成するのだろう. 
+主記憶 -&gt; VRAM の転送コストは気になる(上の blog にも "速くなるとは限らない" とある)けれど, 
+ノード (DisplayObject) 毎の描画結果を使い回せるなら 3D 変換などの描画効果は GPU で速くなる. 
+また <a href="http://www.adobe.com/products/flashplayer/features/all_features/">リリースノート</a> 
+に見られる bitmap cache 云々の記述や上の blog にある描画結果の乱れに関する注意書きから, 
+描画結果を使い回す工夫をしている様子もある. </p>
+<p><img src='/images/20090822_2.png' class='diagram'></p>
+<p>今日の主役は Core Animation と GPU 支援なので, 
+ノードを描画したビットマップだけを VRAM 側に置く Flash Player 10 のモデルは 
+<strong>ビットマップ+ツリー</strong> と呼んでおこう. 
+既存のコンテンツが多く, また実行するハードウェアを選り好みもできない事情があるから, 
+Adobe はソフトウェア側に倒した折衷案としてビットマップ+ツリーを選んだのだと思う. 
+当面は GPU を頼らないと腹をくくったのか, CPU のコア数増加に合わせた描画の並列化を進めている
+(と<a href="http://www.adobe.com/support/documentation/en/flashplayer/9/releasenotes.html">リリースノートに書いてあった</a>).</p>
+<h5>ゼロ+ツリーからディスプレイリスト+ツリーへの移行 - Cocoa の場合</h5>
+<p><span class='image'><a href='http://www.amazon.co.jp/Mac-OS-Internals-Systems-Approach/dp/0321278542%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321278542' class='bookcover'><img data:asin='0321278542' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51kHOlIzp8L.jpg'></span></a></span>
+Mac OS X 10.5 から導入された新しい API である Core Animation に下位互換性の問題はない. 
+対象ハードウェアも最新のものが相手だから性能に妥協する必要もない. 
+Core Animation が先に示したベタなディスプレイリスト+ツリーのモデルに近いのは, そんな背景がある. 
+(ただし Quartz の描画機能すべてを GPU だけで描画できるわけではないらしい. 
+<a data:asin='0321278542' href='http://www.amazon.co.jp/Mac-OS-Internals-Systems-Approach/dp/0321278542%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321278542'>Mac OS Internals</a> によると, いくつかの複雑な描画はソフトウェアに戻って行うという.)</p>
+<p>Core Animation は独立した API からのみ利用できるわけではなく, GUI フレームワークの Cocoa にも統合されている. 
+従来の Cocoa はウィンドウ内にあるウィジェット(ビュー)のツリーに特別な資源を割り付けない, 
+いわば <strong>ゼロ+ツリー</strong> の描画モデルだった. 
+今はそれが Core Animation に統合され, 
+NSView の特別なメソッドを呼び出すと Cocoa のビューツリーに Core Animation のツリーが割り付けられる. 
+具体的には該当ビューをルートとするビュー部分木の各ノードに レイヤツリーのノードが与えられる. 
+つまりそのサブツリーはディスプレイリスト+ツリーモデルに切り替わる. Apple はこの仕組みを <strong>Layer Backed View</strong>
+と呼んでいる. (<a href="http://developer.apple.com/documentation/GraphicsImaging/Conceptual/Animation_Overview/ChooseAnimTech/ChooseAnimTech.html">紹介資料</a>.) 
+Layer Backed View のウィジェットには回転やドロップシャドウなど Core Animation 由来のエフェクトを適用することができる. 
+Core Animation との統合を通じて既存のアプリケーションもミタメをよくしろということなんだろうね. </p>
+<p><img src='/images/20090822_3.png' class='diagram'></p>
+<p><strong>追記: この節の内容は間違っていました. 記事末尾を参照ください.</strong></p>
+<h4>Safari/WebKit と Core Animation の統合</h4>
+<p>うっかり復習が長びいてしまった. ようやく本題.</p>
+<p>今年二月頃, Apple の開発者は <strong>accelerated compositing</strong> と銘打って Core Animation を WebKit に統合した. 
+(<a href="https://bugs.webkit.org/show_bug.cgi?id=23360">Bug 23360 - Make repainting compositing-aware for accelerated compositing</a>.)
+コンパイルオプションで <strong>#if USE(ACCELERATED_COMPOSITING)</strong> を有効にすると, 
+WebKit の描画は Core Animation に統合されたパスに入る. </p>
+<p>WebKit は内部にページ単位の描画用ツリー(=<strong>Render Tree</strong>)を持っており, 
+従来の描画ではこのツリーをトラバースする. 
+詳しい話はそのうち連載に書くから省略するとして, 大ざっぱにこんな感じだと思えばいい:</p>
+<pre>
+// クラス名などは架空のものです
+
+void Document::paint(GraphicsContext* ctx)
+{
+  m_rootNode-&gt;paint(ctx);
+}
+
+void RenderNode::paint(GraphicsContext* ctx)
+{
+  this-&gt;paintThisNode(ctx);
+  for each (c in this-&gt;children)
+    c-&gt;repaint(ctx);
+}</pre>
+<p>このとき GraphicsContext は WebKit の利用者が与える. ウィンドウの場合もあるし, オフスクリーンの場合もある. </p>
+<p>Document::paint() はページ全体を引数の GraphicsContext に描画する. 
+当然, 各 RenderNode はオフスクリーンやディスプレイリストといった描画資源を持たない. 
+そういう意味で WebKit は <strong>ゼロ+ツリー</strong> モデルに従っている. 
+GraphicsContext のように描画を抽象化したオブジェクトを渡すこの切り口は, 
+描画を伴うライブラリの定番と言って良い. </p>
+<p>さて, どうすればゼロ+ツリーの WebKit をディスプレイリスト+ツリーの Core Graphics に
+統合できるのか, 一見するとあまり自明でない. 
+WebKit を Cocoa, RenderNode を NSView に見たてた上で, 
+Layer Backed View に倣い RenderNode(仮名)インスタンス毎に CALayer を割り当てる方法も考えられる. 
+けれど RenderNode(仮名) のインスタンス数はおよそ DOM ノードの数に比例する. 
+その全てに CALayer を割り当てるのはオーバーヘッドが大きい. もうすこし疎な粒度で割り付けたい. </p>
+<h4>WebKit におけるレイヤ</h4>
+<p>Apple にとっては好都合なことに, WebKit も内部にレイヤ構造 <strong>RenderLayer</strong> を持っていた. 
+accelerated compositing 拡張は Core Animation の CALayer を RenderLayer 毎に割り付けている. </p>
+<p>この RenderLayer クラスは昔からあるもので, Core Animation とは関係がない. 
+RenderLayer はもともと, RenderNode::repaint() のウソコードで示したような深さ
+優先のトラバースで実現できない描画を行うために追加された. 
+Render Tree 上で表現されていない描画順や暗黙の親子関係を表現するために, 
+WebKit は RenderLayer のツリーを作る. 
+各 RenderLayer は, 通常のトラバースで描画できる Render Tree のサブツリーをあらわしている. 
+木の中に木があるのはちょっとややこしいけれど, ブラウザのコードではよくある話.</p>
+<p><img src='/images/20090822_4.png' class='diagram'></p>
+<p>ひとつの RenderLayer が受け持つ各サブツリーの中は通常のトラバース順で描画され, 
+RenderNode(仮) が責任を持つ. 
+サブツリー間の描画順は RenderLayer が決める. </p>
+<p>定義はこんなの:</p>
+<pre>
+class RenderLayer : public ScrollbarClient {
+public:
+  ...
+    // 描画メソッド
+    void paint(GraphicsContext*, const IntRect&amp; damageRect, ...);
+  ...
+private:
+  ...
+    // 対応元の Render Tree ノード - 描画単位となるサブツリーのルート
+    RenderBoxModelObject* m_renderer;
+    // ツリーの枝
+    RenderLayer* m_parent;
+    RenderLayer* m_previous;
+    RenderLayer* m_next;
+    RenderLayer* m_first;
+    RenderLayer* m_last;
+  ...
+};</pre>
+<h4>Render Tree と RenderLayer</h4>
+<p>さて, RenderLayer はどんな単位でインスタンス化されるのだろう. 
+"通常のトラバースで描画" できるのは, どういうサブツリーなのだろうか. 
+一旦 Core Animation から離れ, RenderLayer のコードを眺めてみよう.</p>
+<p>各 Render Tree ノードに対し RenderLayer のインスタンス化を判断する 
+RenderBoxModelObject::requiresLayer() メソッドはこう定義されている:</p>
+<pre>
+...
+class RenderBoxModelObject : public RenderObject {
+    ...
+    virtual bool requiresLayer() const { return isRoot() || isPositioned() || isRelPositioned() ||
+                                                isTransparent() || hasOverflowClip() || hasTransform() ||
+                                                hasMask() || hasReflection(); }
+    ...
+};
+...</pre>
+<p>ツリーのルート isRoot(), 透明度つきのノード isTransparent(), 
+描画のクリッピングが必要なノード hasOverflowClip() と hasMask(), 
+件の transform CSS プロパティを持つもの hasTransform() などに RenderLayer が作られるとわかる. </p>
+<p>透明度つきの Render Tree ノードは RenderLayer の必要性を端的に表している. 
+透明度つきのノードをルートとするサブツリーは, まず独立したビットマップに描画される. 
+それからビットマップに透明度をかけて全体の描画結果に合成される. 
+RenderLayer は, 独立して描画したいこのようなサブツリーをあらわす. </p>
+<p>isRelPositioned() や isPositioned() もわかりやすい. 
+"position:relative" や "position:absolute" のブロックは通常のフローレイアウトと独立したレイアウトが行われ, 
+従って描画の順番も変化する. z-index プロパティで明示的に描画順を指定されることもある. 
+これらのノードを含む Render Tree が深さ優先トラバースで描画できないのは明らかだ. 
+これら特別な position を持つノードのサブツリーも RenderLayer になる. 
+RenderLayer は子のレイヤを z 順にソートして描画する. </p>
+<p><a href="http://trac.webkit.org/browser/trunk/WebCore/khtml/rendering/render_object.cpp?rev=10665">4 年前の requiresLayer()</a> を
+覗いてみると, いま示した <strong>合成の都合による一時的なオフスクリーンバッファの確保</strong> や <strong>レイアウトの都合による描画順の制御</strong> という 
+RenderLayer の意図が, よりはっきり現れていた. </p>
+<pre>
+...
+bool RenderObject::requiresLayer()
+{
+    return isRoot() || isPositioned() || isRelPositioned() || style()-&gt;opacity() &lt; 1.0f ||
+           hasOverflowClip();
+}
+...</pre>
+<h4>RenderLayer から CALayer へ</h4>
+<p>Apple は, この RenderLayer を中心に Core Animation を統合した. </p>
+<p>accelerated compositing を有効にした RenderLayer には,
+統合に伴う各種面倒を押し込んだ <strong>RenderLayerBacking</strong> オブジェクトが追加される</p>
+<pre>
+...
+class RenderLayer : public ScrollbarClient {
+public:
+   ...
+#if USE(ACCELERATED_COMPOSITING)
+    OwnPtr&lt;RenderLayerBacking&gt; m_backing; // これ
+#endif
+   ...
+};
+..</pre>
+<p>RenderLayerBacking は CALayer のラッパオブジェクト <strong>GraphicsLayer</strong> をもつ. </p>
+<pre>
+// rendering/RenderLayerBacking.h
+...
+class RenderLayerBacking : public GraphicsLayerClient {
+public:
+    ....
+    // GraphicsLayer がいくつもある事情はコメントを参照.
+    OwnPtr&lt;GraphicsLayer&gt; m_ancestorClippingLayer; // only used if we are clipped by an ancestor which is not a stacking context
+    OwnPtr&lt;GraphicsLayer&gt; m_graphicsLayer;
+    OwnPtr&lt;GraphicsLayer&gt; m_foregroundLayer;       // only used in cases where we need to draw the foreground separately
+    OwnPtr&lt;GraphicsLayer&gt; m_clippingLayer;         // only used if we have clipping on a stacking context, with compositing children
+    OwnPtr&lt;GraphicsLayer&gt; m_maskLayer;             // only used if we have a mask
+};</pre>
+<p>GraphicsLayer はいちおう環境非依存ということになっており, 
+実体である mac 版のサブクラス <strong>GraphicsLayerCA</strong> が 
+Core Animation 由来の CALayer オブジェクトを持っている. </p>
+<pre>
+// GraphicsLayerCA.h
+class GraphicsLayerCA : public GraphicsLayer {
+public:
+    RetainPtr&lt;WebLayer&gt; m_layer; // WebLayer は CALayer のサブクラス
+    RetainPtr&lt;WebLayer&gt; m_transformLayer;
+    RetainPtr&lt;CALayer&gt; m_contentsLayer;
+};</pre>
+<p>GraphicsLayerCA が持つ 3 つの CALayer ファミリのインスタンス は
+m_transformLayer -&gt; m_layer -&gt; m_contentsLayer という親子関係をつくっている. 
+たぶん Safari 側の都合で設定したい属性と WebKit 側からの属性をうまく混ぜるための
+トリックだと思うけれど, 詳細はよくわからず. </p>
+<p>とにかく, こうして RenderLayer と CALayer, WebKit と Core Animation は繋がっている. 
+CALayer のツリー構造は, GraphicsLayer を介して RenderLayer のツリー構造と同期される. 
+ツリー構造の保守は <strong>RenderLayerCompositor</strong> が行う. 
+RenderLayer はツリー構造が変更される様々なタイミングで RenderLayerCompositor に
+構造の変更を通知し, RenderLayerCompositor が GraphicsLayer を調整する. </p>
+<p>例:</p>
+<pre>
+void RenderLayer::addChild(RenderLayer* child, RenderLayer* beforeChild)
+{
+....
+#if USE(ACCELERATED_COMPOSITING)
+    compositor()-&gt;layerWasAdded(this, child);
+#endif
+}</pre>
+<p>このように若干なげやり感ただようコードが RenderLayer の各所に埋め込まれている. 
+実際の同期コードは遅延とか色々ややこしいことをやってそうなので割愛させていただきます.</p>
+<p>なお, 全ての RenderNode(仮) に RenderLayer が作られるわけではないように, 
+全ての RenderLayer に RenderLayerBacking が作られるわけでもない. 
+RenderLayerBacking を持つ RenderLayer は <strong>self painting layer</strong> と呼ばれ, 
+以下のような条件を満たしている. </p>
+<pre>
+....
+bool RenderLayer::isSelfPaintingLayer() const
+{
+    return !isNormalFlowOnly() || renderer()-&gt;hasReflection() ||
+           renderer()-&gt;hasMask() || renderer()-&gt;isTableRow() || renderer()-&gt;isVideo();
+}
+....</pre>
+<p>normal flow でない (特別な position プロパティを持ち, transform プロパティを持つかもしれない)ノード, 
+&lt;video&gt; 要素のノード, などが該当している. 
+そのほか mask とか reflection は webkit 拡張. 
+opacity が考慮されないところ, table の行が入っているところは意外. </p>
+<p><img src='/images/20090822_5.png' class='diagram'></p>
+<h4>描画シーケンスの変更</h4>
+<p>ゼロ+ツリーからディスプレイリスト+ツリーへの変更は, 描画コードの実行順序にも大きく影響する. 
+従来の WebKit は, ページを表示しているウィンドウ (Mac OS だと NSView) からの要求に応じてページ全体を再描画していた. 
+描画時は再描画範囲をあらわす矩形が与えられるから実際に全画面を書き直すわけではないけれど, 
+Render Tree をルートからトラバースして個々の RenderNode を描画しようとするのは確かだ. 
+Mac OS での描画結果は NSView の GraphicsContext に書き込まれる. </p>
+<p><img src='/images/20090822_6.png' class='diagram'></p>
+<p>accelerated compositing パッチでは, 描画を RenderLayer 単位で行う. 
+つまり RenderLayer 毎に割り付けられた CALayer に描画を行う. 描画は CALayer から要求される. </p>
+<p><img src='/images/20090822_7.png' class='diagram'></p>
+<p>結果として, accelerated compositing を有効にした WebKit は従来の描画パスで何も描画しない. </p>
+<pre>
+void RenderLayer::paintLayer(RenderLayer* rootLayer, GraphicsContext* p,
+                             ...)
+{
+#if USE(ACCELERATED_COMPOSITING)
+    if (isComposited()) {
+        // The updatingControlTints() painting pass goes through compositing layers,
+        // but we need to ensure that we don't cache clip rects computed with the wrong root in this case.
+        if (p-&gt;updatingControlTints())
+            paintFlags |= PaintLayerTemporaryClipRects;
+        else if (!backing()-&gt;paintingGoesToWindow() &amp;&amp; !shouldDoSoftwarePaint(this, paintFlags &amp; PaintLayerPaintingReflection)) {
+            // If this RenderLayer should paint into its backing, that will be done via RenderLayerBacking::paintIntoLayer().
+            return; // CALayer に描画する場合はこのパスに入る.
+        }
+    }
+#endif
+    .... ここから先が従来の描画パス
+}</pre>
+<p>実際の描画コードは RenderLayerBacking::paintIntoLayer() にある. </p>
+<pre>
+// Share this with RenderLayer::paintLayer, which would have to be educated about GraphicsLayerPaintingPhase?
+void RenderLayerBacking::paintIntoLayer(RenderLayer* rootLayer, GraphicsContext* context,
+                                        ...)
+{
+    ...
+}</pre>
+<p>冒頭のコメントから少しは罪の意識が伺える, 気もする. </p>
+<p>条件によっては従来の描画パスも使われるのがややこしい. 
+"DRY じゃない" などと甘ったれたことを言わないのが WebKit 流とはいえ, 
+描画バグの原因究明は大変に違いない. 読んでいるだけで肝を冷やした. </p>
+<h4>各ポートへの影響</h4>
+<p>Qt や Gtk, Cairo, Chromium(Skia) など, WebKit にはいくつかのポートがある. 
+おそらく accelerated compositing に一番肝を冷やしたのは, 各ポートの開発者ではないかと思う. </p>
+<p>Core Animation や Flash に相当する
+ディスプレイリスト+ツリー(またはビットマップ+ツリー)のオブジェクトモデルを持つ描画処理系は,
+それほど多くない. GPU 支援を合わると尚更敷居は高くなる. 
+同じ WebKit なのに Safari の CSS 3D Transform だけがガンガン動き, 
+自分のポートではコマ落ちしてしまう...なんてことになったら, 顧客や上司にいびられやしないか. </p>
+<p>調べてみると, Qt は一応 OpenGL に統合されているようす. 
+OpenGL の描画とウィジェットを合成する
+<a href="http://doc.trolltech.com/qq/qq26-openglcanvas.html">チュートリアル</a>
+があった. </p>
+<p>GTK にんな大層な機能があると聞いたことはない. 
+ただ GTK 由来の Glib を使った <a href="http://clutter-project.org/">Clutter Toolkit</a> は
+ディスプレイリスト+ツリーの API を提供している. 
+<a href="http://www.clutter-project.org/blog/?p=71">GTK インテグレーションのデモ</a>もある. 
+開発元の OpenedHand は Intel に買収されており, Clutter Toolkit は 
+<a href="http://moblin.org/">Moblin</a> のミタメ強化を期待されているのだろう. 
+WebKit+GTK が将来的に WebKit+Clutter に移行してもそれほど不思議はない. 
+(<a href="http://www.clutter-project.org/blog/?p=50">開発は進んでいるらしい</a>.) </p>
+<p>Cairo, Skia はベクターグラフィクスの描画ライブラリという出自もあって
+Core Animation に相当するレイヤはない. 
+Skia にはちょっとした GUI ツールキットが付属しているようだけれど, 
+ちょっとみたかんじゼロ+ツリーの実装だった. </p>
+<p>Cairo はさておき Skia ...というか 
+Chromium と Android ポートにとっては少し面倒な事態かもしれない. 
+性能を売りにしている以上は CSS の 3D Transforms も高速に動かしたいけれど, 
+現状は Safari+Core Animation のような GPU 支援がない. 
+Skia をチューニングするのか, accelerated compositing に必要なパーツを揃えるのか, 
+別の路線(並列化とか)で対抗するのか. </p>
+<p>各ブラウザの CSS3 実装が出揃った頃, レンダリング性能のベンチマーク競争が始まるだろう. 
+その時 Chromium や(今回の話とは関係ないけど) Mozilla がどんな手を打つのか, 
+個人的にはとても興味を持っている. </p>
+<p>それ以前に CSS3 の派手なエフェクトは流行るのか, という疑問もある. 
+きっと iPhone の Safari 向けにキュンキュン動くウェブアプリが登場して人気を博し, 
+(ついでに開発の面倒な iPhone アプリは下火になり,) 
+競合の Android や各種ケータイ向けブラウザが追従, 
+デスクトップにもその流れが及ぶ...という展開が自然だけれど, 
+Flash も Silverlight もあるから, どうなるんだろうね. </p>
+<h4>雑感</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Core-Animation-Max-iPhone-Programmers/dp/1934356107%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1934356107' class='bookcover'><img data:asin='1934356107' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41UKNBBLqaL.jpg'></span></a></span></p>
+<p>個人的には, 複雑な描画の要件とややこしいコードベース持つブラウザを, 
+近代的で GPU フレンドリな構造に乗せかえたApple (というか Simon Fraser) の手腕に, 肝を冷やしつつ感動した. 
+ブラウザの描画は文字が多くコンテンツの構成も多様で, 
+Flash のように描画中心のモデルに比べて高速化はやりにくいだろうと想像していた. 
+だから JavaScript の性能競争が一段落したあとにやってくるであろうレンダリングの性能競争で
+どんなアイデアが現れるのか, 外野なりに興味を持ってみていた. </p>
+<p>Flash の並列化が念頭にあったので, 何らかの並列化を漠然と想像していたけれど, 
+WebKit のように並列性を考えていないコードでそれをやるのも難儀だろうし, 
+並列化の粒度も良い切り口がなさそうに見えた. </p>
+<p>そんな難題に対し, 彼らは.
+CSS Transforms と Core Animation を軸に RenderLayer という絶妙な切り口を掴み, 
+ややこしいツリーのジャグリングをこなし, 
+レガシーなレンダリングモデルを一気に近代化した. 
+その力技にびびらずにはおれない. </p>
+<p>RenderLayer はもともとの KTHML にはなかったもので, 
+Mozilla 出身の WebKit 開発者 David Hyatt が Gecko のコードベースから
+ひっこぬいてねじこんだという経緯がある. 
+(だから RenderLayer.h/cpp には Netscape の Copyright があり, MPL が併記されている.) 
+Simon Fraser による実装の背後には David Hyatt との議論なんかも
+あったんだろうなーなどと想像し, やっぱり最後は Mozilla なのか,
+と思ったりもした. </p>
+<h4>まとめ</h4>
+<p>というわけで WebKit の Core Animation 統合について書いてみました. 
+たぶんぜんぶ読んだ人はいないと思うのでまとめ:</p>
+<ul>
+<li>前提: Max OS X の Core Animation は Flash 風のプログラミングモデルを GPU 支援をうけながら実現したもの<ul>
+<li>ディスプレイリスト+ツリーと呼んでみた</li>
+</ul></li>
+<li>WebKit の accelerated compositing オプションは RenderLayer を起点に Core Animation を統合した.<ul>
+<li>WebKit にはもともとレイヤ構造があったでのでそれに相乗りした</li>
+<li>RenderLayer のツリーをミラーした CALayer のツリーができる</li>
+</ul></li>
+<li>描画シーケンスがけっこう変わる</li>
+<li>Core Animation のない WebKit ポートはどうすんだ<ul>
+<li>プレッシャーうけてがんばるのではないか</li>
+</ul></li>
+<li>雑談どころか連載一回分くらいあるんじゃね？</li>
+</ul>
+<hr>
+<h4>訂正 - 現行の Core Animation は ビットマップ+ツリー</h4>
+<p><a href="http://en.wikipedia.org/wiki/Quartz_Compositor#QuartzGL">Wikipedia</a> を見ていたら, 
+Quartz の OpenGL アクセラレーションは現行の Mac OS では無効化されているらしく, 
+確認したところ Core Animation も DisplayList や VBO は使っていなかった. 
+Core Animation は (おそらくソフトウェアで) ラスタライズを行い, それをテクスチャとして
+VRAM に置く. つまりディスプレイリスト+ツリー <strong>ではなく</strong> ビットマップ+ツリー の実装だった. 
+大ウソついてごめんなさい. QuartzGL の話と混同してました...</p>
+<p>参考までにウソだと確かめる方法を紹介:</p>
+<ul>
+<li>WebKit をチェックアウトしてビルドする</li>
+<li>WebKitTools/Script/run-webkit --debug で起動<ul>
+<li>このへんは普通に nightly を使うでいいのかも.</li>
+</ul></li>
+<li>/Developer/Applicaitons/Graphics Tools/OpenGL Profiler.app を起動</li>
+<li>"Collect Trace" をチェックして Safari にアタッチ</li>
+<li><a href="http://webkit.org/blog-files/3d-transforms/poster-circle.html">http://webkit.org/blog-files/3d-transforms/poster-circle.html</a> を表示</li>
+<li>OpenGL Profiler の Trace ウィンドウを眺める</li>
+<li>DisplayList や VBO 系の API が呼ばれていないのを確認し, glPixelStorei() などを見てうなだれる</li>
+</ul>
+<p>アップロード前にやっとけという指摘にうなだれつつごめんなさい. </p>
+<p>ポートへの影響についても, 
+ソフトウェアラスタライザでいいなら 
+Core Animation 相当を用意するのは割と現実的なのかも.</p>

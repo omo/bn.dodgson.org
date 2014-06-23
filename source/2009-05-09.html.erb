@@ -1,0 +1,76 @@
+---
+title: "InfoQ にはけっこう気になるビデオがあって, "
+date: 2009-05-09
+---
+<h3>近況</h3>
+<p><img src='/images/20090509_0.png' class='image-right'></p>
+<p>InfoQ にはけっこう気になるビデオがあって, 
+たとえば <a href="http://www.infoq.com/presentations/Eclipse-Lessons-Erich-Gamma">Erich Gamma が Eclipse について語っていたりする</a>. 
+でもビデオをみるのはそれなりに気合を消費するから, スライドだけみてわかった気になりたいなーと思ってページのスライドビューアに
+ページめくりボタンを探すも見当たらない. ので user.js でつくってみました. 動画に弱い InfoQ ファンなら少しは役に立つかもしれません. 
+<a href="http://github.com/omo/infoq-psnav/raw/master/infoq_slide_navigator.user.js">infoq_slide_navigator.user.js</a> 
+(<a href="http://github.com/omo/infoq-psnav/tree/master">github のページ</a>) 
+ページ数のテキストフィールドにフォーカスした状態で "p" や "n" のショートカットが有効です. (j/k も可.) ページめくりすら面倒な気分に備え, 全スライドまとめて表示もあり. 
+Firefox3.5b4 for MacOS で動作を確認. 他でも動く気がする. </p>
+<p>ついでにスライドだけでもわかった気になれる(=話は聞いてない)スライドを, 
+今年に入ってから公開された講演からいくつか紹介してみる. 講演自体は 2008 年の QCon などが中心のようす:</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/Eclipse-Lessons-Erich-Gamma">How (7 years of) Eclipse Changed my Views on Software Development</a></li>
+</ul>
+<p>Eclipse の歴史, のような話.</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/neal-gafter-evolving-java">Evolving the Java Language</a></li>
+</ul>
+<p>Java は普及しちゃってるから仕様かえるの大変なんだという話と, 
+新しく提案されている仕様(string switch, operator overloading, ...)について. </p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/mnot-http-status-1108">HTTP Status Report</a></li>
+</ul>
+<p>HTTP の仕様を(主にバグ取り目的で)改訂する <a href="http://www.ietf.org/html.charters/httpbis-charter.html">HTTPbis</a> という 
+WG の活動の紹介. あとは <a href="https://datatracker.ietf.org/drafts/draft-dusseault-http-patch/">PATCH メソッド</a> なんてのが提案されてるぜなど最近の HTTP の動向. 
+IETF 的に Oxxx 一味はどう思ってるの？とか色々面白い. </p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/10-Ways-to-Better-Code-Neal-Ford">10 Ways to Improve Your Code</a></li>
+</ul>
+<p>基本的には "<a data:asin='4873114020' href='http://www.amazon.co.jp/%E3%83%97%E3%83%AD%E3%83%80%E3%82%AF%E3%83%86%E3%82%A3%E3%83%96%E3%83%BB%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9E-%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9E%E3%81%AE%E3%81%9F%E3%82%81%E3%81%AE%E7%94%9F%E7%94%A3%E6%80%A7%E5%90%91%E4%B8%8A%E8%A1%93-THEORY-IN-PRACTICE/dp/4873114020%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4873114020'>プロダクティブプログラマ</a>" 著者による宣伝. ThoughtWorks ファン向け. 
+"corporate code smell" というのが面白かった. smell 6, "弊社では WebSphere を採用しておりますなぜなら..." ...名指しかよ.</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/vinoski-rest-serendipity">REST, Reuse, and Serendipity</a></li>
+</ul>
+<p><a href="http://dodgson.org/omo/t/?date=20080724">前にちょっと紹介した</a> 気もする 
+Steve Vinoski が REST のすばらしさを語る. そうですね素晴しいですね, というかんじ. </p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/Evolving-JVM-Ola-Bini">Evolving the Java Platform</a></li>
+</ul>
+<p>動的言語を JVM に載せるにはどんな機能が足らないのかという話, それを補う 
+<a href="http://openjdk.java.net/projects/mlvm/">Da Vinchi Machine Project</a> の紹介. 
+動的言語が JVM に要求するもののリストはなるほどなーとおもった. ダビンチはよくわからず. </p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/Pipes-YQL-Jonathan-Trevor">Pipes and Y! Query Language</a></li>
+</ul>
+<p>Yahoo は <a href="http://developer.yahoo.com/yql/">YQL</a> というのを提供しており, 
+こんなかんじのクエリー言語ですよ, という紹介. へーそんなかんじなのね. という感想. 
+あとは Yahoo! Pipes を運営してみた感想など.</p>
+<p>...</p>
+<p>以下はスライドみても話の中身はわからなかったけれど, 話を聞いてみたくなったスライド.</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/Archeology-Mark-Lehner">Social Programming A Pyramid</a></li>
+</ul>
+<p>ピラミッド発掘の写真が延々でてくる. 講演者もエジプト専門家. でも講演をしたのは OOSPLA2008. なんだそりゃ.</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/katz-couchdb-and-me">CouchDB and Me</a></li>
+</ul>
+<p>CouchDB 開発者が語る "Other people work on cool stuff.... WHY NOT ME?" など. 
+スライドの放つアホオーラに引力.</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/sieger-jazzers-programmers">Jazzers and Programmers</a></li>
+</ul>
+<p>Sun 社員が語るプログラミングと Jazz の関係. なんだそりゃ.</p>
+<ul>
+<li><a href="http://www.infoq.com/presentations/error-prevention-ethics">The Ethics of Error Prevention</a></li>
+</ul>
+<p>これはスライドはどうでもよくて, 私が Michael Feathers のファンだから...</p>
+<p>...</p>
+<p>このほかにも Facebook やら Salesforce やら GData API やらの流行っぽい話も多く, 
+一時間聞くのはやだけどスライドを眺めるくらいならいいかな, という程度に気になるものはけっこうあった. 
+我ながら便利で満足. </p>

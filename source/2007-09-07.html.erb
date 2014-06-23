@@ -1,0 +1,98 @@
+---
+title: "sparsetable"
+date: 2007-09-07
+---
+<h3>sparsetable</h3>
+<p><a href="http://www.rubyist.net/~matz/20070829.html#p03">Matz日記</a> で紹介されている 
+<a href="http://code.google.com/p/google-sparsehash/">google-sparsehash</a> を眺めてみた. 
+ひさびさに Google 気分. </p>
+<pre> :~/src/sparsehash-0.8 omo$ wc `find src/google/ -type f`
+     253    1348   10336 src/google//dense_hash_map
+     237    1309    9884 src/google//dense_hash_set
+     238    1244    9616 src/google//sparse_hash_map
+     223    1214    9245 src/google//sparse_hash_set
+     919    4776   37957 src/google//sparsehash/densehashtable.h
+      42     189    1187 src/google//sparsehash/sparseconfig.h
+     884    4642   37183 src/google//sparsehash/sparsehashtable.h
+    1448    7451   60217 src/google//sparsetable
+     191    1158    8559 src/google//type_traits.h
+    4435   23331  184184 total</pre>
+<p>コードは 4.5k 行. STL 互換のインターフェイスや効率に神経質なコードは
+いかにも C++ で重厚冗長. 慣れてない人はうんざりしそう. 
+(STL への愛が分かち合えれば楽しいとは思う.)</p>
+<p>ただアルゴリズム自体は難しくない. 
+基本にあるのは, 疎なアクセスに特化した疑似配列である <a href="http://google-sparsehash.googlecode.com/svn/trunk/doc/sparsetable.html">sparsetable</a>. 
+この sparsetable を配列に使ってハッシュ表を実装すると本題の sparsehash ができあがる. 
+ここでの疑似配列は整数をキーにとって O(1) アクセスな連想コンテナを指す. 
+配列みたいに使えるデータ構造ってことね. </p>
+<p>普通の配列は長さと個々の要素サイズに比例してメモリが必要になる. 
+疎な疑似配列は実際に値を保存した要素の分しかメモリを使わない. 
+たとえば</p>
+<pre>array arr = ...;
+arr[1] = foo;
+arr[10] = bar;
+arr[100] = baz;</pre>
+<p>とアクセスしたとき, 普通の配列は要素のサイズを T として 
+100*T のメモリが必要なのになる. 対する疎な配列はおよそ 3*T で済む. 
+正確には 2bit*100 + 3*T. 
+この "2bit*100" の部分が件の売り文句である "2 bits/entry overhead" にあたる. 
+(たぶん. この手の計算は自信がないので気になる人は<a href="http://google-sparsehash.googlecode.com/svn/trunk/doc/implementation.html">一次資料</a>を見てね.) 
+2 という係数は速度と引き換えに小さくできる. 
+小さくするとアクセス時間 O(1) の定数が大きくなる. </p>
+<p>具体的なアルゴリズムは実物を見た方がわかりやすいと思うので, 
+ねた元への敬意を表し ruby で sparsetable を書いてみた. 
+(<a href="http://dodgson.org/omo/toybox/?file/tip/sparse/">コード</a>, 170 行.) 
+ハッシュ表じゃなくて疑似配列だけです. </p>
+<p>こんな感じで使える:</p>
+<pre>
+ def test_table_hello
+   t = Sparse::Table.new
+   assert(t.empty?)
+
+   t[  0] = "Hello"
+   t[ 10] = "Google"
+   t[100] = "How Are You?"
+
+   assert_equal(t.size, 3)
+   assert_equal(t[  0], "Hello")
+   assert_equal(t[ 10], "Google")
+   assert_equal(t[100], "How Are You?")
+   assert_nil(t[1])
+ end</pre>
+<p>自然言語の解説が読みたい向きには <a href="http://google-sparsehash.googlecode.com/svn/trunk/doc/implementation.html">オンラインの資料</a> と 
+<a href="http://google-sparsehash.googlecode.com/svn/trunk/src/google/sparsetable">ヘッダファイルのコメント</a> がわかりやすかった. </p>
+<p>基本的なアイデアは二つある. 
+一つ目はデータを一定間隔の部分配列に区切り "配列の配列" に保存, 
+個々の部分配列("グループ" と呼ぶ)を遅延確保して主記憶を節約すること. 
+仮想記憶みたいなもので, アクセスした範囲だけメモリを確保する. 
+もう一つはグループ内での索引にビットマップを使い, 配列の隙間を圧縮すること. 
+個人的にはビットマップを使う索引づけが面白かった. ファイルシステムみたい. </p>
+<p>私の実装は 2bit よりだいぶオーバーヘッドがある. 
+アルゴリズムを眺めることはできても実際の目的は果たしていない. 
+原因の半分は私の手抜きで, もう半分は ruby と C++ の違いだと思う. 
+C/C++ はメモリ容量を節約するトリックが山ほど使える. 
+ruby のメモリは GC とインタプリタに守られてきわどい使い方ができない. 
+sparsetable は O(1) の定数を削る話だから, 精進言語の C/C++ に分がある. 
+sparsetable の実装は C++ の名に恥じないケチりざまを見せている. </p>
+<p>というわけで, 小規模ながらアイデアはそこそこ面白い google-sparsehash に
+満足した台風一過の夜なのでした. </p>
+<p>おまけ: </p>
+<pre>
+// src/google/sparsetable
+...
+template &lt;class T, u_int16_t GROUP_SIZE&gt;
+class sparsegroup {
+ public:
+ ...
+  void* realloc_or_die(void* ptr, size_t num_bytes) {
+    void* retval = realloc(ptr, num_bytes);
+    if (retval == NULL) {
+      fprintf(stderr, "FATAL ERROR: failed to allocate %d bytes for ptr %p",
+              num_bytes, ptr);
+      exit(1);
+    }
+    return retval;
+  }
+ ...
+};</pre>
+<p>あらあらかしこ.</p>

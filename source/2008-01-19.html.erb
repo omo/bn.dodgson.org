@@ -1,0 +1,118 @@
+---
+title: "OpenGL と LLVM の話"
+date: 2008-01-19
+---
+<h3>OpenGL と LLVM の話</h3>
+<p>昔の同僚の Apple ファンからメールをもらった. 
+<a href="http://journal.mycom.co.jp/news/2007/10/01/007/">去年のマイコミジャーナルの記事</a> 
+にある OpenGL と LLVM の関係がようわからんので教えろとのこと. 
+ざっと説明を書いてみたらそれなりに良いまとめになった気がするので
+無断転載してみることに. 若干くどくて知ったかぶり風なのは見逃してください. </p>
+<h4>1. Shading Language について</h4>
+<p>最近の OpenGL には Shading Language (略して GLSL) というのがあります. 
+物体の質感を表現するための専用言語, いわゆる DSL です. 
+昔の OpenGL は質感の表現に使う式が固定されていて, 
+プログラマはパラメタだけを指定していました. 
+リッチな質感を表現するのにはテクスチャを使い, 
+更にリッチにするときは複数のテクスチャを使って色々やってました. 
+これを "固定機能パイプライン" といいます. 
+ハードウェアが速くなるにつれて質感表現に対する要求も高くなり, 
+仕様で固定していた照光の式をプログラマがカスタマイズできるようになりました. 
+その式(というか計算)を記述する言語が GLSL です. C 言語に似た言語です. 
+GLSL などの shading language で書いたプログラムを "シェーダ" といいます. 
+このシェーダはふつう GPU の上で動きます. 
+GLSL のソースコードは実行時(!)にランタイムによって 
+GPU の機械語にコンパイルされ, 実行されます. 
+機械語は GPU 依存で, プログラマからは見えません. 
+(初期の hardware shading language はアセンブリ風だったので, 
+その命令セットをみると雰囲気はわかります. 
+僕はこのころに "もうついてけない..." と思いましたが, 
+高級言語になって楽になりました.)</p>
+<ul>
+<li><a href="http://www.opengl.org/registry/specs/NV/vertex_program1_1.txt">http://www.opengl.org/registry/specs/NV/vertex_program1_1.txt</a></li>
+<li><a href="http://www.opengl.org/registry/specs/NV/fragment_program.txt">http://www.opengl.org/registry/specs/NV/fragment_program.txt</a></li>
+</ul>
+<p>そんなわけで, CG 関係の読み物で出てくるシェーダというのは
+要するに照光式を計算するプログラムのことです. 
+リアルタイムでない CG の世界では RenderMan の時代から
+シェーダが使われてきました. それが最近 (といっても 5-7 年前くらい？) 
+は GPU を使い, 対話的な速度で動くようになった ... というおはなしです. </p>
+<h4>2. Apple の OpenGL と LLVM について</h4>
+<p>Apple 製 OpenGL では, 先の GLSL の実行に LLVM が使われているそうです. </p>
+<ul>
+<li><a href="http://lists.cs.uiuc.edu/pipermail/llvmdev/2006-August/006492.html">http://lists.cs.uiuc.edu/pipermail/llvmdev/2006-August/006492.html</a></li>
+<li><a href="http://llvm.org/pubs/2007-03-12-BossaLLVMIntro.html">http://llvm.org/pubs/2007-03-12-BossaLLVMIntro.html</a></li>
+<li><a href="http://www.ipodobserver.com/story/30184">http://www.ipodobserver.com/story/30184</a></li>
+</ul>
+<p>基本的に GLSL は GPU の上で動くのですが, 
+ノート PC や mac mini, あとは iphone みたいに
+ハードウェアのしょぼいマシンだと, 
+搭載 GPU がシェーダに対応していないことがあります. 
+その場合に LLVM を使って GLSL をネイティブ CPU コードへ JIT コンパイルし, 
+実行するということみたいですね. 
+(LLVM の JIT はライブラリとして組み込める作りになってます. 
+リンク先のニュース記事では gcc ベースと書いてありますが, 
+gcc はオマケというか frontend のひとつに過ぎません.) 
+昔は自家製の JIT を使っていたけれど
+挫けて LLVM に乗り換えたと上のスライドに書いてありました. 
+LLVM のエースは今や Apple 社員です.</p>
+<p>シェーダは頂点単位, ピクセル単位で実行されるので, 速度が命です. 
+なので JIT するのは自然な流れです. 
+GPU よりはだいぶ遅いでしょうが, VM よりは速いでしょう. 
+Mac OS は Quartz Extreme のせいで OpenGL が必須だからこのへんは大変ですね. 
+Windows の Aero も似たようなもんですが無効にできますからね.  </p>
+<p>リアルタイムグラフィクスではないけど, 
+オフラインレンダラ書きの人が
+<a href="http://lucille.atso-net.jp/blog/?p=251">シェーダに LLVM を検討してました</a>. 
+あとは Adobe の After Effect に載るらしい 
+<a href="http://labs.adobe.com/wiki/index.php/AIF_Toolkit">Core Image みたいなやつ</a>も 
+CPU を使う場合のバックエンドは 
+<a href="http://llvm.org/ProjectsWithLLVM/#adobe-hydra">LLVM だそうです</a>. 
+この AIF/Hydra は Flash10 にもついてくるという話なので, 
+Flash も LLVM 内蔵になるんですかね. ちょっとでかそう. </p>
+<h4>3. そのほか教科書とか</h4>
+<p>GPU 向けシェーディング言語は OpenGL の専売ではなく, 
+DirectX にも HLSL という名前で載ってます. 文法も似たようなもんです. 
+今は流行ってませんが NVIDIA も 
+<a href="http://developer.nvidia.com/page/cg_main.html">Cg</a> というのを作ってます. 
+これも同系統.</p>
+<p>シェーダを使うと出せる絵を見るには
+<a href="http://images.google.co.jp/images?q=shader+example">ぐぐってみる</a>とか, 
+あとは NVIDIA や AMD(元ATI) が出してるシェーダ用 IDE 付属の
+サンプルをみるとよくわかります. </p>
+<ul>
+<li><a href="http://developer.nvidia.com/object/fx_composer_home.html">http://developer.nvidia.com/object/fx_composer_home.html</a></li>
+<li><a href="http://ati.amd.com/developer/rendermonkey/index.html">http://ati.amd.com/developer/rendermonkey/index.html</a></li>
+</ul>
+<p>特にこれらの IDE は会社でさわってみるのをおすすめします. 
+色々サンプルがついてくるし, パラメタをいじったりもできます.  
+ぶっちゃけ典型的なシェーダで欲しい絵なら
+これについてくるサンプルをちょっといじってコピペすれば
+実現できる気がします. </p>
+<p>GLSL には
+<a data:asin='0321334892' href='http://www.amazon.co.jp/OpenGL-Shading-Language-Randi-Rost/dp/0321334892%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321334892'>オフィシャルな教科書</a>}
+があります. 
+DirectX は <a href="http://msdn2.microsoft.com/en-us/directx/">SDK</a> 
+付属の資料が親切です.</p>
+<p>シェーダの色々なテクニックは 
+<a data:asin='4939007693' href='http://www.amazon.co.jp/GPU-gems%E2%80%95%E3%83%AA%E3%82%A2%E3%83%AB%E3%82%BF%E3%82%A4%E3%83%A0%E3%82%B0%E3%83%A9%E3%83%95%E3%82%A3%E3%83%83%E3%82%AF%E3%82%B9%E3%81%AE%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0%E3%83%86%E3%82%AF%E3%83%8B%E3%83%83-Randima-Fernando/dp/4939007693%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4939007693'>GPU Gems</a> シリーズ, 
+<a data:asin='1584503572 ' href='http://www.amazon.co.jp/Shaderx-Advanced-Rendering-DirectX-OpenGL/dp/1584503572%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1584503572'>ShaderX</a> シリーズに詳しいそうですが, 
+僕はちゃんと読んだことがありません. </p>
+<p>入門向けだと, ちょっと古いけど
+"<a href="http://t-pot.com/program/index.html">t-pot</a>"(ウェブサイト) とか
+"<a data:asin='4939007359' href='http://www.amazon.co.jp/%E3%83%AA%E3%82%A2%E3%83%AB%E3%82%BF%E3%82%A4%E3%83%A0-%E3%83%AC%E3%83%B3%E3%83%80%E3%83%AA%E3%83%B3%E3%82%B0-%E7%AC%AC2%E7%89%88-Tomas-Akenine-Moller/dp/4939007359%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4939007359'>リアルタイムレンダリング</a>" 
+とかがあります. 前者はシェーダに限らず応用中心, 
+後者は網羅的で厚いなりにおすすめです. </p>
+<p>といったところです.</p>
+<p><span class='image'><a href='http://www.amazon.co.jp/OpenGL-Shading-Language-Randi-Rost/dp/0321334892%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321334892' class='bookcover'><img data:asin='0321334892' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51PQEHSA0XL.jpg'></span></a></span> 
+<span class='image'><a href='http://www.amazon.co.jp/%E3%83%AA%E3%82%A2%E3%83%AB%E3%82%BF%E3%82%A4%E3%83%A0-%E3%83%AC%E3%83%B3%E3%83%80%E3%83%AA%E3%83%B3%E3%82%B0-%E7%AC%AC2%E7%89%88-Tomas-Akenine-Moller/dp/4939007359%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4939007359' class='bookcover'><img data:asin='4939007359' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51h5tADC7zL.jpg'></span></a></span> </p>
+<h4>まとめ</h4>
+<ul>
+<li>LLVM は Apple OpenGL のシェーダを CPU で実行する場合の JIT として使われる</li>
+<li>速度は VM で動かすのと比べればだいぶマシなのではないかしら</li>
+</ul>
+<h4>関連ありそうな記事</h4>
+<ul>
+<li><a href="http://www.dodgson.org/omo/t/?date=20060922">いまどきのデスクトップ処理系</a></li>
+<li><a href="http://www.dodgson.org/omo/t/?date=20071215">正規表現はお好き?</a></li>
+</ul>

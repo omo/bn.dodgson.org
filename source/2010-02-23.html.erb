@@ -1,0 +1,73 @@
+---
+title: "WEB+DB PRESS の連載が最終回です"
+date: 2010-02-23
+---
+<h3>近況</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/WEB-DB-PRESS-Vol-55-%E8%A5%BF%E5%B2%A1/dp/4774141593%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4774141593' class='bookcover'><img data:asin='4774141593' class='asin image-right' src='http://ecx.images-amazon.com/images/I/61NVAApNjAL.jpg'></span></a></span></p>
+<p>WEB+DB PRESS の連載が最終回です. 今回は毛色をかえ, 外野として WebKit にパッチを投稿する様子を
+書いてみました. 宗教上の理由など C++ を避けておられる方にも楽しめるかもしれない内容になっております. 
+パッチが原稿目的だったのは内緒です. (バグはちゃんと直したよ...)</p>
+<p>連載のポストモーテムとしては, もっとレイアウトまわりを集中して扱えばよかったかなと反省. 自分もそのへんをよく読みたかった. 
+CSS はさておき parser とか loader とか割とこう, しんどいゾーンから入ってしまったせいで
+興味深いであろう箇所が手薄になってしまった. あと HTML5 なんかの流行りっぽい話をいれた方が人目を引けたかもしれない. 
+ただ HTML5 ってブラウザが本来より守備範囲を広げる話なので, ブラウザらしさを見るには面白くない気もして悩ましい. 
+あとは Chrome などブラウザ側のコードを読んでもよかった. そのへんはぜんぶ入りの Mozilla 一味の方が話はしやすそう. </p>
+<p>話題以外では, もうちょっと文章をなんとかしたかった. 8 ページは書いてみるとけっこう長い. 
+その中で辻褄や話題を整理して見目麗しく保つのはやや私の能力を超えていた. 文筆業の人はえらい. 
+アホ文の面倒をみてくださった編集者の D さま, ありがとうございました.</p>
+<p><a href='http://techon.nikkeibp.co.jp/article/HONSHI/20100218/180386/'><img class='right' width='120' src='http://techon.nikkeibp.co.jp/NE/img/2007/idx_latestissue_100222cv.gif' /></a></p>
+<p>そういえば, 今月は番外編として <a href="http://techon.nikkeibp.co.jp/article/HONSHI/20100218/180386/">日経エレクトロニクス</a> にも
+ちょこっと書かせてもらいました. 特集の題目から想像するファンクラブ活動系ではなく, WebKit の話です. 
+日経エレで WebKit に興味が湧いたら WEB+DB を, WEB+DB の連載が食いたりなかったら日経エレを読むとよいです. 
+というのは我田引水にもほどがあります. どっちも会社に摂ってもらおう.</p>
+<h4>WebKit on webOS</h4>
+<p>番外編は連載の没ネタをかきあつめてでっちあげようかとも思ったけれど, 
+それは両出版社および Kindle DX に失礼だと気をとりなおし調べもの. 
+日経エレ読者は HTML5 の話よりデバイスに WebKit を載せる話の方が興味深かろうと考え, 
+適当にいくつかのポートを物色した. 中でも <a href="http://developer.palm.com/">Palm webOS</a> のポートは割と面白かった. </p>
+<p><img src='http://www.palm.com/us/assets/images/products/phones/detail/pixi/features/palm-advantages.gif' class='right' width='160' /></p>
+<p>WebKit の webOS ポートは本家のツリーに入っておらず, palm.com のサイト内にぽろっと
+<a href="http://opensource.palm.com/1.3.5.2/index.html">パッチが置かれている</a>. 全然やるきない. 
+もっとも webOS 自体がネイティブコードにとってオープンな環境ではないので, 
+本家に入れようとしたところで誰もコンパイルできず, レビューもできない. 野良ポートなのは仕方ない気もする. </p>
+<p>webOS は C++ で書かれているらしく, webOS の野良ポートも C++ だ. ただ割とじゃんじゃか STL などを使うので
+オレオレコレクションを持つ WebKit のスタイルではない. 
+(webOS は Linux ベースながら C++ を基調としているようす. 彼らの C++ への情熱は判断に苦しむ. 
+<a href="http://recruit.trovix.com/jobhostmaster/jobhost/ViewJobPostDetails.do?title=SENIOR+LINUX+USER-SPACE+DEVELOPER&amp;jobPostId=dght4v3bzbcftdbjwtnel4ecve&amp;accountId=8c7a6bdda14fca4be3ce19634698d598530b9e78&amp;button=&amp;action=viewDetails&amp;tid=0207-2rmrny3bbrgm3lyufpdjloakxa">Linux 開発者向けの求人</a> には
+"No fear of C++ - but smart enough not to use it" とある. 誰がうまいこと言えと...)</p>
+<p>webOS ポートにはいくつかの特徴がある. 
+まず, 描画機能は移植に含まれていない. 既存のポート(たぶん gtk+ と cairo) を利用しているらしい. JS には V8 を使っている. 
+Palm Pre のリリースが 2009/6, V8 つきの Android2.0 は 2009/10 リリースだから, 
+Android より早く ARM に V8 を載せたのだろうか. なかなか地雷精神に溢れている. </p>
+<h4>Smart Zoom</h4>
+<p>(追記あり)</p>
+<p>そんな冒険野郎の webOS 開発者がただ移植だけをするはずもなく, 
+このポートには本家にはない <em>Smart Zoom</em> なる機能が追加されている. 
+画面が小さいケータイの画面で PC 向けのウェブサイトを見るために
+各社は工夫をこらしている. 
+(以前 <a href="http://steps.dodgson.org/?date=20090923">Android の Fit Column To Screen</a> を紹介した.
+Apple は画面をでかくすりゃいいとばかりに iPad をつくった. たぶん.)
+Smart Zoom はその系譜にある. </p>
+<p>webOS のブラウザで表示されたページをタップすると, タップ位置に応じたほどよい(=smart)大きさでコンテンツを表示しなおす. 
+<a href="http://developer.palm.com/">エミュレータ</a>でも試せる. 
+トントン, フニョンッ, トントントン, フワワンッてかんじの, なかなか気持ちいい操作感.  </p>
+<p>Smart Zoom にはいくつかの工夫がある. まず表示倍率を決めるアルゴリズムが凝っている. 
+(パッチ内 WebView::smartZoomAuto() 関数などを参照.) 
+Smart Zoom のアルゴリズムは, <em>表示しているコンテンツのレイアウト結果を利用</em>する. 
+タップ位置に重なる RenderObject (要は &lt;div&gt; や &lt;span&gt;) を全て列挙し, 
+矩形の中心がいちばんタップ位置に近い (などの怪しい heuristics で) RenderObject をひとつ選ぶ. 
+そして選ばれた RenderObject の矩形にフィットするよう画面をズーム+スクロールする. </p>
+<p>もう一つの工夫は, ズーム操作が状態を持っていること. タップでのスマートズームに成功すると, 
+状態が &lt;ズーム済&gt; になる. ズーム済状態でのタップはズームをキャンセルし, ページ幅にあわせたスケールに表示を戻す. 
+ただし戻るのは倍率だけで, 位置はズーム中を基準にずれている. 
+だから画面端でタップを繰り返すとスームインとズームアウトを往復しながらなんとなくページを読み進められる. </p>
+<p>Smart Zoon は Yahoo! のようなマルチカラム構成のページで特に効果がある. 
+タップしたカラムにあわせて画面がよるので, iPhone のピンチ操作より器用さを求められない. 
+とはいえたまに意図しないズームもおこる. 心のインスペクタで &lt;div&gt; を見抜く必要はある, かもしれない. </p>
+<p>webOS ポートはこのほかに, 小さい画面でクリックできないイライラを解消する <em>投機的クリック(?)</em>や, 
+ちょっとしたテキスト入力支援システム <em>Smart Text Engine</em> など, こまごまとした手を入れてがんばってる. 
+がぜん Palm Pixi が欲しくなった. KDDI にはがんばってほしいです.</p>
+<p>Android 端末で付加価値云々と苦慮している日経エレ読者諸兄はまず Smart Zoom をポートすると良い, 
+なんてのは安直すぎですすみません...</p>
+<h4>追記</h4>
+<p>iPhone もタップで賢くズームした. あたりまえの機能らしい. ものしらずですすみません...</p>

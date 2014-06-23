@@ -1,0 +1,89 @@
+---
+title: "反政府的 API"
+date: 2007-07-24
+---
+<h3>反政府的 API</h3>
+<p>勤務先のコードを見ていたら DeregisterXxx() という名前のメソッドがあった. 
+そんな英語ないだろ ... とぐぐってみると, 
+<a href="http://www.ussg.iu.edu/hypermail/linux/kernel/0104.3/1090.html">LKML のアーカイブがヒット</a>. 
+投稿者の不満は私と同じだ. 
+カーネルのコードに deregister_xxx () という関数がいくつもあるよ, いいの? という主旨. 
+そうだそうだとスレッドを読み進めた私はある驚くべき事実を知る. </p>
+<p><a href="http://www.ussg.iu.edu/hypermail/linux/kernel/0104.3/1090.html">Rik van Riel の返信</a>:</p>
+<pre>&gt; "deregister" を使うに至った事情は何かあるんですか?
+然り. 我々は反米国のテロリスト集団である.
+辞書に無い新たな単語を大量に発明して米国経済を破滅に追いやろう.
+連中の辞書産業に追従を許さず, 綴りを学ぶ余力を奪い,
+英国との語彙戦争の中で溢れる語彙に沈め彼等の息の根を止めるのだ.</pre>
+<p>なんてこった! (若干誇張あり.) 
+deregister にそんな意図があったとは ... 
+知らぬ間にずいぶん過激なソフトウェア開発に参加していたらしい. 
+まきこまれ型サスペンスの気分. 
+日本支部としても doxygen からラを抜いて, 
+パッケージは<a href="http://ha4.seikyou.ne.jp/home/azipon/font.html">ダメ字</a>で
+刷らねばなるまい. 
+もっとも検索結果は "unregister" の 176 万件に対し "deregister" も 78 万件. 
+Googlish の観点からはさほど革命的な趣味とも言えないな. この単語は...</p>
+<h4>API Design Matters</h4>
+<p>なんて話を書いてアッロードしようと思うもあまりの与太ぶりに気が引けてきた. 
+のでもうちょっと話を続けてみる. </p>
+<p>先月の ACMQ に "<a href="http://www.acmqueue.org/modules.php?name=Content&amp;pa=showpage&amp;pid=488">API Design Matters</a>" という記事があった. 
+書いているのは C++ の分散オブジェクト環境を開発している 
+<a href="http://www.zeroc.com/">ZeroC</a> のエース Michi Henning. 
+色々と良い話をしているんだけれど, 登場するコードにギャフンとなってしまった. </p>
+<p>Henning はダメな API の例として 
+.NET Framework の <a href="http://msdn2.microsoft.com/en-us/library/system.net.sockets.socket.select.aspx">Socket.Select()</a> をとりあげている. </p>
+<pre>public static void Select (
+  IList checkRead,
+  IList checkWrite,
+  IList checkError,
+  int microSeconds);</pre>
+<p>この Select() は三つの IList を引数にとり, 
+ready でないソケットを間引いて返す. 結果 ready なソケットが残る. 
+Select() の引数は inout 変数として使われている. </p>
+<p>この API が不味いのは明らかだ. 入力の引数に副作用があるのは嬉しくない. 
+意味的には list でなく set であるはずだ. など. 
+ひととおりの批判を済ませたあとに Henning の示した代案は次のとおり:</p>
+<pre>public static int Select(
+  ISet checkRead,
+  ISet checkWrite,
+  Timespan seconds,
+  out ISet readable,
+  out ISet writeable,
+  out ISet error);</pre>
+<p>えーーーー. 散々偉そうなこといった末に out 引数かよ! 
+しかも戻り値は ready なソケットの数らしい. 
+えー... エラーの enum か, せめて timeout か否かの bool じゃないの. 
+結局知りたいのはそれだと自分でも言ってるのに. あんまりだ. がっかり. 
+すばらしい演説がふっとんでしまった...</p>
+<p>とはいえ Henning も 
+"There are many other ways to fix the problems with Select()" と言っている. 
+せっかくだから ruby を見てみよう.</p>
+<p>ruby の <a href="http://www.ruby-lang.org/ja/man/?cmd=view;name=IO#IO.2eselect">IO.select</a> は三つの配列を引数に取って, 配列の配列を返す.</p>
+<pre># returns [[...],[...],[...]]
+IO.select(reads[, writes[, excepts[, timeout]]])</pre>
+<p>やっぱり戻り値で返すのが筋だよねえ. (timeout すると nil が帰る.)</p>
+<p>...という話を友達にしたら, えーーーー, と言われてしまった. 
+戻り値に配列はないでしょ. 名前つけないと中味がわからないじゃん, とのこと. たしかに. 
+丁度手元で select を試している. それらしくしてみよう. </p>
+<pre> class Selection &lt; Struct.new(:read, :write, :error)
+
+   def select(timeout)
+     ret = IO.select(read, write, error, timeout=0)
+     (nil != ret) ? Selection.new(ret[0], ret[1], ret[2]) \
+                  : Selection.empty
+   end
+
+   def self.empty() new([], [], []); end
+
+ end</pre>
+<p>こんな感じで使う.</p>
+<pre> ...
+ sel = current_selection.select(timeout)
+ sel.read.each { ... }
+ ...</pre>
+<p>それっぽくはなった気はする. </p>
+<p>それにしても不毛だなあ. もともと C の select() が色々とあんまりな作りだから, 
+その上で頑張ってもたかが知れている. 先に引用した Henning の台詞も, 
+実は "...such as the approach used by epoll()" と続く. 
+不毛な争いはこのくらいにしておきたい. API design matters, and clustters in usual. </p>

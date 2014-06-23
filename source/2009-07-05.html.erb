@@ -1,0 +1,141 @@
+---
+title: "webkit-dev 近況"
+date: 2009-07-05
+---
+<h3>webkit-dev 近況</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/WEB-DB-PRESS-Vol-51-%E5%90%89%E8%A6%8B/dp/4774138908%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4774138908' class='bookcover'><img data:asin='4774138908' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51aCSqlOMXL.jpg'></span></a></span></p>
+<p>連載中くらいはと思い <a href="http://webkit.org/contact.html">webkit-dev</a> を購読したけれど, 
+案の定ぜんぜん読んでいない. 今日は一念発起して 300 通くらい目を通した(= "j" を連打した). 
+だいたい二ヶ月ぶん. 外野にも興味深い話題がいくつかあったのでぱらぱら書いてみたい. 
+(過労気味といいつつ野次馬は別腹でよろしくおねがいします.)</p>
+<p>まず JavaScript 関係から. </p>
+<h4>ARM 用 JIT をめぐるいざこざ</h4>
+<p>4 月頃, ハンガリー Szeged 大学の面々が 
+SquirrelFish (Nitro?) を ARM に移植中だと <a href="http://webkit.sed.hu/node/13">アナウンスした</a>. 
+trunk には入っておらず, 彼らの git 上で開発が続いている. 
+その後の 6 月, Apple は独自に実装した ARM ポートを
+ひっそりと<a href="http://trac.webkit.org/changeset/44514">チェックイン</a>した. 
+それを発見した件の大学チームのメンバが
+<a href="https://lists.webkit.org/pipermail/webkit-dev/2009-June/008179.html">全然オープンじゃなくてガッカリだ</a> 
+と不満を表明. Apple 社員が "ごめん, iPhone 3GS が出るまで内緒にしろって言われててさ..." 
+と謝り (3GS の Safari は JIT つきなの? それとも将来のバージョンで入るんだろうか?), 
+他の投稿が "Apple のは ARM7 だけど君たち(Szeged 大学)のは ARM6 で用途は広いから頑張って開発してよ" 
+と励ましたりするが, 一方で MIPS ポートをしている別のプログラマが 
+"Apple の入れた ARM JIT のつくりは汎用性も低くていまいちじゃね？ このデザインで両方保守するのは筋が悪い" 
+とケチをつけたり, 
+"去年は &lt;設計などを議論したい&gt; と言ってたくせに何も言わないままだった"...と Szeged の面々も不満を返す. 
+フレームが勃発しかけるなか, Apple が 
+<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-June/008328.html">長文</a> を投稿, 
+早期のレビューを求めなかった Szeged 大学側にもわずかな非はあるなどと指摘しつつ仲良くやろうと諭し, 
+Szeged 大学も "まあ会社の事情じゃ仕方ないですね." と理解を示して議論は収束した. </p>
+<p>ブラウザ+モバイルという過当競争の渦中にあるプロジェクトらしいトラブルだった. 
+<a href="https://bugs.webkit.org/show_bug.cgi?id=24986">bugzilla</a> を見る限り, 今は仲良くやっているようす. </p>
+<h4>Nitro-Extreme</h4>
+<p>Szeged の学生はめざとい. 今度は 
+<a href="http://trac.webkit.org/browser/branches/nitro-extreme">Nitro-Extreme</a> というブランチの存在に気付いた. 
+(ブランチ自体は 5 月頃からあった.) 
+非整数の数値にもなるべくヒープを使わない変更
+(<a href="http://trac.webkit.org/changeset/43554/branches/nitro-extreme/JavaScriptCore">r43554</a>) 
+などが入っているらしい. 今まで 32 bit だった JSValue 型は double を入れるために 64 bit になった. 
+(こういうでかい変更に bugzilla の id がなく, ブランチでガガっと作ってマージする様子を見ると, 
+たしかに bazarr-rish なソフトウェアよりはフェアネスを欠くと映るかもしれない. レビュアは Apple の外の人だけど.) </p>
+<h4>YARR: Yet Another Regex Runtime</h4>
+<p>Chrome の <a href="http://blog.chromium.org/2009/02/irregexp-google-chromes-new-regexp.html">Irregexp</a> に
+刺激されたからだろうか, 
+JavaScriptCore にも似たような
+<a href="http://trac.webkit.org/browser/trunk/JavaScriptCore/yarr">正規表現ランタイム</a>
+が入った. パーサがあってインタプリタがあって JIT があって...という作り.
+こういうのを凄い勢いで作ってしまうのはおそろしい. 趣味で追いかけるのはムリ目な進展の速さ...</p>
+<p><a href="http://trac.webkit.org/changeset/42481/trunk/JavaScriptCore/yarr">最初のチェックイン</a> は 4 月. 
+そのあとデフォルトで有効になったり, たまにバグがみつかって無効になったりしている. 今はたぶん有効. 
+ARM でも動くらしい. SquirrelFish-Extreme と共にデビューした WREC は短い命だった. </p>
+<h4>Chromium 由来の新機能</h4>
+<p><a href="http://www.atmarkit.co.jp/news/200905/28/html5.html">HTML5 をがんばる</a> という言葉に嘘はないらしく, 
+Google から Chromium 由来のフィードバックや提案が色々あった. </p>
+<h4>HTML 5</h4>
+<p>まず <a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-June/008066.html">ルビ</a>(...HTML5 じゃないけど), 
+ページをまたいで動く
+<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-April/007416.html">SharedWorker</a>, 
+Growl のブラウザ版 <a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-April/007493.html">Desktop Notification API</a>, 
+HTTP に飽きた人向け <a href="https://lists.webkit.org/pipermail/webkit-dev/2009-June/008586.html">Web Socket</a>, 
+オフライン動作のための <a href="https://bugs.webkit.org/show_bug.cgi?id=25436">アプリケーションキャッシュ</a> などが
+提案されている. </p>
+<p>本筋とは関係ないけど web socket の提案を書いているのは日本のひと. 日本 Google でも Chromium やってるんだね. </p>
+<h4>マルチプロセスと V8</h4>
+<p>HTML5 は直接関係ないけれど, Chrome のマルチプロセス構成向けにあわせた WebKit の変更として
+<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-July/008640.html">Isolated World</a> に関する話題が
+面白かった. 複数の JS コンテクスト(=VM) から同じ DOM をさわれるようにしたいらしい. 
+(おそらくワーカスレッドからも DOM を使いたい, ということじゃなかろうか. 知らんけど.) </p>
+<p>話の発端はコードではなく, そのためのテストをツリーに置かせてよという話だった. 
+Apple の Maciej Stachowiak は "そんな V8 固有の機能は入れられない" と冷くあしらっている. 
+Apple は "WebKit はブラウザじゃなくてエンジンだ" という立場をとる. 
+そして "ブラウザの機能" や "ポーティング固有の事情" を本体のコードに入れるのは好まないらしく, 
+こういうあしらい方をたまに見かける. V8 はポーティングという扱い. 
+(その割に "#if ENABLE(DASHBOARD_SUPPORT)" とか "#if PLATFORM(MAC)" とかはあちこちにある.) </p>
+<p>WebKit は特に modularity が高くはないので, 
+特に新しい GUI ツールキットや OS への移植は
+本体のコードを改変しないと難しい. 一方で trunk の壁は高い. 
+もともと相対的なコードの小ささとライブラリ指向な構造のおかげで WebKit は多くの環境に移植されたけれど, 
+設計上また運営上の制限で多くの移植が trunk の進化から取り残され死んでいる. 
+実行時多態を使った ifdef フリーで pluggable な移植レイヤと DSCM によるホスティングがあれば, 
+もっと素敵なかんじなのにとは思う. 
+逆に Mozilla は多態な移植層も DSCM もあるのにフレームワーク指向で大きすぎるのが残念. 現実は厳しい. </p>
+<h4>Missing Design docs</h4>
+<p>Google からの大きな提案は, どれもすべからく "Design Doc" ありきなのが特徴的. 
+彼らはよく宣伝で "Design Doc を書いてます" と言っているけれど, その実例というかんじ. 
+たまたま見かけた <a href="http://groups.google.com/group/chromium-dev/">chromium-dev</a> のメールからも, 
+Google 文化としての Design Doc を伺うことができる. (そういえば Chromium もけっこうドキュメントが揃ってるよね.)
+以前は Apple の Safari チームで働いており, 
+今は Chrome を開発している <a href="http://www.eseidel.com/work.html">Eric Seidel</a> は
+<a href="http://groups.google.com/group/chromium-dev/browse_thread/thread/13958eaf037691a1#">"MYTH: WebKit uses design docs"</a> 
+という投稿の中で次のように書いている:</p>
+<blockquote><p>WebKit に参加する Google エンジニアはみな,
+WebKit の専門家が Google みたいに design doc を書いていると誤解しているようだ. 
+Google では沢山の design doc を書いている. Apple に三年いたけれど, WebKit でそういうのを書いている
+のは 2,3 回しか見たことがない. 
+先週, Google のエンジニアは 3 本の design doc を webkit-dev に投稿したけれど, 
+どれも大した反応はなかったと思う. 間違いかもしれないけれど.</p>
+</blockquote>
+<p>思わず笑ってしまう. たしかに上に書いた HTML5 の design doc に対する反応は薄い. 
+(web socket なんて返信ゼロ.) 
+bugzilla の patch へはそれなりに返事がついているので, 案外 Apple は現物主義なのかもしれない. </p>
+<p>chromium-dev に見られる Google エンジニアの反応も可笑しい. 
+"design doc は理解が深まっていいのになあ." というぼやきもあれば, 
+"過去の様子を見ると僕らのやりかたを押しつけると嫌われがちだよね" という意見,   
+"design doc は嫌われてるってほどじゃないから, とりあえず出しとけばいいんじゃない?" とか
+"改宗や返信を迫らなければ大丈夫だよ" という建設的(?)な声も. 
+たしかにドキュメントだけがあってもコミュニティに議論をするスタイルが伴わないと難しそうな気はするけれど,  
+みんなぶっちゃけすぎです.</p>
+<p>一端フォークしかかった WebKit を 
+trunk に戻すなど,
+冷たくあしらわれているにも関わらず, Chrome チームは涙ぐましい(?)努力をしている.
+(<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-May/007610.html">"Chromium Unforking: Please hold off on big changes for a day or so"</a>) 
+...というか自分で涙ぐましい (bring tears of joy to my eyes) と言っている. がんばってね, という気分になった. </p>
+<h4>レビューまつり</h4>
+<p>上では patch への返信はあると書いたけれど, 実際のところ外様 patch のレビューは遅れがちのようだ. 
+5 月, 件の Eric Seidel は "レビューが 100 件以上たまってるんですけど." と
+<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-May/007806.html">苦情を申し立てている</a>. 
+このスレッドは面白かった. 痺れを切らした Eric Seidel が放置されているレビューを軒並みクローズしはじめ, 
+それを見て慌てた他のメンバーが代案を出し, 別のメンバーはレビューを消化して, 結果としてキューがだいぶ縮んだらしい. やるな Seidel...</p>
+<p>その後も断続的にレビューの話題は続く. 
+ある日は Chrome チームの Ojan Vafai が "うちで使ってるレビューツール使おうぜ" と言いだして
+(<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-June/008111.html">"to reitveld or not to reitveld"</a>) 
+良いねえとか移行が面倒じゃね？などとそれなりに盛り上がる. (が, Apple 社員はスルー.)
+あくる日は Eric Seidel が ChangeLog からレビュアーのレビュー数を数えるスクリプトを書き, 
+"Darin Adler は神!" というスレを立てる. 
+(<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-June/008418.html">"Darin Adler is a machine"</a>.) 
+ちょっと楽しそう. </p>
+<h4>WebKit のお仕事</h4>
+<p>webkit-dev にはたまに "Webkit 技術者募集" の案内がリストに流れる. 
+(Apple, Google, Nokia 以外でそんな仕事があるのはちょっと羨しい.) 
+最近だとセットトップボックスの会社が JavaScript JIT の専門家を探していたり, 
+(<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-May/007632.html">"Looking for WebKit-JIT consultants</a>"), 
+ケータイハードウェアの Qualcomm がコミッタを探していたり
+(<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-May/007637.html">"WebKit Development Engineer - Needed ASAP at Qualcomm"</a>) する. 
+そういうのはやめてくれという<a href="http://lists.macosforge.org/pipermail/webkit-dev/2009-May/007638.html">案内</a> があった. 
+かわりに webkit-jobs リストを作るから, という話も. 野次馬としてそのリストは見てみたい... (※今のところできてません.) </p>
+<p>といったところでオチもなくおわります. </p>
+<p>WebKit の動向を追うにはこのほかに 
+ChangeLog, <a href="https://lists.webkit.org/pipermail/webkit-reviews/">webkit-reviews</a>, 
+あとは Chrome 側で <a href="http://groups.google.com/group/chromium-dev">chromium-dev</a> などを見ると良いのかもしれない. 
+私は webkit-dev でおなかいっぱい. </p>

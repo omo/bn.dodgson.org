@@ -1,0 +1,249 @@
+---
+title: "A Cycle Collector on Gecko"
+date: 2006-05-07
+---
+<h3>A Cycle Collector on Gecko</h3>
+<p>Gecko に実験的な cycle collector が実装されつつある. 
+Brendan Eric が<a href="http://weblogs.mozillazine.org/roadmap/archives/2006/04/fresh_xpcom_thinking_update.html">報じた</a>. 
+記事によると <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=333078">Bug 333078 - XPCOM Cycle Collector</a> がそれ. だいたい動いてるらしい. </p>
+<p>cycle collector とは循環参照用のガベコレのこと. (以下サイコレと略す.) 
+Gecko の XPCOM は寿命管理に参照カウントを使っている. 
+なので循環参照があるとメモリリークがおこる. 
+Ajax の台頭でガンガン DOM を書き換えることもあり, 
+XPCOM 内での循環参照が問題になっていた. 
+開発者の間で議論があり, 
+(参照: <a href="http://weblogs.mozillazine.org/roadmap/archives/009727.html">"Fresh XPCOM thinking"</a>) 
+おそらくその結果として上記のサイコレが実装されたのだろう. 
+C++ プログラマとしては興味がある. 
+なお, オープンソースだと他には Python でもサイコレが使われていた気がする. 
+(参照: <a href="http://arctrix.com/nas/python/gc/">"Garbage Collection for Python"</a>)</p>
+<p>で, パッチを眺めてみた. 
+私が眺めたのは <a href="https://bugzilla.mozilla.org/attachment.cgi?id=220474">2006-05-01 20:38 PDT のパッチ</a>. 
+けっこう小さい(2000 行)し, well commented. 連休のヒマつぶしには丁度いい. </p>
+<h3>アルゴリズム</h3>
+<p>実装されたサイコレは 
+<a href="http://www.research.ibm.com/people/d/dfb/papers/Bacon01Concurrent.pdf">"Concurrent Cycle Collection in Reference Counted Systems"</a> (PDF) 
+で示されたアルゴリズムの簡易版だという. コメントに書いてあった. 
+コードを眺めてもそれらしいかんじ. 
+参照カウントやサイコレはガベコレの方法として
+今でもそれなりに研究されているようだ. 
+ガベコレはもうマークスイープの路線に収束したと思ってたよ...</p>
+<p>件の論文によれば, 参照カウントはスケーラビリティの点で有利なことがあるという. 
+メモリ空間を全部舐める必要のあるマーク路線と違い, 
+もっぱらスタック上の参照だけを扱えばいい参照カウントは
+局所性が高く大量のメモリ相手でも速いというわけ. 
+<a href="http://www-06.ibm.com/jp/developerworks/java/jalape-vm-index-j.html">Jalapeno</a> という実験用 JVM への実装でも好成績を収めたとある. </p>
+<p>肝心のアルゴリズムは文中の疑似コードがわかりやすい. 
+起点はこれ:</p>
+<pre>CollectCycles()
+  MarkRoots()
+  ScanRoots()
+  CollectRoots()</pre>
+<p>最初の MarkRoots() では, 
+与えられた root set (回収の候補になるオブジェクト) の要素を
+"gray" としてマークし, ついでに参照カウントを 1 減らす. 
+"gray" は回収すべきか否かが曖昧な状態をあらわす. 
+これを root set から参照をたどり再帰的に行う. </p>
+<p>次の ScanRoot() でも root set から再帰的にトラバースをする. 
+トラバースしたオブジェクトの参照カウントが 1 以上なら, 
+これは root set 以外からも参照されているということで回収しない.
+"black" とマークし, 参照カウントを 1 増やす(元に戻す).
+そうでないノードは回収の必要アリとして "white" とマークする. </p>
+<p>最後の CollectRoots() では white のノードを回収して破棄 (Free()) する. 
+これも root set から再帰的なトラバースを行う. </p>
+<p>root set の候補になるのは, Release() で参照カウントが
+デクリメントされた直後のオブジェクト. 
+スコープから抜ける瞬間, そのスコープにあった変数の参照を root set として
+cycle collector が実行されると考ればおおよそ正しい. 
+Release() されるタイミングでしか潜在的なリークは起きないというアイデアがミソ. 
+たしかにうまくいきそうな気がする. 
+(論文には証明も載っているけど読んでません. )</p>
+<p>上の説明はかなり端折っていて, 実際には高速化のために色々やっている. 
+高速化のアイデアとしてまず重要なのは, root set の選定方法. 
+オブジェクトが Release() されたタイミングで毎回コレクタを動かすと重過ぎる. 
+だから Release() したオブジェクトをバッファリングしておいて, 
+一定程度溜まってからコレクタを動かす. 
+トラバースの範囲が重複する部分を一回に短絡できるため, 速くなるという. </p>
+<p>その他トラバースを打ち切るタイミングなどの細かい話がある. 
+でも実装されてなさそうなので省略. </p>
+<h3>実装の概要</h3>
+<p>件の Gecko 実装はだいたい論文の方針に従っている. 
+ただし並列処理は諦めている. おかげでそこそこシンプル. </p>
+<h4>nsCycleCollectionParticipant</h4>
+<p>C/C++ でオブジェクトの参照をたどる方法は自明でない. 
+スクリプト言語でよく使われる conservative GC では "変数の値がそれっぽい" という
+基準で参照を検出しトラバースするが, これは色々前準備が必要になる. 
+前準備の無い状態で開発されてしまった Gecko で使うのは難しい. </p>
+<p>かわりにこの patch では参照をたどるための
+明示的なインターフェイスを定義している. 
+nsCycleCollectionParticipant.h の 
+nsCycleCollectionParticipant というインターフェイスがそれ. 
+(なぜか IDL はない.) 
+定義されたメソッドは自分の持つ参照のリストを返す Traverse(), 
+自身の持つ参照を解放する Unlink() のふたつがある. 
+このインターフェイスを実装したオブジェクトだけがサイコレの対象となる. 
+実装していない既存のオブジェクトはコレクタに無視され, 
+これまでどおりリークする. 
+だから実際にリークを防ぐには, 
+循環参照を避けたいクラス(かその親クラス)を軒並み直すことになる. 
+直す作業自体は簡単. マクロを二行くらい追加すればいい. 
+patch では nsGenericElement というクラスだけがこの
+インターフェイスを実装している. </p>
+<h4>nsCycleCollector API</h4>
+<p>サイコレのアルゴリズム本体は 
+nsCycleCollector.cpp の nsCycleCollector という
+そのまんまな名前のクラスに実装されている. 
+インスタンスはシングルトンで, 以下の API を外部に公開している. </p>
+<pre>// root set にオブジェクトを追加
+void nsCycleCollector_suspect(nsISupports *n);
+// root set からオブジェクトを削除
+void nsCycleCollector_forget(nsISupports *n);
+// サイコレ実行
+void nsCycleCollector_collect();
+// よくわからん, 再入チェック？
+PRBool nsCycleCollector_is_scan_safe(nsISupports *n);</pre>
+<h4>NS_IMPL_CYCLE_COLLECTION_CLASS</h4>
+<p>サイコレで回収されたいオブジェクトのクラスでは
+NS_IMPL_CYCLE_COLLECTION_CLASS というマクロを使う. 
+このマクロはお約束メソッドなどを実装する. 
+特に AddRef() と Release() の実装がミソ. 
+AddRef() ではコレクタの forget() を, Release() では suspect() を呼び出す. 
+ただし Release() で 参照カウンタが 0 になった場合はリークの心配がない. 
+だから suspect() ではなく forget() を呼ぶ. </p>
+<p>参照カウンタを操作するだけの標準 AddRef()/Release() より
+だいぶ複雑で重くなるのがわかると思う. </p>
+<h4>nsFoo_cycleCollectorGlobal</h4>
+<p>nsCycleCollectionParticipant::Traverse() や Unlink() の実装は 
+nsFoo_cycleCollectorGlobal という内部クラスで提供される. 
+(nsFoo は実装するクラスの名前.) 
+これも上のマクロで勝手にやってくれる. </p>
+<p>(ここにはちょっとトリックがある. 後述.)</p>
+<h4>コレクタの呼び出し</h4>
+<p>nsCycleCollector_collect() は
+nsEvnsEventQueue.cpp の nsEventQueueImpl::ProcessPendingEvents() から呼ばれる. 
+名前から察するにちょっとヒマな時に呼ばれるメソッドっぽい. 
+イベントループの底なら
+参照中のオブジェクトをうっかり回収してトラブルになることも少なそう. 
+妥当な気がする. </p>
+<h4>コレクタの実装</h4>
+<p>nsCycleCollector::collect() の中心はこんなコード. </p>
+<pre>   markRoots();
+   scanRoots();
+   collectWhite();
+   forgetAll();</pre>
+<p>論文のまんまだ. </p>
+<p>オブジェクトグラフのトラバースには graphWalker というクラスを使う. 
+walk() メソッドでオブジェクトグラフをトラバースし, 
+適宜 shouldVisitNode(), visitNode(), noteChild() を呼び出す. 
+これらはサブクラスで実装する. Template Method パターンみたいなもの. 
+markRoots() では markGreyWalker, scanRoots() では scanBlackWalker...
+という風にそれぞれトラバース用サブクラスがある. </p>
+<p>論文とは違い, 実際にオブジェクトの参照カウントを操作することはしない.
+(Release() を呼んで 0 になったらその場で解放されちゃうからね.) 
+かわりにポインタを ptrInfo という構造体に保持し, 
+そのフィールド mInternalRefs をインクリメントしていく. 
+そして markRoots() のあと 
+mInternalRefs の値と等しい参照カウントのオブジェクトに 
+white とマークする. マークの情報もオブジェクトでなく ptrInfo に保存する. </p>
+<p>マークや参照カウントの保持にオブジェクト本体とは別の構造体 (ptrInfo) を
+使うのはなかなか名案だと思う. 
+トラバースするオブジェクトを書き換えずに済むし, 
+コレクタの対象となるオブジェクトの分だけしかメモリを使わない. </p>
+<h4>nsCycleCollector::collectWhite() : オブジェクト集合の前計算</h4>
+<p>論文の CollectRoots() では
+オブジェクトグラフをトラバースして white ノードを探す. 
+ところが nsCycleCollector では collectWhite() の途中で
+参照を Unlink() してしまう. 
+その結果, 普通にはオブジェクトグラフのトラバースができなくなる. </p>
+<p>そのため実装では collectWhite() の前に
+実行されるトラバース  (markRoots() など) で, 
+その時トラバースしたオブジェクトをハッシュに記録しておく. 
+collectWhite() ではそのハッシュを走査する. こうして先の問題を避けている. </p>
+<h3>実装の細かい話</h3>
+<p>おおよその実装はこんな感じ. 素直に作ってある印象をうけた. 
+実際には素直に見えるものを作るのはとても難しい. 
+既存の実装を理解していないと不整合がうまれ, それが "トリック" に繋がるからだ. 
+patch の作者 Graydon Hoare はかなり Gecko/XPCOM に精通しているのだろう. </p>
+<p>このほか高速化や省メモリ化の細かい工夫がいくつかしてある. それも眺めておく. </p>
+<h4>graphWalker::walk() : トラバースの再起除去</h4>
+<p>オブジェクトグラフのトラバースをする graphWalker::walk() では, 
+スタックを使って 再起呼び出しをループに展開している. 
+初歩的な高速化だと言えばそれまでだけれど, 真面目にやっているのがエライ.</p>
+<h4>sufficiently_aged() : 世代別 GC 風</h4>
+<p>ptrInfo (正しくはそのハッシュエントリ)は, 
+オブジェクトが root set に登録されたタイミングを "世代" として保存している. 
+(nsCycleCollector::suspect() 参照.) 
+コレクタはこの世代を参照し, 
+一定より "若い" オブジェクトをトラバース対象から外している.</p>
+<p>普通の世代別 GC は若いオブジェクトを頻繁に回収するのが, その逆. 
+大半のオブジェクトは標準的な参照カウントの仕組みで
+早い時期に回収されるということなのだろう. 効き目があるならちょっとした発明だね. </p>
+<h4>nsFoo_cycleCollectorGlobal : 節約のための COM 規約違反</h4>
+<p>コレクタに回収されたいクラスは 
+nsCycleCollectionParticipant インターフェイスを実装すると先に書いた. 
+実はこれには少し嘘がある. 
+普通, あるクラス nsFoo がインターフェイスを実装すると
+言われたらこんなのを想像するだろう. </p>
+<pre>class nsFoo : public nsCycleCollectionParticipant, nsISupports { ... };</pre>
+<p>実際はこうなっていない. COM アグリゲーションですらない. 
+nsFoo は nsCycleCollectionParticipant を要求する QueryInterface() に対して, 
+自分のクラスがクラス変数として持っている
+シングルトン(!)のヘルパーオブジェクト nsFoo_cycleCollectorGlobal を返す. 
+(このクラスも NS_IMPL_CYCLE_COLLECTION_CLASS マクロで実装される. 
+nsCycleCollectionParticipant.h にある大量のマクロ参照. )</p>
+<p>この nsFoo_cycleCollectorGlobal が nsCycleCollectionParticipant を実装している. 
+よく見ると, nsCycleCollectionParticipant::Unlink() の引数は 
+Unlink(void) ではなく Unlink(nsISupports *s) だ. 
+Unlink() を使う時はこの s に "実質上の" this を渡す. 
+(nsCycleCollector::collectWhite() 参照.) 
+こんなかんじ:</p>
+<pre> // 疑似コード.
+ nsFoo* foo = ....;
+ nsCycleCollectionParticipant* cp = foo-&gt;QueryInterface(NS_GET_IID(nsCycleCollectionParticipant));
+ cp-&gt;Unlink(foo);</pre>
+<p>これは COM の規約である反射律に違反している:</p>
+<pre> // 疑似コード.
+ nsFoo* foo = ....;
+ nsCycleCollectionParticipant* cp = foo-&gt;QueryInterface(NS_GET_IID(nsCycleCollectionParticipant));
+ nsFoo* foo2 = cp-&gt;QueryInterface(NS_GET_IID(nsIFoo));
+ assert(foo == foo2); // 失敗する! foo2 が null となり反射律を満たさない.</pre>
+<p>nsFoo が素直に nsCycleCollectionParticipant を継承するつくりなら
+こんなことにはならない. 
+ルールを破ってまで面倒なことをするのにはおそらく理由がある. 
+多重継承のオーバーヘッドを避けるためだろう. 
+C++ では新しい抽象クラスを実装すると vptr などでインスタンスのサイズが増える. 
+(ふつうは vptr のポインタ一個分.) それを避けたのだと思う. </p>
+<p>以前 Mozilla の開発者の間でサイコレの議論があった時, 
+普通にインターフェイスを追加する方法も提案されていた. 
+しかしメモリサイズが増えるなどの批判があった. 
+(参照: <a href="http://benjamin.smedbergs.us/blog/2006-02-18/xpcom-detecting-reference-cycles-or-switching-to-gc/#comment-5688">"XPCOM: Detecting Reference Cycles, or Switching to GC?"</a>) 
+そうした議論を踏まえてのことだろう. </p>
+<p>私はこれをなかなかのハックだと思う一方, 
+そんなにがんばらなくていい気もした. 
+COM に詳しい人に聞いても, 基本的にルールは守った方がいいという意見. 
+将来何らかのトラブルになりかねないから. 
+一方でメモリが惜しい気持もわかる. 
+この難しいトレードオフをどうこなすか. Mozilla 開発者の結論に注目したい. </p>
+<h4>解決していない問題 : 異種環境間 GC</h4>
+<p>サイコレの導入で全てのメモリリーク問題に決着がつくわけではない. 
+たとえば JavaScript のオブジェクトが関係する循環参照には
+このサイコレだけでは直らないものがある. 
+(直るものもあるかもしれないけれど, 詳しいことはわからない.) 
+このサイコレはあくまで XPCOM の中の巡回参照を検出するためのもので, 
+自身の GC を持つ JavaScript の世界をまたにかけた循環までは面倒を見てくれない. 
+それでもこのサイコレは問題解決への一歩になるとは思う. 
+巡回参照が解決されなければ
+異種環境間 GC をがんばってもリークは減らないだろうからね. </p>
+<p>異種環境間 GC についてはいくつかのアイデアが提案されている. 
+(Mozilla 関係だと <a href="http://www.cs.cmu.edu/~roc/HetGC.html">"Heterogenous Garbage Collection"</a> 参照.) 
+でも巡回参照を合わせて考えると問題が複雑すぎて私にはお手上げ. 
+Microsoft も諦めている(だから IE でもリークがおこる)くらいだから, 
+実際難しい問題なのだろう. </p>
+<h3>茨の道</h3>
+<p>プログラム処理系に詳しい友達とこの話をしたとき, 
+もしかして <a data:asin='0471941484' href='http://www.amazon.co.jp/Garbage-Collection-Algorithms-Automatic-Management/dp/0471941484%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0471941484'>教科書</a> を読めば
+何か解決策が載っているのかなあとぼやいてみた. 
+その返事が印象に残っている:</p>
+<pre>学生のころ先生が言ってたよ. "ガベコレにだけは手を出さない方がいい" って.</pre>
+<p>分散オブジェクトが専門だったその指導教官の顔を思いうかべ, 
+彼の身に起きたいろいろを想像, なんとなく納得したのでした. </p>

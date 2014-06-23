@@ -1,0 +1,159 @@
+---
+title: "Netflix Prize 外野席"
+date: 2008-08-14
+---
+<h3>Netflix Prize 外野席</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E9%9B%86%E5%90%88%E7%9F%A5%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0-Toby-Segaran/dp/4873113644%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4873113644' class='bookcover'><img data:asin='4873113644' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51FgSThMzVL.jpg'></span></a></span></p>
+<p>"<a data:asin='4873113644' href='http://www.amazon.co.jp/%E9%9B%86%E5%90%88%E7%9F%A5%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0-Toby-Segaran/dp/4873113644%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4873113644'>集合知プログラミング</a>" という本が出たらしい. 
+私の積読には元本の "<a data:asin='0596529325' href='http://www.amazon.co.jp/Programming-Collective-Intelligence-Building-Applications/dp/0596529325%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596529325'>Programming Collective Intelligence</a>" があって, 
+途中まで読んだまま放置していたら日本語訳が出てしまった. (オライリーのアンチパターンと命名.) 
+悔しいので本は処分. そのうち日本語版で続きを読もう....</p>
+<p>興味を持っていたのは推薦エンジン(協調フィルタ)だった. 
+私の中では検索エンジンに匹敵するウェブのハイテクという位置付けなんだけど, 草の根には普及しておらず悲しい. 
+検索エンジンでの Hyper Estraier や senna に相当する協調フィルタの立ち位置は
+デッドヒートが予想される...とだいぶ前から思ってるんだけど, いまのところ閑古鳥気味. 
+まったく, 出し抜くだけの実力があればなあ. </p>
+<p>先の皇帝ペンギン本では, 一章にさっそく協調フィルタが登場する. 
+読んでみると, 簡潔な python のコードであっさりアルゴリズムが実装されている. 
+著者とリスト内包表記の力に目を見張る. 
+例題は del.icio.us を使った推薦エンジン. 
+私もさっそく ruby で del.icio.us 用エンジンを書いたけど, いまいちうまく動かなかった. 
+del.icio.us は取得できるデータが制限されている上に, すぐ throttling されてしまう. 
+十分なデータが揃わないとレコメンダの旨味はでない. (私のコードにバグがあっただけかもしらんけど...)</p>
+<p>そのあと少し真面目に作りなおそうと調べ物をしていたら, 
+海外では <a href="http://www.netflixprize.com/">Netflix Prize</a> という
+推薦エンジンコンテストで盛り上っていたのを知った. </p>
+<h4><a href="http://www.netflixprize.com/">Netflix Prize</a></h4>
+<p><a href="http://www.netflix.com/">Netflix</a> はアメリカにあるオンラインレンタルビデオ屋で, 
+日本でいうと <a href="http://posren.livedoor.com/">ぽすれん</a> みたいなものだろうか. 
+割と人気のあるサービスらしく, <a href="http://friendfeed.com/">friendfeed</a> でも対応している. 
+でも日本はサービス外で, すっかり外野気分. </p>
+<p>Netflix は Amazon ばりの協調フィルタを持っており, ユーザの試聴記録と評価の星から次に見るべきビデオを勧めてくれる. 
+あるとき, この協調フィルタの性能に限界を感じた Netflix は思いきった行動に出る. 
+アルゴリズムの一般公募を始めたのだ. そのコンテストが <a href="http://www.netflixprize.com/">Netflix Prize</a> というわけ. </p>
+<p>コンテストは 2006 年に始まり, 2011 年(!)まで続く. 賞金は <em>100 万ドル</em>.  
+年に一回 "Progress Prize" という途中経過の表彰もある. こちらは賞金 5 万ドル. 
+2007 年に最初の Progress Prize が贈られている. </p>
+<p>参加者は匿名化された実データのサブセットをダウンロードし, 自分のアルゴリズムで計算した推薦データ投稿する. 
+運営システムはその投稿を秘密の実データと比較, 誤差を評価する. 誤差が小さいほど成績があがる. 
+現在のランキングは <a href="http://www.netflixprize.com/leaderboard">leaderboard</a> で一覧できる. 
+score が誤差, improvement が Netflix のシステム (Cinematch) からの改善分をあらわしている. </p>
+<p>Prize が始まってしばらくは, 賞金目当ての猛者と外野が大層盛りあがっていたらしい. 
+そんな祭りに乗りそびれたのは悔しいけれど, レースはまだ続いている. いまさら様子を眺めてみよう.</p>
+<h4>Try This at Home</h4>
+<p>コンテスト開始から数ヶ月後, 参加者のひとり Simon Funk が自身のアルゴリズムを
+<a href="http://sifter.org/~simon/journal/20061211.html">ウェブで公開し</a>波紋を呼んだ. 
+Simon は行列ベースの協調フィルタ(皇帝ペンギン本で紹介されているようなの)では必須となる 
+<a href="http://en.wikipedia.org/wiki/Singular_value_decomposition">SVD</a> の高速な実装を紹介している. </p>
+<p>購買情報のように極めて疎な行列は推薦エンジンのアリゴリズムで扱いにくい. 
+そこでより低い次数をもつ, 密度の高い行列に変換して扱うのが機械学習の定石となっている(らしい). 
+SVD はこうした次元の縮退に用いるツールのひとつで, ふつうは計算に時間がかかる. 
+Simon のアルゴリズムを使うと SVD の近似を高速に計算できるという. 
+(計算そのものより結果の更新の速さが売りなんだけれど, まあそれは細かい話.) 
+Prize 参加者に走った衝撃は, 
+<a href="http://www.netflixprize.com/community/viewtopic.php?id=453">当時の Forum のスレッド</a> を見るとわかる. 
+これ以降, アマチュア参加者がまずやるべきなのはこの Simon's SVD を実装することになったと言っていい. 
+Netflix Prize 入門サイトでは必ず紹介されている. </p>
+<p>ちなみに Simon 自身は既にコンテストから身を引いたのか, ランキングにそれらしい名前はない. 
+<a href="http://www.sigkdd.org/explorations/issues/9-1-2007-06/simon-funk-explorations.pdf">2007 年のインタビュー(PDF)</a> 
+を読んだ範囲でもやる気はなさそう. なんとなくかっこいい. </p>
+<p>いまでは Simon Funk 以外にもいくつかのチームが自らのアルゴリズムを解説している. 
+そうした解説は leaderboard からリンクされている各チームのページで見ることができる. 
+(<a href="http://www.cs.uic.edu/~liub/Netflix-KDD-Cup-2007.html">ワークショップもあった</a> らしい...)</p>
+<h4>When Gravity and Dinosaurs Unite</h4>
+<p>2007 年の冬, 参加者の一群は Progress Prize に向けて凌ぎを削っていた. 
+トップを走るのは "<a href="http://www.research.att.com/~volinsky/netflix/">KorBell</a>". 
+AT&amp;T の研究者 Yehuda Koren と Bob Bell のチームだ. (プロかよ...) 
+そして後を追う "<a href="http://home.mit.bme.hu/~gtakacs/gravity.html">Team Gravity</a>" と 
+"<a href="http://www.eecs.berkeley.edu/~lmackey/dinosaurplanet.html">Team Dinosaur Planet</a>". 
+どちらも学生(当時)がやっている. 
+締切も差し迫ったころ, KorBell を追うこの 2 チームが手を組み, 
+"<a href="http://home.mit.bme.hu/~pila/gravity_and_dinosaurs/gdp">When Gravity and Dinosaurs Unite</a>" を結成する. 
+そしてお互いの出力をブレンドし, 結果を改善したのだ. トップに躍り出る重力の恐竜! (画像は上のページから拝借)</p>
+<p><img src="http://home.mit.bme.hu/~pila/gravity_and_dinosaurs/firstplace.png" class="diagram"/></p>
+<p>しかし KorBell も黙ってはいない. すかさず新しい結果を投稿し, 彼らを抜き返したのだ. 結局そのまま KorBell が逃げきり, 第一回の Progress Prize を手中に収めた. 
+終盤の白熱した様子は <a href="http://sciencereview.berkeley.edu/articles.php?issue=14&amp;article=briefs_2">Berkeley science review</a> の取材が詳しく伝えている. </p>
+<blockquote><p>その夜, 僕とチームメイトはほとんど眠らなかったから, 頭の中は新しいテクニックやどうやってそれを混ぜるかで一杯だった. 
+コードを仕立てて何個か新しい方法を試した, 結果はよくなった. けれど決着がついてみると BellKor がトップだったのさ.</p>
+</blockquote>
+<p>それにしても &lt;出力をブレンドする&gt; なんてことができるんだろうか? 
+これを可能にするのが, <a href="http://abeautifulwww.com/EnsembleLearning.ppt">ensemble learning</a> や 
+<a href="http://en.wikipedia.org/wiki/Boosting">boosting</a> と呼ばれる一連のアルゴリズムだ(と Wikipedia に書いてあった. 私はよくしらない...). 
+トップの KorBell も, 実は 100 以上のアルゴリズムを合成したと解説記事で明らかにしている. やりすぎだろ... 
+KorBell はブレンドにも工夫をしている: テストデータを性質に応じて 15 に分割し, 個々の部分集合(bin)ごとに別々の重みを与えているのだ. 
+こうすることで, データの性質による得手不得手をある程度補い合えるという. </p>
+<p>KorBell の後継である BellKor は今も leaderboad でトップの座を守り続けている. Team Gravity はレコメンダ屋を <a href="http://www.gravityrd.com/">起業</a> した. 
+もう一つのトップ常連である <a href="http://www.student.tugraz.at/andreas.toescher/">BigChaos</a> も <a href="http://www.commendo.at/index.php?lang=0">起業</a> している. みんながんばってね. </p>
+<h4>心理学者の追撃</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E7%B5%8C%E6%B8%88%E3%81%AF%E6%84%9F%E6%83%85%E3%81%A7%E5%8B%95%E3%81%8F%E2%80%95%E2%80%95-%E3%81%AF%E3%81%98%E3%82%81%E3%81%A6%E3%81%AE%E8%A1%8C%E5%8B%95%E7%B5%8C%E6%B8%88%E5%AD%A6-%E3%83%9E%E3%83%83%E3%83%86%E3%82%AA-%E3%83%A2%E3%83%83%E3%83%86%E3%83%AB%E3%83%AA%E3%83%BC%E3%83%8B/dp/4314010479%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4314010479' class='bookcover'><img data:asin='4314010479' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51oNT1FOu3L.jpg'></span></a></span></p>
+<p>上位の膠着状態が続くなか新星が現れた. 
+その新星, "<a href="http://justaguyinagarage.blogspot.com/">Just a guy in a garage</a>" は
+しばらく所在を明らかにせず, 利用しているアルゴリズムについてもまったく知られていなかったが, 
+<a href="http://www.wired.com/techbiz/media/magazine/16-03/mf_netflix">今年 2 月の WIRED の記事</a> が彼の正体を明らかにした. </p>
+<p>記事によると Just a guy... の作者は Gavin Potter というイギリス在住の心理学者で, 
+もともとは IBM でコンサルをしていたらしい. 
+機械学習でも勉強するかと会社をやめた傍ら手をつけた Netflix Prize で, 目を見張る成果を上げることになる. 
+Gavin Potter はアルゴリズムの詳細を明らかにしていないが, 先の記事では "アンカリング" など
+行動経済学の知見をとりこんだと謳っている. 
+自身の blog でも, 他の参加者は "ignore the fact that there are humans actually making the ratings." と指摘し, 
+そこに勝機を見ているようだ. 
+また <a href="http://justaguyinagarage.blogspot.com/2008/03/signalling-and-sequences.html">他のエントリ</a> 
+では "シリーズもの同士の相関" というように, コンテンツの中身に踏みこんだ調査もしている. 
+たしかに評価データを行列やベクトルとみなす数学者的アプローチとは少し違う視点を持っているのかもしれない. </p>
+<p>WIRED の記事は多くの関心を集めたようだ. マンネリ化が始まったかに見えた leaderboard にも新風を吹きこんだ. 
+記事を読んで興味をもったという <a href="http://pragmatictheory.googlepages.com/">PragmaticTheory</a> チームは, 早くも第 3 位に食い込んでいる. </p>
+<p><a href="http://www.wikinomics.com/blog/index.php/2008/04/22/a-deeper-look-at-the-netflix-innovation-contest/">Wikinomics blog</a> も今年に入ってから
+この Prize に言及するなど, 
+開始から 2 年近くがたった Netflix Prize は今なお何か面白いことが起きそうな予感を孕んでいる. </p>
+<h4>データセットにまつわる話</h4>
+<p>Netflix Prize の公開したテストデータは画期的なものだった. 
+それ以前に世の中で公開されていた最大のデータセットは <a href="http://www.grouplens.org/node/73">Movie Lens のもの</a> で, これは 1,000,000 件のデータを含んでいた. 
+対する Netflix のデータはおよそ 100,000,000 件のデータを含む. 二桁多い. この巨大なデータがアカデミアの興味を引いたのは間違いない. 
+かつて Amazon でレコメンダを開発していた Greg Linden も<a href="http://glinden.blogspot.com/2007/01/netflix-prize-and-big-data.html">この点を評価している</a>. 
+ある新しいアリゴリズムが現実のデータセットで使えるだけスケールするのか, 研究者は検証のしようがなかった. 
+<a href="http://anand.typepad.com/datawocky/2008/03/more-data-usual.html">洗練されたアルゴリズムよりデータの量がものをいう</a> 世界でこれは困ってしまう. 
+Prize のデータセットはそんな状況を改善した. 
+(Netflix は <a href="http://blog.recommenders06.com/wp-content/uploads/2006/09/bennett.pdf">一日 200万件のペースで評価データが増える</a> というから, 
+この 1 億件もたかだか二ヶ月分なんだけどね...)</p>
+<p>リアルで巨大なデータセットは思わぬ問題に繋がる. ある研究者が, Netflix Prize のデータセットから匿名性を暴く研究を<a href="http://www.cs.utexas.edu/~shmat/netflix-faq.html">公表した</a>. 
+この研究では, あるユーザについて 7-8 件の評価(と評価日)情報がわかれば, そのユーザを Prize のデータセットから特定できるとしている. 
+雑談のつもりで映画の善し悪しをを話したら, 他の(人には言えないような)ビデオの閲覧情報が明らかになってしまうわけ. ちょっと気味が悪い. 
+この研究に限らず, データセットや推薦結果のプライバシは昨今の協調フィルタの分野では割とよく研究されているようす. 面倒だけど仕方ないのかもしらん. </p>
+<h4>オープンソースの推薦エンジン</h4>
+<p>色々読み物を眺めているうちに, 実際のコードをみたくなってきた. 
+探してみるとオープンソースの実装がいくつかあった. 
+PHP 向けの <a href="http://www.vogoo-api.com/">Vogoo</a> と 
+Java 製の <a href="http://taste.sourceforge.net/">Taste</a> は, 
+そこそこ開発が続いているように見える. Vogoo のサイトにはいくつか採用実績が載っている. 
+日本では <a href="http://www.eigaseikatu.com/">映画生活</a> が採用しており, 
+<a href="http://labs.unoh.net/2006/04/_vogoo.html">ウノウラボにも紹介記事</a> があった. 
+Taste のサイトにはそうした記述は見当らないが, その割にはちゃんと作ってあるんだよな. 
+開発者自身が使っているのかもしれない. 
+(...と思ったけど開発者の <a href="http://www.ohloh.net/accounts/srowen">Sean Owen</a> は 
+Google のプログラマなので, 仕事じゃ使えなそうだなあ. やっぱり単なる趣味かもね.) </p>
+<p>PHP はしんどいので Java で書かれた Taste のコードをみると, 
+Netflix Prize に出てくるような高等なアルゴリズムは使っていない. 
+ただデータの入出力やアルゴリズムを pluggable にするなど好感の持てる作りではある. 
+Prize データを読み込むモジュールもあった. </p>
+<p>その Taste が少し前に Apache の <a href="http://lucene.apache.org/mahout/">Mahout</a> プロジェクトへ
+統合されたのは興味深い. 
+Mahout は Apache Hadoop の上に機械学習のライブラリを揃えようという野心的なプロジェクトで, 
+Taste もそうしたライブラリに組込もうとしているのだろう. 
+<a href="http://svn.apache.org/viewvc/lucene/mahout/">レポジトリ</a>をみたところ, 
+Taste 用の Job (Mapper や Reducer) の実装が始まっている. 
+Mahout で実装している SparseMatrix や SparseVector を使う様子はなく, 
+自身のデータ構造を使って Hadoop の上に実装を進めている. 
+これまでの Taste は計算に使うデータをオンメモリに持つつくりになっており, 規模拡大に不安があった. 
+Hadoop にあわせてうまくデータを分割できれば, こうした制限を押し広げることができるだろう. </p>
+<p>Mahout も今のところ多くの機能が未実装で使えるかんじじゃないけれど, 熱心に開発が続いている. 
+二年もすれば実用になる並列計算のライブラリになっているんじゃなかろうか. 
+追いかけがいのあるプロジェクトだとおもう. </p>
+<h4>まとめ</h4>
+<p>さて, 勢いに任せて Netflix Prize の周辺をとりとめもなく眺めてみました. 
+ウェブみてる暇があったらコード書けという話もあるけど, そこは夏休みということでお許しを. 暑くてね... </p>
+<p>日本語で読める推薦エンジンの解説記事には, 
+"<a href="http://ci.nii.ac.jp/naid/110004811938/">推薦システム-情報過多時代をのりきる</a>" 
+などがある. 同じ著者によるもう少し詳しい入門記事として, 
+<a href="http://www.ohmsha.co.jp/jsai/">人工知能学会誌</a> の 2007/11 から三号続けて連載があった. 
+学生のひとは学校の図書館で読めるんじゃないでしょうか. 
+夏休みの暇潰しに Netflix Prize にのりこむのも面白そう. 一山あたったら宴会には呼んでね:D</p>

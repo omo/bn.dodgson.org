@@ -1,0 +1,294 @@
+---
+title: "LL Future というイベントに呼んで頂き, 中野へ"
+date: 2008-08-31
+---
+<h3>近況</h3>
+<p><a href="http://ll.jus.or.jp/2008/program/lang">LL Future というイベントに呼んで頂き</a>, 中野へ. 
+前日の激しい雷で眠りが浅く寝坊したら, 基調講演は Larry Wall だったらしい. 聞き逃した. なんてこったい... 
+そしてサインを貰う準備もしていなかった. 
+昼飯を食べる暇があったら紀伊国屋に駆けこむんだったといまだに後悔している. おしいことをした. 
+宴会で<a href="http://shinh.skr.jp/m/?date=20080831">ゴルフ場経営者</a>に見せてもらった
+サイン実物はとても気が利いたもので, まったくうらやましい. 
+彼の本は年季が入った版の上にかなり読みこまれた形跡があったので, Larry Wall も嬉しかったことだろうな. 
+私もいつか実現するであろう Stroustrup の来日に向け, 件の本を読み込んでおかねばなるまい. </p>
+<p>パネルの内容は shibuya.js 番外編というかんじで, 
+JS や ActionScript の上で実装した処理系の紹介を中心に与太話が展開された. 
+私は特に何も作っていないので, 非公認 Adobe エバンジェリストとして Tamarin の宣伝を担当. 
+司会の竹迫さんとパネラーの若者の皆様にはお世話になりました. 
+スライドなどはそのうち公式サイトで配布されると思います. 
+(追記: <a href="http://ll.jus.or.jp/2008/info/slide">配布されてた.</a>)
+私のパートは, この日記を購読されている人にとって目新しい話はないと思うけれども. </p>
+<h4>Tamarin での文字列 ... の前に復習</h4>
+<p><a href="http://d.hatena.ne.jp/Gimite/20080802/1217647596">スクリプト言語の文字列連結の実装には色々ある</a> 
+という話を少し前に読んで, そういえば Tamarin の文字列も少しヘンな実装なのを思いだした, のをまたふと思いだした. 
+Tamarin エバンジェリズムの一環として紹介してみる. </p>
+<p>Tamarin 以前に, 文字列オブジェクトの実装には様々なバリエーションがある. 
+C++ でプログラミング言語に入門した人は, 実際にいくつかの例を教科書で見たことがあると思う. 
+いい機会なので順番に復習していこう. (年寄は読み飛ばしてください.
+あとサンプルコードは心のコンパイラでしか試してないので心の処理系で動かしてね.)</p>
+<h5>素朴な文字列</h5>
+<p>いちばん素朴な実装は, 文字列を単なるヒープ上のバイト列して扱う. 
+バイト列はヌル文字('\0')で終端されている. (文字列の終わりにヌル文字がある.)</p>
+<pre>
+class string_t {
+  ...
+  char*  m_chars; // 文字列を含むヒープへのポインタ
+};</pre>
+<p>ヌル終端の文字列を <em>C 文字列</em> と呼ぶことがある. 
+「セキュアなプログラミング」の本を読めばわかるとおり, C 文字列は脆弱性の温床となる. 
+また「途中にヌル文字を含む文字列」は表現できないし, 文字列の長さを調べるのに時間がかかる. 
+そこでヌル終端のかわりに、文字列の長さを明示的に持つ実装もある. </p>
+<pre>
+class sized_string_t {
+  ...
+  char*  m_chars;
+  size_t m_size; // 文字列長
+};</pre>
+<p>その亜種として, ヒープの先頭 1 ワードに長さを埋めこむこともある. 
+(COM や VB で使われていた <a href="http://msdn.microsoft.com/en-us/library/ms221069.aspx">BSTR</a> 
+がこの方式.) </p>
+<pre>
+class prefixed_string_t {
+  ...
+  char* m_chars;
+public:
+  const char*  chars() const { return m_chars + sizeof(size_t); }
+  size_t size() const { return *reinterpret_cast&lt;size_t*&gt;(m_chars); }
+};</pre>
+<p>ただ標準 C ライブラリをはじめとする C 言語の API は大半がヌル終端を期待している. 
+それらとの互換性を考え, 長さを明示的に持つ実装でも結局はヌル終端されていることが多い. </p>
+<h5>コピー</h5>
+<p>素朴な実装ではオブジェクトのコピー時にヒープの中身もコピーする.</p>
+<pre>
+void string_t::string_t(const string_t&amp; that)
+ : m_chars(new char[that.m_size])), m_size(that.m_size) {
+ memcpy(m_chars, that.m_chars, m_size);
+}</pre>
+<p>コピーのコストを避けるため, バイト列を共有する実装もある. 
+GC の無い言語 (C++) では, 共有しているインスタンスの数を数えておく. </p>
+<pre>void string_t::string_t(const string_t&amp; that)
+ : m_impl(that.m_impl) {
+ m_impl-&gt;add_ref();
+}</pre>
+<p>共有は中身が同じという前提なので, 中身を変更するタイミングで結局コピーをする. 
+このようなコピーの遅延を一般に 
+"<a href="http://en.wikipedia.org/wiki/Copy-on-write">Copy on write</a>" (CoW) という. 
+応用としては文字列の他に OS の仮想記憶がよく知られている. 
+Java のように中身の変更を許さない設計だと, こうしたコピーの悩みはすくない. 
+基本的にインスタンスはコピーせず, すべて共有すればよい. (ただし同じ中身の文字列が常に共有されているとは限らない.) </p>
+<p>C++ では CoW の文字列実装がほとんどお約束に思えるかもしれないけれど, 実装していない処理系もある. 
+STLPort は CoW を実装していない. RogueWave の実装 (<a href="http://stdcxx.apache.org/">Apache stdcxx</a>) 
+はコンパイルオプションで有効無効を切り替えている. g++(4.1) では実装している. 
+Microsoft C++ では実装していない. </p>
+<p>マルチスレッド環境では CoW の実装には少し面倒があり, それが CoW を実装しない理由の一つだと思う. 
+ほぼ全ての STL 実装は単一インスタンスへの並列アクセス安全を保証して<em>いない</em>が, 
+個々のインスタンスをそれぞれ独立のスレッドからアクセスするぶんには正しく動いてほしい. 
+ところが CoW を使うと, インスタンスが別々でも実体を共有していることがある. 
+そのため共有する実体へのアクセスには適切な排他制御をしないといけない. 
+この時点で可搬が売りの STLPort は脱落する. 
+mutex のようなスレッドの API を使うにせよアトミック命令を使うにせよ, 
+排他制御には C++ の外側から手を借りる必要があるからだ. 
+g++ ではアトミック命令を使っている. 
+apache stdcxx は, ロックを使うバージョンとアトミック命令を使うバージョンが
+コンパイルオプションで混在している. (保守したくないなあこれは...)</p>
+<h5>データ領域の埋め込み</h5>
+<p>話が脱線してきた. ActionScript3 の文字列は書き換えられない immutable なつくりだから, 
+CoW みたいな話を気にする必要はない. でも脱線ついでに C++ 固有の話をもう少し. </p>
+<p>文字列のデータを保持するヒープは, operator new() や malloc() のように高価な手続きを経て確保する. 
+これを避ける素朴な方法は, 長さの上限を決めてオブジェクトにデータを埋め込むことだ.</p>
+<pre>
+template&lt;size_t N&gt; // N が上限
+class static_string_t {
+  char   m_chars[N];
+  size_t m_size;
+};</pre>
+<p>配列の長さはコンパイル時に決まるので, めでたく malloc() を駆逐できた. 
+ただ文字列長の上限が決まってしまうのは嬉しくない. そこで意地汚い考えを許してみよう. 
+ヒープを指すポインタは 32 ビット環境だと 4 バイトある. つまり 4 文字までの文字列なら
+ヒープを使うかわりにポインタに押し込むことができる. </p>
+<pre>
+char string_t::operator[](size_t i) const {
+   return size() &lt;= 4 ? reinterpret_cast&lt;const char*&gt;(&amp;(m_chars))[i] : m_chars[i];
+}</pre>
+<p>Microsoft C++ はこうした実装をつかっている. STLPort でもコンパイルオプションとして実装している. 
+インスタンスのサイズが大きくなって構わないなら, 4 文字より長い文字列を実体に押し込むこともできる. 
+上の実装はどちらも 16 文字までは実体に収めていた. 
+(boost::function でも似たような節約がみられる. 割と定石らしい.)</p>
+<h5>領域の確保</h5>
+<p>文字列を書き加えるとき, データ領域は少なくとも書き加える長さの分は拡張する必要がある.</p>
+<pre>
+void string_t::append(const char* str) const {
+   size_t toappend = strlen(str);a
+   size_t oldsize = m_size;
+   m_chars = realloc(m_chars, oldsize + toappend + 1);
+   strcpy(m_chars + oldsize, str);
+   m_size = oldsize + toappend;
+}</pre>
+<p>ただ長さぴったりの領域しか用意しないと, 追記のたびに realloc() のような重い手続きが呼ばれてしまう. 
+それを避けるために, 追記のタイミングで少し多めに領域を確保することが多い. 次の追記の分も確保しておくわけ. 
+こうして確保した領域は文字列の長さより大きい. オブジェクトはそれぞれの長さを覚えておく必要がある. </p>
+<pre>
+class string_with_capacity_t {
+  ...
+  char*  m_chars;
+  size_t m_size; // 文字列長
+  size_t m_capacity; // 領域長
+};</pre>
+<p>文字列長に対してどれだけの領域を確保するかの方針には, 1.5 倍, 2 倍など諸説ある. 
+まあ細かい話だとは思う. STL の文字列には利用者から領域長を指定する reserve() というメソッドがある. 
+広く使われている高速化戦略であることがわかる. </p>
+<h5>非連続な文字列</h5>
+<p>素朴な実装では文字列用のヒープを連続領域に割り当てていた. 
+C 文字列との互換性のためにも, メモリは連続である必要があった. 
+この前提を捨て, 非連続なメモリ領域をつなぎあわせて一つの文字列とみなすテクニックがある. 
+C++ 界隈では SGI STL の <a href="http://www.sgi.com/tech/stl/ropeimpl.html">rope</a> が
+この実装としてよく知られている. 
+(ネットワークサーバのバッファ管理も似たようなことをするという話を以前 <a href="https://plus.ce-lab.net/plus-stream/byte-stream-101">会社 blog に書いた</a>.)</p>
+<p>rope では, 二つの文字列を連結して一つの文字列とみなすパターン(concatination), 
+ある文字列の部分文字列とみなすパターン(substring), ふつうの C 文字列 (leaf) の
+いずれかを内部に持っている. これらの内部実装は再帰的に組み合わされ木構造を作る. 
+たとば substring と leaf を連結した concatination の substring, みたいなことができる. 
+木の末端は基本的にいつも C 文字列になる. (だから leaf なんですね.) 
+このように rope ツリーのノードはある種の多態性を持っている. 
+多態の極端な例として, rope にはユーザ定義の関数で実体を表現する拡張もある. 
+ファイルなんかを文字列に見たてたりするわけね. </p>
+<p>文字列の連結や部分文字列のとりだしを, 
+対象文字列の長さによらず一定の時間で行うことができるのが rope の主な利点になる. 
+巨大な文字列を扱う際に重宝する, らしい. </p>
+<p>文字列の内部表現はイテレータによって隠されている. イテレータごしにアクセスする限り, 
+まるで連続した文字列であるかのように rope を扱うことができる. 
+ただこのままだと C 文字列を期待する API に rope を引き渡すことができない. 
+そこで内部のツリー構造をひとつの連続領域にまとめるメソッドも用意されている. </p>
+<p>rope にも CoW 実装と同様に並列性の懸念がある. </p>
+<h4>Tamarin での文字列</h4>
+<p>復習もおわりようやく本題. Tamarin の文字列は (ActionScript の仕様に従い) Immutable である. 
+なので CoW の苦労はない. 一方で rope のように非連続な領域を扱う仕組みをもっている. 部分文字列を扱う仕組みもある.</p>
+<p>...といえば復習の甲斐あってだいたいのところはわかると思うので, 細かいところを眺めてみる. 
+どうやって leaf/concatinate/substring の多態を実現しているのだろう. </p>
+<pre>
+ // tamarin-central/core/StringObject.h
+ ...
+ /**
+  * A string in UTF-16 encoding.  This is the basic string
+  * class used by AVM+ code.
+  */
+ class String : public AvmPlusScriptableObject
+ {
+ public:
+ ....
+ private:
+   int      m_length; // { interned: 1, length:31 } // 文字列の長さ
+   class StringBuf : public MMgc::RCObject // leaf に相当する実体クラス
+   {
+   public:
+     wchar m_buf[1];
+     ...
+   };
+
+   StringBuf* m_buf; // leaf への参照
+
+   // The low two bits control what type of value is stored in m_prefixOrOffsetOrNumber
+   // 0x00 nothing is stored (rest of value is 0)
+   // 0x01 the 29-bit numeric equivalent of this string is stored (same as kIntegerAtom format)
+   // 0x02 a prefix string is stored
+   // 0x03 a 30-bit offset is stored
+   // manual WB when needed
+   uintptr  m_prefixOrOffsetOrNumber;
+   #define    STRINGFLAGS   0x03
+   #define    NUMBERFLAG    0x01
+   #define    PREFIXFLAG    0x02
+   #define    OFFSETFLAG    0x03
+   ....
+ };</pre>
+<p>見るからに怪しいところがあった. m_prefixOrOffsetOrNumber という微塵のはじらいも無い名前から伺えるように, 
+この変数には多態をあらわすフラグと付加情報が押し込まれている. 
+ポインタが 4 バイト整列であるのをいいことに, 下位 2 ビットに多態をあらわすフラグが入っている. 
+このフラグに応じて残りのビットの意味がかわる. </p>
+<p>フラグが NUMBERFLAG なら, この String は "1234" のように数字を文字列化したものになる. 
+上位ビットがその数字をあらわしている. ヒープは確保しない. 
+ECMAScript 一族は暗黙の文字列化がよくおこるから, こうしたハックが意味を持つのだろう. </p>
+<p>フラグが OFFSETFLAG なら, この String は m_buf の部分文字列になる. 上位ビットが先頭からの文字数. </p>
+<p>フラグが PREFIXFLAG なら, この String は連結文字列になる. 上位ビットが連結先の String を指す. 
+rope の連結文字列は子の文字列を二つ持つ作りだったけれど, 
+Tamarin では自分自身プラス自分の前に繋ぐ文字列という表現をとっている. 
+なかなか頑張っているというかセコいというか...</p>
+<p><img src='/images/20080831_0.png' class='diagram'></p>
+<p>C 文字列化には String::normalize() を使う. (ActionScript からは呼べない.)</p>
+<pre>
+ void String::normalize()
+ {
+   ...
+   StringBuf *newData = allocBuf(length());
+   ...
+   if (hasPrefix())
+   {
+     // copy suffix strings right to left
+     Stringp p = this;
+     for (; p-&gt;getPrefix() != 0; p = p-&gt;getPrefix())
+     {
+       memcpy(new_buf + p-&gt;getPrefix()-&gt;length(), p-&gt;getData(), sizeof(wchar)*(p-&gt;length()-p-&gt;getPrefix()-&gt;length()));
+     }
+
+     memcpy(new_buf, p-&gt;getData() + p-&gt;getOffset(), sizeof(wchar) * p-&gt;length());
+     setBuf(newData);
+   }
+   ...
+   // prefix is left for GC to dispose of
+   setPrefixOrOffsetOrNumber(0);
+ }</pre>
+<p>normalize() は所々で呼ばれているので, prefixing を期待したコードを書く(なんてのはやりたくないけど)時は
+少し気をつける必要があるかもしれない. 呼び出し元を調べてみると, 文字列比較の際に normalize() されていた. 
+恣意的なベンチマークで試してみよう. </p>
+<p>まずわざと比較して normalize() をおこす</p>
+<pre>
+var sum1:String = "";
+var sum2:String = "";
+var cond:Boolean = false;
+for (var i:int=0; i&lt;50000; i++) {
+    sum1 += i.toString();
+    sum2 += i.toString();
+    cond = sum1 == sum2;
+    if (cond) { var j:int = i + i; }
+}</pre>
+<pre>omo@contentiss:~/src/tamarin-central/tamarin-central/obj$ time ./shell/avmshell hello.abc
+real    0m56.355s
+user    0m53.299s
+sys     0m0.416s</pre>
+<p>normalize() を起こさず比較のコストだけが残るように, 別のループで比較をしてみる. 
+(一度 normalize() をした文字列がふたたび normalize() されることはない.)</p>
+<pre>
+var sum1:String = "";
+var sum2:String = "";
+var cond:Boolean = false;
+for (var i:int=0; i&lt;50000; i++) {
+    sum1 += i.toString();
+    sum2 += i.toString();
+    //cond = sum1 == sum2;
+    //if (cond) { var j:int = i + i; }
+}
+
+for (var i:int=0; i&lt;50000; i++) {
+    cond = sum1 == sum2;
+    if (cond) { var j:int = i + i; }
+}</pre>
+<pre>omo@contentiss:~/src/tamarin-central/tamarin-central/obj$ time ./shell/avmshell hello.abc
+real    0m38.916s
+user    0m38.410s
+sys     0m0.264s</pre>
+<p>ちょっと速くなった. キャッシュのせいじゃね？ とか言われると納得できなくもない数字なあたりが憎めない. 
+normalize() の回数がまったく違うことは素朴な printf デバッグで確認した. 1000 倍くらいちがう. 
+比較の他には charAt() でも normalize() を起こすことができる. </p>
+<p>描画が主体である世の中の Flash アプリで文字列操作のコストを感じることがどれくらいあるのか, 
+個人的にはやや疑問がある. どちらかというと HTML を組み立てるブラウザの JavaScript 処理系こそ, 
+こういう工夫をしてくれればいいのにね...という話を友達にしたら, Array#join() を使うのが
+正しいウェブプログラマだと教わった. なるほど. </p>
+<p>といったところ. 今年の夏は Tamarin をひやかして終わったかんじだなあ. 外では鈴虫が鳴いています. 秋ちかし. </p>
+<h4>追記: リファラーより</h4>
+<p><a href="http://twitter.com/kinaba/statuses/906379937">@kinaba</a>:</p>
+<blockquote><p>C++の場合もう一つ、CoWでも思うほどはコピーを遅延できない、というのがあったりするよね。
+非constなbegin()やoperator[]を呼んだ瞬間にコピーしないといけないので </p>
+</blockquote>
+<p>間接的に yarv-dev リストでの文字列に関する議論も教わりました:</p>
+<ul>
+<li><a href="http://www.atdot.net/~ko1/w3ml/w3ml.cgi/yarv-dev/msg/541">http://www.atdot.net/~ko1/w3ml/w3ml.cgi/yarv-dev/msg/541</a></li>
+</ul>

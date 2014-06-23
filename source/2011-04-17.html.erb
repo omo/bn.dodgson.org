@@ -1,0 +1,373 @@
+---
+title: "Reading Readability"
+date: 2011-04-17
+---
+<h3>Reading Readability</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/JavaScript-%E7%AC%AC5%E7%89%88-David-Flanagan/dp/4873113296%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4873113296' class='bookcover'><img data:asin='4873113296' class='asin image-right' src='http://ecx.images-amazon.com/images/I/413amOWGgvL.jpg'></span></a></span></p>
+<p>最近コードを読んでない. リハビリしようと軽めのものを探し, 
+<a href="http://code.google.com/p/arc90labs-readability/">Readability</a> を眺めてみた. 
+Readability はもともと <a href="http://www.instapaper.com/">Instapaper</a> にヒントを得て
+書かれたブックマークレットで, HTML ページの本文だけを抽出して見やすく表示する.  
+<a href="http://jaxenter.com/safari-5-reader-based-on-open-source-readability-code-17282.html">Safari Reader の元ともなっており</a>, 
+最近は <a href="https://www.readability.com/">独立したサービス</a> にもなった. 
+Google Code でホストされているオープンソース版は実験ブックマークレット当時のもの. 2000 行くらい. 
+新しくはないけれど, 軽めのコードという趣旨にはあう. </p>
+<p>(私が Instapaper <a href="http://www.instapaper.com/extras">for Kindle</a> ファンなのも Readability を読む気になった理由かもしれない.
+本題と関係ないけど Instapaper はちいさい Kindle のキラーアプリだと思うんだよね.)</p>
+<h4>本文抽出</h4>
+<p>Readability の肝であるウェブページの本文抽出には大きくわけて二つのステップがある. 
+一つめはページ全体の DOM から本文を含む部分木を発見すること. 
+ナビゲーションなどページの装飾をよりわけて本文のブロックを掘りあてる. </p>
+<p>二つ目のステップは, ステップ 1 でみつけた部分木から余計なものを取り除くこと. 
+たとえば注釈や広告のリンク, DOM 構造の都合で紛れこんだナビゲーションなどを除去する. 
+(広告を消されると私の生活費も巻き添えになってしまうのでほどほどにしてほしくはある...)</p>
+<p>本文抽出の他に, Readability は抽出したテキストの整形表示や
+複数ページにまたがるテキストの連結 ("次へ" のリンクを XHR で取り出す)
+などいくつかの後処理をしている. 元のページを書き換えて整形結果を表示するトリックは
+それなりに面白いものの, 今回は本文抽出に限って読むことにした. </p>
+<h5>書き直しバージョン</h5>
+<p>...で読んでみたはいいけれど案の定コードがひどい. 
+lab の experiments と銘打っているので文句はないけどこのまま紹介するのもどうかと思い, 
+本文抽出のコードだけ PhantomJS 用 
+CoffeScript (+ jQuery + Underscore.js) で書き直してみた. 
+(<a href="https://github.com/omo/reada/blob/master/extract.coffee">コード</a>)
+主に jQuery 効果によって 200 行ちょっとに収まったから, こいつを使って説明したい. </p>
+<p>トップレベルの呼び出しはこんなかんじ:</p>
+<pre>
+   extracted = extract(document.body)
+   Log.print(extracted.textContent.replace(/\n{3,}/g, "\n")) # DOM を文字列化して出力</pre>
+<p>アルゴリズムの概観はこうなる:</p>
+<pre>
+extract = (page) -&gt;
+  parified = _.map($(page).find('*'), parify)          # 前処理
+  top = scoreAndSelectTop(parified) or pageAsTop(page) # 採点/序列づけ
+  root = collectSiblings(top)                          # 範囲拡大
+  removeFragments(root)                                # ゴミ除去
+  root</pre>
+<p>まず全てのノードに前処理 parify() を適用する. 
+やってることは簡単で, &lt;div&gt; を &lt;p&gt; に直しているだけ. 
+後でセレクタ(というか getElementsByTagName()) でフィルタしやすくするための手抜きらしい.</p>
+<pre>
+parify = (node) -&gt;
+  return node if node.tagName != "DIV"
+  return node if node.innerHTML.search(REGEXPS.divToPElements) &gt; -1
+  p = $("&lt;p&gt;").html(node.innerHTML)[0]  # 新しく作った &lt;p&gt; に &lt;div&gt; の中身を移植して
+  node.parentNode.replaceChild(p, node) # 差し替え
+  p</pre>
+<p>innerHTML を容赦なく使うのは Readability の特徴. 
+ツールの特性上 DOM のイベントリスナを保存する必要がないから, テキストを経由するのに抵抗がないのだろう.
+うっかり余計なものまで置き換えそうだけど.</p>
+<h4>部分木の推定</h4>
+<pre>
+extract = (page) -&gt;
+  parified = _.map($(page).find('*'), parify)
+  top = scoreAndSelectTop(parified) or pageAsTop(page) # これ
+  ...</pre>
+<p>次に前処理した DOM ノードを採点し, 最も高いスコアをもつノードを選ぶ. (なかった場合は body を使う.)
+この点数づけが部分木推定の中心で, Readability に一番面白いところ. </p>
+<p>まず採点結果を保存するクラスを作っておこう. 
+このクラスのインスタンスを採点したノードの score プロパティにセットする. 
+(オリジナル版では readability プロパティ.)</p>
+<pre>
+class Score
+  constructor: (node) -&gt;
+    this.value = Score.initialScoreFor(node.tagName)
+
+  add: (n) -&gt; this.value += n
+  scale: (s) -&gt; this.value *= s
+
+  this.initialScoreFor = (tagName) -&gt;
+    switch tagName
+      when 'DIV' then 5
+      when 'PRE', 'TD', 'BLOCKQUOTE' then 3
+      when 'ADDRESS', 'OL', 'UL', 'DL', 'DD', 'DT', 'LI', 'FORM' then -3
+      when 'H1', 'H2', 'H3', 'H4', 'H5' then -5
+      else 0</pre>
+<p>要素名に応じて初期スコアを決めている. 
+置き換えたはずの &lt;p&gt; がないのはバグのような気もちょっとする...
+(なおオリジナル版は既に保守されていない. 熱心なファンによってバグの登録だけは増え続けている.)</p>
+<p>本題の scoreAndSelectTop() に戻ろう. </p>
+<pre>
+scoreAndSelectTop = (nodes) -&gt;
+  scored = _.reduce(nodes, reduceScorable, []) # 採点したノードを集めて
+  _.each(scored, (n) =&gt; n.score.scale(1 - linkDensityFor(n))) # リンク密度でスコアを調整
+  _.sortBy(scored, (n) -&gt; n.score.value)[scored.length-1] # 最高得点ノードを返す</pre>
+<p>引数には parify されたノードがやってくる.
+基本的にはこの各ノードを採点するだけなのだけれど, 
+採点の集計に _.each() でなく _.reduce() を使っているのには事情がある. </p>
+<pre>
+reduceScorable = (scoredList, node) -&gt;
+  score = scoreNode(node) # 点数を計算
+  propagateScore(node, scoredList, score) if 0 &lt; score # 計算結果を反映
+  scoredList</pre>
+<p>まずノードを採点するものの, 採点結果は単純に元のノードには反映されない. 
+propagateScore() に進もう</p>
+<pre>
+propagateScore = (node, scoredList, score) -&gt;
+  parent = node.parentNode
+  if parent # 親ノードがあれば...
+    ensureScore(scoredList, parent)
+    parent.score.add(score)
+    grandParent = parent.parentNode
+    if grandParent # 更に親の親があれば...
+      ensureScore(scoredList, grandParent)
+      grandParent.score.add(score/2)
+
+ensureScore = (array, node) -&gt;
+  return if !node or typeof(node.tagName) == 'undefined'
+  if not node.score # Score オブジェクトを持っていなければ
+    node.score = new Score(node)
+    array.push(node) # 持たせた上でリストに追加</pre>
+<p>採点結果をノード自身ではなく親ノードと親の親ノードに加算している. 
+何たる年功序列の階級社会! 親の親にも半分だけ取り分があるのも面白い.
+つまり: </p>
+<ul>
+<li>本文らしい文章を持つ(=スコアの高い)ノードの親ノードが高い点数を得るが</li>
+<li>得点の高い孫を複数もつ祖父ノードも高得点になるかもしれない.</li>
+</ul>
+<p>HTML の木構造を使って本文をクラスタ化しているとも言える. </p>
+<p>個人的にはこの集計方法が Readability の一番の特徴に見えた. 
+<a href="http://tomazkovacic.com/blog/56/list-of-resources-article-text-extraction-from-html-documents/">同じようなページの本文抽出を行うライブラリ/研究は色々ある</a>
+らしいけれど, ざっとみたところ多くは HTML をテキスト断片のリスト (XPath の "text()" クエリの結果リスト) として捉え, 
+テキストの内容から関連を類推して本文を探そうとしている. そのアプローチはクリーンではある. 
+でも木構造を生かしたヒューリスティクスを使う Readability の方がウェブっぽくて個人的には好き. </p>
+<p>逆にリストベースの方法では工夫のしどころであるテキストの採点部分は Readability だとすごく適当. </p>
+<pre>
+scoreNode = (node) -&gt;
+  unlikely = node.className + node.id # いらなそうな id/class のノードは捨てる
+  if unlikely.search(REGEXPS.unlikelyCandidates) != -1 and \
+     unlikely.search(REGEXPS.okMaybeItsACandidate) == -1 and \
+     node.tagName != "BODY"
+    return 0
+  unless node.tagName == "P" || node.tagName == "TD" || node.tagName == "PRE"
+    return 0
+  text = textContentFor(node)
+  return 0 if text.length &lt; 25 # テキストがみじかいのはダメ
+  # Add points for any commas within this paragraph
+  # For every 100 characters in this paragraph, add another point. Up to 3 points.
+  1 + text.split(',').length + Math.min(Math.floor(text.length / 100), 3)
+
+textContentFor = (node, normalizeWs = true) -&gt;
+  return "" unless node.textContent
+  text = node.textContent.replace(/^\s+|\s+$/g, "")
+  text = text.replace(REGEXPS.normalize, " ") if normalizeWs
+  text</pre>
+<p>興味のないタグの中身は捨て, 短いテキストは捨て, あとはテキストの長さの "," の数に基いて点数をつける. 
+"," の数はセンテンスの長さを近似してるんだろうけど, 日本語のことも忘れないであげてほしいです...</p>
+<p>クラス と ID に対するフィルタ用正規表現も適当なかんじでよい:</p>
+<pre>
+REGEXPS =
+  ...
+  unlikelyCandidates:    /combx|comment|community|disqus|extra|foot|header|menu|...|tweet|twitter/i,
+  okMaybeItsACandidate:  /and|article|body|column|main|shadow/i,
+  ...</pre>
+<h5>リンク密度</h5>
+<p>計算したスコアは, 最後に "リンク密度" を使って調整する. 
+リンクばかりのノードは本文じゃなくてナビゲーションだろうということらしい. 
+ノード単位の採点中ではなく最後に調整するのはちょっと変な気もするけど.</p>
+<pre>
+scoreAndSelectTop = (nodes) -&gt;
+  scored = _.reduce(nodes, reduceScorable, [])
+  _.each(scored, (n) =&gt; n.score.scale(1 - linkDensityFor(n))) # これ
+  _.sortBy(scored, (n) -&gt; n.score.value)[scored.length-1]
+
+...
+
+linkDensityFor = (node) -&gt;
+  linkLength = _.reduce($(node).find("a"), ((len, n) -&gt; len + n.innerHTML.length), 0)
+  textLength = node.innerHTML.length
+  linkLength/textLength</pre>
+<h4>兄弟ノードへの拡大</h4>
+<p>調整後の採点結果に従い最高得点のノードを選んだら, 
+次はその隣接(兄弟)ノード適当に寄せ集め, 新しく作った &lt;div&gt; にぶらさげる.</p>
+<pre>
+extract = (page) -&gt;
+  ...
+  top = scoreAndSelectTop(parified) or pageAsTop(page)
+  root = collectSiblings(top) # これ
+  ...
+
+collectSiblings = (top) -&gt;
+  _.reduce(
+    $(top.parentNode).children(),
+    ((root, s) =&gt;
+      root.appendChild(s) if isAcceptableSibling(top, s)
+      root),
+    document.createElement("div"))</pre>
+<p>寄せ集めるか否かの判断も相変らず適当だ.</p>
+<pre>
+isAcceptableSibling = (top, sib) -&gt;
+  return true if top == sib
+  threshold = Math.max(10, top.score.value * 0.2)
+  return true if threshold &lt;= scoreSibling(top, sib) # エリート兄弟よりずっと点数が悪い子は勘当
+  return false if "P" != sib.tagName
+  density = linkDensityFor(sib)
+  text = textContentFor(sib)
+  textLen = text.length
+  return true if 80 &lt; textLen and density &lt; 0.25
+  return true if textLen &lt; 80 and density == 0 and text.search(/\.( |$)/) != -1
+  false
+
+scoreSibling = (top, sib) -&gt;
+  return 0 if !sib.score
+  if sib.className == sib.className &amp;&amp; sib.className != ""
+    sib.score.value + (top.score.value * 0.2)
+  else
+    sib.score.value</pre>
+<p>ノードに保存されているスコアだけでなく, 
+リンク密度, テキストなどから判断をしなおしている. いいかげん...
+最高得点ノードとクラス名が同じ時にはスコアを加算しているのは芸が細かい.</p>
+<h4>Fishy</h4>
+<p>これで部分木の推定は終わったから, 今度は掘り出した部分木の中にある細かいゴミをとる.</p>
+<pre>
+extract = (page) -&gt;
+  ...
+  root = collectSiblings(top)
+  removeFragments(root) # これ
+  root</pre>
+<p>コードはいよいよいいかげん:</p>
+<pre>
+removeFragments = (node) -&gt;
+  jn = $(node)
+  jn.html(jn.html().replace(REGEXPS.killBreaks,'&lt;br /&gt;'))
+  jn.find("h1,h2,h3").find(
+    (n) -&gt; classWeight(n) &lt; 0 or linkDensityFor(n) &gt; 0.33
+  ).remove()
+  jn.find("*").removeAttr("style")
+  jn.find("p").filter(-&gt; \
+    0 == $(this).find("img").length and \
+    0 == $(this).find("embed").length and \
+    0 == $(this).find("object").length and \
+    0 == textContentFor(this, false).length).remove()
+  jn.find("form").filter(-&gt; fishy(this)).remove()
+  jn.find("table").filter(-&gt; fishy(this)).remove()
+  jn.find("ul").filter(-&gt; fishy(this)).remove()
+  jn.find("div").filter(-&gt; fishy(this)).remove()
+  jn.find("object,h1,iframe,script,link,style").remove()
+  jn.find("h2").remove() if jn.find("h2").length == 1
+  node.innerHTML = node.innerHTML.replace(/&lt;br[^&gt;]*&gt;\s*&lt;p/gi, '&lt;p')</pre>
+<p>思いつきで足してった感がたまらん. 
+オリジナル版には YouTube と Vimeo の embed 要素だけは消さないコードまであった.
+(面倒なので省いた.)</p>
+<p>要素の削除基準である fishy() はもうほとんど何がしたいのかわからない.</p>
+<pre>
+fishy = (node) -&gt;
+  weight = classWeight(node)
+  contentScore = if node.score then node.score.value else 0
+  return true if weight + contentScore &lt; 0
+  return false if 10 &lt;= countChars(node, ',')
+  nj = $(node)
+  p      = nj.find("p").length
+  img    = nj.find("img").length
+  li     = nj.find("li").length - 100
+  input  = nj.find("input").length
+  embed  = nj.find("embed").length
+  linkDensity   = linkDensityFor(node)
+  contentLength = textContentFor(node).length
+
+  return true if img &gt; p
+  return true if li &gt; p and node.tagName != "ul" and node.tagName != "ol"
+  return true if input &gt; Math.floor(p/3)
+  return true if contentLength &lt; 25 and (img == 0 || img &gt; 2)
+  return true if weight &lt; 25 &amp;&amp; linkDensity &gt; 0.2
+  return true if weight &gt;= 25 &amp;&amp; linkDensity &gt; 0.5
+  return true if (embed == 1 &amp;&amp; contentLength &lt; 75) || embed &gt; 1
+  false</pre>
+<p>とにかくこれで怪しいノードも取り除け, めでたく綺麗な本文が手に入った, はず.</p>
+<h4>トライアンドエラー</h4>
+<p>fishy() を始め, Readability ではノードの削除にいくつかアグレッシブな基準を使っている. 
+オリジナル版は, それらのアグレッシブフィルタをオプションで無効にできる:</p>
+<pre>
+   cleanConditionally: function (e, tag) {
+
+       if(!readability.flagIsActive(readability.FLAG_CLEAN_CONDITIONALLY)) {
+           return;
+       }
+       ....
+   }</pre>
+<p>そして最初はオプションを全て有効にして積極的な削除を試し, 
+削除しすぎてしまったらオプションを一つずつ無効にして再試行している. </p>
+<pre>
+    grabArticle: function (page) {
+        .... 処理本体 ...
+
+        /**
+         * Now that we've gone through the full algorithm, check to see if we got any meaningful content.
+         * If we didn't, we may need to re-run grabArticle with different flags set. This gives us a higher
+         * likelihood of finding the content, and the sieve approach gives us a higher likelihood of
+         * finding the -right- content.
+        **/
+        if(readability.getInnerText(articleContent, false).length &lt; 250) {
+        page.innerHTML = pageCacheHtml;
+
+            if (readability.flagIsActive(readability.FLAG_STRIP_UNLIKELYS)) {
+                readability.removeFlag(readability.FLAG_STRIP_UNLIKELYS);
+                return readability.grabArticle(page);
+            }
+            else if (readability.flagIsActive(readability.FLAG_WEIGHT_CLASSES)) {
+                readability.removeFlag(readability.FLAG_WEIGHT_CLASSES);
+                return readability.grabArticle(page);
+            }
+            else if (readability.flagIsActive(readability.FLAG_CLEAN_CONDITIONALLY)) {
+                readability.removeFlag(readability.FLAG_CLEAN_CONDITIONALLY);
+                return readability.grabArticle(page);
+            } else {
+                return null;
+            }
+        }
+
+        return articleContent;
+    }</pre>
+<p>これなら実験的な思いつきを持ち込んでもそれなりに動きそうな気がする. 
+ヒューリスティクスを組合せて使う Readability 全体の方針が活きる, うまい方法だと思う.</p>
+<p>というわけで Readability はアドホックなコードの集まりだった. 
+機械学習を駆使した類似品のようなハイテク感はないけれど, 
+現実のウェブページをよく知っている人が書いたらしいハック感がある.
+オリジナル版は古い IE のトラブルを回避する細々した苦労の跡もあり, 
+そういう涙ぐましさを個人的には応援したい. </p>
+<p>あとせっかくブラウザの中で動いているのだから, 
+レンダリング結果を抽出の基準にしてもいいんじゃないかとも思った. 
+そういう<a href="http://research.microsoft.com/apps/pubs/default.aspx?id=70027">研究もある</a> 
+らしいから, うまくアイデアをもってこられないものかなあ.</p>
+<h4>余談: PhantomJS</h4>
+<p>ところでコード書き直してみた理由のひとつは, 
+テストドライバではない <a href="http://www.phantomjs.org/">PhantomJS</a> の使い方をしてみたかったから. 
+わかったこと: この手の scraping ツールとして使うにはもう一歩たりなそう. </p>
+<p>まずとにかく <a href="http://code.google.com/p/phantomjs/wiki/Interface">API が少ない</a>. 
+ファイルを読み書きする, 外部プロセスを呼びだすといった独立したツールに必要な機能が足りてない. 
+他のツールから呼び出すにしても, 今度は標準エラー出力が書けなかったり逆にページ側の JS で起こる
+エラーメッセージを止められなかったりで不便が多い. 
+phantom.exit() を呼び損なうとプロセスが終わらないのも不便だし, ドメイン無制限の XHR もないのも困る. 
+細かい不満はキリがない. </p>
+<p>API の追加が大変なのはたぶん二つ大きな理由がある. 一つは QtWebKit の API が網羅的でないこと. 
+もともと QtWebKit は GUI の中にちょっとした HTML を埋め込むためのものだから, 
+WebKit の細々した機能を呼び出せるようになっていない. 特に今は JavaScriptCore にアクセスする
+手段がないので, QObject のリフレクションを経由した素朴な API の追加しかできない. 
+このへんは <a href="http://code.google.com/p/phantomjs/issues/list">作ってるひともわかっているようで</a>, 
+割とすぐ改善される気がする. </p>
+<p>もう一つはセキュリティ. うかつに API を生やすと悪意のあるページに攻撃されてしまう. 
+Chrome 拡張みたいにプロセス...は分けないにせよ JS の world は分けないとこわい. 
+これは割と大仕事そう. どうしたものかはよくわからない. </p>
+<p>他にもスクリプトの寿命が不自然(ページ遷移ごとに毎回評価される)とか
+複数の JS ファイルを簡単に使う方法がないとか色々不満はあるけれど, 
+逆に高々 1000 行ちょっとのコードしかない PhantomJS を "もう一歩" と感じられるのは 
+ツールの筋の良さを表している気もする. 
+実際ウェブに閉じた自動化ならそこそこ使える. 
+適当な URL で Instapaper の "Read Later" ブックマークレットを
+呼び出すなんてのは<a href="https://github.com/omo/reada/blob/master/misc/kickip.coffee">簡単にかけた</a>. 
+(簡易 Readability よりよっぽど実用的...)</p>
+<p>開発者の Ariya Hidayat は WebKit の reviwer でかつ JS ライブラリ会社の Sencha 勤めという
+ブラウザの中も外もわかるハイブリッドな人で開発もちゃんと進みそうだし, 
+一年くらいしたらサーバ側は Node, クライアント側は Phantom, なんて風にならないかなーと
+勝手に期待してしまうのであります. </p>
+<h4>参考リンク:</h4>
+<ul>
+<li><a href="http://tomazkovacic.com/blog/56/list-of-resources-article-text-extraction-from-html-documents/">List of resources: Article text extraction from HTML documents</a></li>
+<li><a href="http://code.google.com/p/boilerpipe/">boilerplate - Boilerplate Removal and Fulltext Extraction from HTML pages</a></li>
+<li><a href="http://code.google.com/p/arc90labs-readability/">arc90labs-readability - Readability cleans up hard-to-read articles on the Web</a></li>
+<li><a href="https://www.readability.com/">A Web &amp; Mobile App for Reading Comfortably: Readability</a></li>
+<li><a href="http://jashkenas.github.com/coffee-script/">CoffeScript</a></li>
+<li><a href="http://documentcloud.github.com/underscore/">Underscore.js</a></li>
+<li><a href="http://www.phantomjs.org/">PhantomJS: Headless WebKit with JavaScript API</a></li>
+<li><a href="http://github.com/omo/reada">今日かいたコード</a></li>
+</ul>

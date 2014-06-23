@@ -1,0 +1,165 @@
+---
+title: "ウェブ華鑑賞: Procol Buffer 編"
+date: 2008-07-24
+---
+<h3>ウェブ華鑑賞: Procol Buffer 編</h3>
+<p>Protocol Buffer の話題は一部で熱く語られた...というより炎上していた. 
+ようやく炎がおさまってきたから, 野次馬として現場にかけつけてみたい. 火事と喧嘩はウェブの華. </p>
+<p>火元から見ていこう. 熱心な Google ウォッチャーである MS の Dare Obasanjo が, 
+protobuf 公開に合わせ
+すかさず "<a href="http://www.25hoursaday.com/weblog/2008/07/10/TheRevengeOfRPCGoogleProtocolBuffersAndFacebookThrift.aspx">The Revenge of RPC: Google Protocol Buffers and Facebook Thrift</a>" という記事を書いた. 
+記事の主張自体は穏当なもの. 
+「最近一部で バイナリエンコードな RPC が流行ってるみたいだけど, 
+時代は XML と REST で疎結合じゃなかったの？」と修辞的な疑問を示しつつ, 
+"いや基本的に Web は XML で REST な時代なんだけど, 
+Web に出ない会社の内部ならバージョンやらツールを揃えられるでしょ. 
+それならバイナリと RPC で密結合しちゃって効率を稼いでもいいんだよ."
+とフォローする内容だった. </p>
+<h4>Steve Vinoski 登場</h4>
+<p>ところが obasanjo が記事の中でそれとなく引用した, 
+Steve Vinoski (stevevin) の 
+"<a href="http://steve.vinoski.net/blog/2008/07/01/convenience-over-correctness/">Convenience Over Correctness</a>" から火が出た. 
+Steve Vinoski は CORBA ベンダである IONA の元社員で, 
+RPC や分散オブジェクトでは相当痛い目に当ったらしい. 
+彼の書いた blog や雑誌記事では RPC をボロクソに叩いている. 
+この "Convenience Over Correctness" もその流れを汲む内容. 
+"プログラマは目先の便利さに釣られて関数呼びだしっぽく使える RPC を好むけど, 
+関数呼びだしじゃないことに気がついた時には手遅れだぜアホどもめ" と戒めている. (誇張あり.) </p>
+<p>その stevevin が obasanjo のリンクへ呼応するようにエントリを書いた. 
+これが炎上の現場となる. 
+"<a href="http://steve.vinoski.net/blog/2008/07/13/protocol-buffers-leaky-rpc/">Protocol Buffers: Leaky RPC</a>" と題された記事は, 
+まず Protocol Buffer の公開にはしゃぐ Google 社員 
+<a href="http://steve.vinoski.net/blog/2008/07/13/protocol-buffers-leaky-rpc/">Mark Pilgrim</a> を指してこういう. 
+"彼のいうとおり protobuf はバイナリで小さくて良いかもしれない. 
+でも良くみるとこれ RPC が付いてるよ. ダメじゃん!"</p>
+<p><a href="http://www.dodgson.org/omo/t/?date=20080712">先に見た</a>とおり, 
+OSS protobuf に RPC の実装は含まれていない. 
+stevevin もそれは承知している. 
+しかし元 CORBA 関係者にとって, protobuf に含まれるインターフェイスは
+十分批判の材料になる. 
+(もともと stevevin は "RPC のメタファは完全にウンコ" と主張してるからね. )
+こんあインターフェイスじゃ, ろくなエラー処理も書けない. 
+関数の idempotency (冪等性. HTTP の GET みたいなもの) も示せない. 
+キャンセルの API があるけど下回りがキャンセル不能なインフラだったらどうする ... と
+散々にこき下ろし, protobuf RPC は "leaky abstraction" だと結論する. 
+そして "Google は RPC 部分を消しちゃった方がよくね？" と記事を締め括っている. </p>
+<p>挑発的な内容にさっそくコメント欄が引火する. 
+"偉大なる Google 様は社内で protobuf を常用してらっしゃる. 
+貴様のような輩が検索語をタイプする裏では protobuf のメッセージが飛び交っているというに
+何たる狼藉であるか馬鹿者! 主は COM も知らんのか?" と煽ったり 
+(CORBA に私怨があるとしか思えない相手へ COM を引き合いに出す辺りに煽りの素質を感じる.) 
+"完全にウンコってなんですか? よくわかりません＞＜" とからかったり, 
+"RPC だって非同期くらいあるからね. Thrift とか Rabbit AMQP とかを読むと良いと思うよ？" 
+と無邪気に提案してみたり. (stevevin は CORBA を始めとする通信ミドルウェアの専門家で, 
+AMQP の標準化と実装にも噛んでいる.) </p>
+<p>stevevin も大人気なくいちいち返事をしていく. 
+"Google のどこで RPC が使われてるんですかー?おしてくださーい" 
+"何年も前から証拠は上がっているのに, お前こそ RPC がウンコ &lt;でない&gt; と思うなんて正気?" 
+"素人はこのサイトを全部読んでから出直してこい. AMQP くらい知ってるわアホ" 
+という具合. (誇張あり.) 典型的な炎上のシナリオだ. </p>
+<h4>社員参戦</h4>
+<p>stevevin のベタな対応に薄笑いを浮べながら読み進める読者は, 
+しかしここで彼の真の実力 -- 釣り能力 -- の高さを思い知ることになる. </p>
+<p>なんと Google の OSS protobuf 担当 
+<a href="http://jp.youtube.com/watch?v=K-e8DDRwVUg">Kenton Varda</a> が
+<a href="http://steve.vinoski.net/blog/2008/07/13/protocol-buffers-leaky-rpc/#comment-1093">現れた</a>のだ. </p>
+<p>"protobuf の RPC は社内でめっちゃ使ってますよ. 
+RPC の実装はリリースに入れられなかったけど, あるにはあるんすよ. 
+依存しちゃってるんで消すのは無理っすwww エラーも戻り値で返せは大丈夫です. たとえば..." と
+わざわざサンプルコードを示してくれる. さすが社員. 
+そして idempotency は特に役に立つ場面が見当らない. 
+シンプルさのためにマイナー機能は入れないようにしている, 例外もそう. 
+キャンセルの実装はクライアントローカルに閉じたもので, 下回りは関係ない... 
+などと実情を明かし, "RPC が万能じゃないのは認めるけど, 使い所はけっこうありますよ. そんじゃ" 
+とまっとうな感じで締める. </p>
+<p>これに対し, stevevin は "idempotent は CORBA より昔からある重要な概念でしょうよ" とか, 
+呼び出し先の例外じゃなくてシステムの例外もあるでしょうと反論. 
+外野も再び騒ぎだし, 混迷は深まっていく. 
+"RFC707 読んだけど RPC がよくわかりません＞＜" 
+"たしかに他所のミドルウェアには idempotent あるねえ." 
+"CORBA 標準化委員から飛んで来ました. idempotent はトランザクションの実装が必須になるので, 標準からは drop したはずです." "いやトランザクション要らないでしょ" 
+"書いたもの全部読めって横柄じゃね? Google 社員は親切だったのに..." 
+"15 年の経験を一言で言えって方が横柄だよ" 
+"RFC 難しいってのは確かだけど, みんな使ってるんだから有用性は明らかじゃん" 
+"いや深い考えなしにテクノロジーを採用するなんてよくあることじゃん" 
+(元ミドルウェア屋が言うと身も蓋もないなー...) </p>
+<p>そして stevevin が, 
+"そもそも Google の RPC 実装は見られないんだから, 出ている範囲で判断するしかないじゃん. 
+そりゃ非公開の API があって上で言ったような問題を解決できるかもしれないけど..." と
+愚痴たところで, ふたたび 社員 kenton が登場. 役目をわきまえている. </p>
+<p>"protobuf の API にあるのは最低限の必須インターフェイスだけで, 
+各実装は独自の API があるんすよ. 
+たとえば timeout を指定するなら SetTimeout() があればいいけど, 実際あります.
+そんなかんじで色々実装すれば OK."</p>
+<p>stevevin はすかさず idempotent の問題に噛み付く. 
+それがプログラマへのヒントならドキュメントに書いとけばいいじゃんと kenton. 
+盛り上る外野, 脱線する野次馬. インピーダンスミスマッチだ, 
+REST だって RPC みたいなもんじゃね？ 
+いやちがう, DCOM じゃなくて COM ならそこそこ使われてるよ.
+それ言ったら CORBA だって使われまくってるけど別に出来が良いからじゃないよ(言っちゃった...), 
+RFC707 によると..., Fielding の thesis 読め, ORB子と SOA太 と REST男 の三角関係が...</p>
+<h4>再開そして決闘</h4>
+<p>話が収束しないまま疲労がたまり, 議論が行き詰まってきたところで火花は飛び火する. </p>
+<p><a href="http://zeroc.com/">ZeroC</a> の CTO, Michi Henning が
+<a href="http://zeroc.com/blogs/michi/2008/07/22/a-matter-of-definition/">参戦してきたのだ.</a> おお, 俄然盛り上がってきた! (野次馬的には.) </p>
+<p>stevevin と同じく, michi も元 CORBA ベンダのエンジニアだ. 
+CORBA 屋をやめてミドルウェアと無関係のスタートアップに移った stevevin に対し, 
+michi は (これも小さな企業である) ZeroC で, 打倒 CORBA を目指す
+高速な分散オブジェクトシステム <a href="http://zeroc.com/ice.html">ICE</a> を開発している. 
+michi は "<a href="http://www.acmqueue.com/modules.php?name=Content&amp;pa=showpage&amp;pid=396">The Rise and Fall of CORBA</a>" という記事を書くようなアンチ CORBA 派. 
+しかし ICE を見ればわかるように, 分散オブジェクト自体を諦めてはいない. 
+対する stevevin は "RPC はウンコ" と罵り, 分散オブジェクト自体を捨てている. 
+(ちなみに今は REST がお気に入りらしい.) </p>
+<p>ところでこの二人, まったくの他人ではない. 
+まだ CORBA の世界にいたところ, 彼らは 
+<a data:asin='0201379279' href='http://www.amazon.co.jp/Advanced-Programming-Addison-Wesley-Professional-Computing/dp/0201379279%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0201379279'>Advanced CORBA Programming with C++</a> という 
+CORBA の専門書を共著している. いわば僚友だ. 
+しかし時は流れた. 
+理想論を捨てられない michi の青さに苛立つ stevevin と, 
+ダークサイトに堕ちた stevevin に憤る michi. </p>
+<pre>michi:    "なぜだ? なぜ裏切ったスティーブ!? 分散透過の原則をあれほど愛した君が...
+           確かに CORBA は失敗した! でもたった...たったそれだけで諦めたのか?
+           RFC707 を踏み躙るとは! 僕は君を許さない!!"
+stevevin: "わかってないのはお前の方だよミッチー... CORBA だけじゃない,
+           EJB, SOAP, あらゆる分散オブジェクトが現れては消えていった.
+           参照透過こそが幻想なんだよ. さあ, 剣を抜け! 決着を付けてやる!!"</pre>
+<p>というかんじで, 袂をわけた二人がいま対峙している! (誇張あり.) 
+野次馬としては勝手に盛り上がらざるを得ない. </p>
+<p>ただ話の内容は地味だ. 
+michi は <a href="http://tools.ietf.org/html/rfc707">RFC707</a> を引用し, 
+そこには RPC の定義がないと指摘する. 
+その上で他の資料から RPC の定義を推測し, 
+Ice を始めとするモダンな実装はかつての制限を打破してるから, 
+30 年前の RFC (RFC707 は 1976 年 1 月更新) を元にダメと言われても困ると主張する. </p>
+<p>すかさず反論する stevevin. RFC707 の 4b 節を引き, "The procedure call model" が
+RFC の定義なのだと反論する. そしてこの定義こそがまさにダメだとした上で, 
+たしかに 30 年たったおかげで RPC &lt;ではない&gt; 技術も色々登場したからよかったよと吐き捨てる. 
+性格わるい. </p>
+<p>michi のターン. いま HTTP の GET を RPC だと思う人はいないけれど, 
+RFC707 の定義で GET と他の RPC invocation を区別することはできないと主張し, 
+やはり RFC707 は古過ぎて, 今時の分散システムを議論する論拠には不適切だと反撃する. </p>
+<p>stevevin のターン. WS-* みたいのを置いておけば HTTP と関数呼びだしは全然違う. 
+RPC の元々のアイデアは, 言語機能(関数)を拡張して通信を扱うことだけれど, 
+これが本当に一番良い抽象なのかという疑問が RPC ダメ論なのだと語る. 
+REST はもっとシンプルなのだと. (このへんの主張は 冒頭にあらわれた RPC 批判 "<a href="http://steve.vinoski.net/blog/2008/07/01/convenience-over-correctness/">Convenience Over Correctness</a>" や REST 礼賛 "<a href="http://steve.vinoski.net/blog/internet-computing-columns/">Serendipitous Reuse</a>" に詳しい.)</p>
+<p>michi のターン. python で httplib を使ったコードを示し, 
+いやほら, 関数呼び出しっぽいべ？ と主張. なんか急にしょぼい話に...</p>
+<p>stevevin のターン. REST の thesis を引用し, 
+Fielding 自身が REST と RPC は違うと言ってんだろ, と主張. 
+まあこれは michi の REST 理解が甘く, stevevin は正しい気がする. </p>
+<p>そのあと外野が乱入し, いや RPC も便利な場面あるよ仕事で使ってるけど, と横槍. 
+そういう場面があるのは知ってる. ちなみに組み込みで REST も悪くないよと stevevin. 
+せっかく盛り上っていたのに尻すぼみしてしまった. あーあ. 野次馬は家に帰ろう...</p>
+<p>なお, Michi はこの話題について続きを書くと宣言している. 
+興味のある人は <a href="http://zeroc.com/blogs/michi/">blog</a> を参照のこと. </p>
+<h4>あとがき</h4>
+<p>話が野次馬ビューに偏りすぎてしまった. 
+もう少し技術的な補足をする予定だったけれど, 疲れた今日はこのへんまで. 
+気がむいたら続きます. </p>
+<p>出演:</p>
+<ul>
+<li><a href="http://steve.vinoski.net/blog/">Steve Vinoski</a></li>
+<li><a href="http://temporal.fateofio.org/">Kenton Varda</a></li>
+<li><a href="http://www.25hoursaday.com/weblog/">Dare Obasanjo</a></li>
+<li><a href="http://zeroc.com/blogs/michi/">Mich Henning</a> (友情出演)</li>
+</ul>

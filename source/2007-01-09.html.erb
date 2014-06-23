@@ -1,0 +1,63 @@
+---
+title: "最近みた TechTalks: Debugging Backwards in Time"
+date: 2007-01-09
+---
+<h3>最近みた TechTalks: <a href="http://video.google.com/videoplay?docid=3897010229726822034">Debugging Backwards in Time</a></h3>
+<p></p>
+<p>巻き戻しのできる Java 用デバッガ 
+"<a href="http://www.lambdacs.com/debugger/debugger.html">Ominiscient Debugger</a>" 
+の話. ほとんどずっとこのデバッガをデモしている. 
+講演者の大袈裟な喋りとあいまって見応えあり. </p>
+<p>デモが全てなので, 細かい話はいいですね (英語の勉強になってねー).</p>
+<h4>時を駆けるコード</h4>
+<p>さて, "巻き戻しのできるデバッガ" の夢想は彼だけのものではないらしい. 
+Mozilla hacker である <a href="http://weblogs.mozillazine.org/roc/archives/2006/12/introducing_amb.html">Robert O'Callahan の日記</a>でも似たような話があり, いくつかの実装や研究が紹介されていた. 
+"Here's a deeper and less widely understood truth: all debuggers suck." と
+ぼやく O'Callahan. 
+最近までは彼自身も Amber というプロジェクトでその手の研究をしていたという. 
+今は彼の Novell 退職とセットで中断している様子. 悲しい. 
+どんな仕組みなのかと<a href="http://weblogs.mozillazine.org/roc/archives/2006/12/more_about_ambe.html">公開されているを資料</a>を読んでみた. 
+詳しい話はわからなかったけれど, 既に Firefox をデバッグできるらしい. 大したものだ. 
+実行速度は 1/300, ウェブぺージを一つ表示するだけで 3GB 以上のログができるとある. 
+まさに富豪的. O'Callahan おそるべし. 
+実装の詳細はさておき, Valgrind の instrumentation と DWARF2 を
+組合せて使うアイデアには他の(もう少し野心的でない)使い道はありそうに見える. </p>
+<h4>Edit (, Step back a little) and Continue</h4>
+<p>この "戻れるデバッガ" の話を友達にしたら, 
+"それ VisualStudio 2005 でできるよ" という. 
+"みんなふつうに使ってるよ. Edit and Continue ってやつ." 
+ほんとに? </p>
+<p>私の記憶によれば, <a href="http://msdn2.microsoft.com/en-us/library/bcew296c.aspx">Edit and Continue</a> とは
+デバッグ中にコードを書き換えたあとプログラムの再起動なしに変更を反映する機能だった. 
+but wait, there's more なのが最近の VisualStudio. 
+続行だけでなく<a href="http://msdn2.microsoft.com/en-us/library/09yze4a9(VS.80).aspx">ちょっと戻ることもできる</a>らしい. </p>
+<p>さっそく試してみよう. VisualC# Express を拾ってきてインストール. 
+適当にコードを書いてデバッグ実行する. 
+ブレークポイントで動作を止めたら, 赤丸のそばの矢印をぐっと上にひっぱる. 
+と, 戻る. ほんとだ. すごい...</p>
+<p>とはいえこのタイムマシンも万能ではない. 戻れるのは同じメソッド内までのようだ. 
+だからクラッシュの原因を二分探索で絞っていくような使い方はできない. 
+熟達した C# プログラマはデバッグ中よりも開発中にこれを活用するという. 
+メソッドの雛形を書いたらそこにブレークポイントを貼り, 
+そのあとはインテリセンスを頼りながら &lt;動かす, 止める, 戻す, 直す&gt; の繰り返しで
+インクリメンタルにコードを書くんだとか. </p>
+<h4>探索的プログラミング</h4>
+<p>友達の話す C# プログラマは, かつて私の空想した Smalltalker の姿にだぶる. 
+生きたオブジェクトをつつきながら対話的にプログラムを作っていく. </p>
+<p>Smalltalk のように環境の中でプログラムを作っていく近未来なありさまを, 
+一般に exploratory programming という. 
+Self や Smalltalk ような伝統的オブジェクト指向環境の話題で見かける言葉だ. 
+このパラダイムに憧れのある私は, Eclipse の強力な入力補完でなんとなくその気分になっていた. 
+でも Smalltalk から Java に転向したあるプログラマは, Eclipse への不満として 
+"I dearly miss the image and the fact that a Smalltalk system is just always “there”, alive and waiting for your next command" と
+<a href="http://www.cdegroot.com/blog/2006/12/12/reflections-half-a-year-of-java/">書いている</a>. やはり何か足りないらしい. 
+C# と VisualStudio ならこの喪失感を補うことができるのだろうか. 
+そういえば rails の console も割と動的に色々できたっけ. 
+コンソールだといまいち未来っぽさはないけど, 
+生きているアプリを inspect できるのはいいね. </p>
+<p>こうして見ると, ソフトウェアの技術は確実に進歩しているなあ. 
+どれもあと一歩だ. もうしばらく (10 年くらい) 待てば, 
+時を超えてオブジェクトと共に生きる世界はやってくる. 
+なんとなく希望に満ちた気持ちになり, 
+もうしばらく (10 年くらい) はプログラマをやろうと思ったのでした. </p>
+<p>10 年後も C++ だったらどうしよ...</p>

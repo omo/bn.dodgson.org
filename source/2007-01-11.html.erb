@@ -1,0 +1,130 @@
+---
+title: "最近みた TechTalks: Mondrian Code Review On The Web"
+date: 2007-01-11
+---
+<h3>最近みた TechTalks: <a href="http://video.google.com/videoplay?docid=-8502904076440714866">Mondrian Code Review On The Web</a></h3>
+<p></p>
+<p>Python の親玉である Guido Van Rossum が, 
+Google での初仕事(?) として Mondorian というコード・レビュー用ウェブアプリを
+作ったよ, という話. ミーハー的に視聴. </p>
+<p>前半はレビューとは何か, なぜそれが必要なのか, OSS でのレビューなどについて説明し, 
+後半から Mondrian 以前の Google 社内でのレビュー体制とその問題点を指摘, 
+Mondrian の話と続く. </p>
+<p>Google では SCM に Perforce を使っており, レビューは patch + メールベース. 
+Mondrian 以前は Perforce の CL クライアントをラップする 
+g4 というスクリプトを使ってレビューを支援していた. 
+これを使うと patch をメールでレビュアに飛ばしたりできる. 
+その飛ばしたメールを起点にレビュアとレビュイが議論し, 
+"lgfm" (looks good for me) となったらチェックインする. </p>
+<p>レビューのところだけ見ると, Google は大半の OSS と似たやりかたをしている. 
+つまり, チェックインの前にメールベースで patch をレビューする. 
+チェックイン前にレビューをするのは, Google の codebase が基本的に
+ブランチなしの trunk 一本だからだという. trunk にはヘンなものを入れたくないわけ. 
+(trunk 一本が良い方法なのかはわからないけれど...)</p>
+<p>OSS の方法と似ている以上, OSS のプロジェクトと同じような問題がある. 
+まず, 他人の修正によって patch はすぐに陳腐化する. 
+だから review が終わった時点ではもう obsolete でした, というのはよくある. </p>
+<p>それに patch 単体では見通しが悪いから, 
+レビュイは実際にそれを apply してから眺めたい. 
+でも自分がいじってる作業コピーは変更したくない. 
+複数の patch をレビューする必要があるなら(活発に作っていたら普通におこる状況), 
+それぞれの patch を適用するために作業コピーが手元に必要になる. かなりかったるい. </p>
+<p>メールも問題だ. 紛失することもあるし, 見落したまま放置してしまう可能性もある. 
+そもそも添付ファイルを保存して apply して...という時点で面倒だろう. 
+(メールの他に sourceforge の patch manager の話も出てくるが, 
+これも does not help だとしている.)</p>
+<p>レビューは指摘と修正を反復する. レビュアはその修正の遷移を見たいけれど, 
+手元にあるのは複数の diff だけだ. diff の diff, みたいのはない. 
+少しずつちがう(でも大半は同じ)変更を眺めているど, 
+だんだんうんざりしてチェックがおざなりになる. </p>
+<p>レビューの仕組みは開発者のルールとしてまわっているもので, 
+それを強制する仕組みはない. 
+だからうっかりレビューなしでチェックインしてしまっても, 
+誰もきづかないままかもしれない. </p>
+<p>...というような問題を解決すべく作ったのが Mondrian である. というのが前半の話. 
+(上の説明は私の補足が色々入っており, Video とはやや内容が異なります.) </p>
+<h4>Mondrian</h4>
+<p>入社後, さて何を作ろうか考えていたところに先人の提案を受け, 
+Guido は Web ベースのレビューツールを作ることにした. それが Mondrian. 
+実物は Video を見るのが手っ取り早い. デモがある. </p>
+<p>基本的には patch manager と patch viewer と議論用 form のセット. 
+Trac や ViewSVN みたいな Web ベースの SCM ビューアがあるけれど, 
+ああいうかんじで patch の差分を表示できる. 
+また, 同じく Trac のバグ(ticket) のように patch を一覧する機能もある. 
+コメント相当の部分にレビューの議論を記録する. 
+議論のコメントはコードの特定の行にくっつけることができる. 
+この "inline comment" が目玉機能らしい. 
+差分表示の画面からコード行をクリックして, 直接コメントを書き込める. 
+(このへんは Ajax なんだぜ, と自慢していた.) たしかに欲しい. </p>
+<p>g4 を使ったワークフローからのインクリメンタルな移行を支援するため, 
+メールと web の相互乗り入れはけっこう頑張って作ったといっている. 
+たとえば(おそらくシステムへと CC される)メールのヘッダをパースして, 
+パッチやバグ(?) の ID があったらそれを Mondrian のコメントに反映する. 
+逆に Web のコメントからメールへのながれもある. このへんは社内固有の話で面白い. </p>
+<p>社内固有といえば, Google は開発者毎に "Dashboard" というポータルページがあるらしい. 
+Mondrian もその一部に組みこまれているかリンクしていた. 
+Mondrian の Dashboard には, "自分がすべきレビュー", "自分が結果を待っているレビュー" 
+の一覧が表示される. 時間に応じて色がきつくなるあたりがお茶目でいい. 
+Guido の Dashboard にも真っ赤な項目が 1 件あり, なにか言い訳していたのが面白かった. 
+(ところでこの "Dashboard" は, UI の世界だと割と知られた概念なんだろうか. 
+以前 Amazon を見ていたら "<a data:asin='0596100167' href='http://www.amazon.co.jp/Information-Dashboard-Design-Effective-Communication/dp/0596100167%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596100167'>Infortion Dashboard Design</a>" 
+という本があり, これひとつで本になるのかといぶかしんだ記憶がある. まあいいけど...)</p>
+<p>実装には, Perforce を叩くのに p4lib, ストレージには BigTable を使っているという. 
+よっ, でました BigTable! ここでも履歴を保存できる機能が有効活用されているという. 
+Scalable でいいぜ, みたいな話をしていた. 
+そのほか, 何かの都合でユーザ毎にコードの snapshot をとることがあり, 
+その時には NFS でユーザの workspace を直接見るのだろう. 
+つまり社員の Workspace は基本的に公開されているわけ. すごい. 
+善し悪しはともかく, Google らしさのようなものはある. </p>
+<p>今は多くの社員が Mondrian を使っているという. 
+全て Python で書いているけれど性能上の問題はあまりなく, 
+処理時間の大半は BigTable なり Perforce なりの外側のサービスだと言っていた. </p>
+<p>おしまい. スライドが丁寧なせいであんまし英語の勉強にはなっていない...</p>
+<h3>レビュー支援ツールあれこれ</h3>
+<p>さて, Web ベースのレビュー支援ツールには庶民の手に届くものもある. 
+(IEEE DL が読める人は <a href="http://doi.ieeecomputersociety.org/10.1109/MS.2005.20">紹介記事</a> 参照.)</p>
+<h4><a href="http://www.bugzilla.org/">Bugzilla</a></h4>
+<p>たとえば, BTS の古株 Bugzilla は patch ビューアを備えている
+(<a href="http://www.bugzilla.org/docs/2.18/html/patchviewer.html">マニュアル</a>. 
+以前<a href="http://www.dodgson.org/omo/t/?date=20060507">紹介</a>した 
+<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=333078">Cycle Collector のバグ(Bug 333078)</a> を
+例にとると, ページの添付ファイル一覧には "Diff" というリンクがあり, 
+ここから patch を diff 形式で表示できる. 
+Mozilla の開発ワークフローは Bugzilla に集約されている: 
+彼らはここに patch をアップロードし, レビューの議論を行う. 
+このように Mozilla コミュニティは Bugzilla をレビュー支援ツールとして使っている. 
+Guido のいう OSS 流より少しはましになっているがわかるだろう. 
+少くともメールを紛失することはない. 
+とはいえもともと Bugzilla の UI は若干 ugly な上, 
+patch ビューアの出来は寂しい. 改善の余地は大きそうだ. </p>
+<h4><a href="http://codestriker.sourceforge.net/">Codestriker</a></h4>
+<p>こちらはよりレビューに特化している. 
+patch ビューアだけでなく, インラインコメントもサポートしているらしい. 
+UI が地味なので, Trac くらい熟れた UI になれば流行りそうに見える. 
+ただレビューツールという立場上, 既存 BTS との連携が弱そうなのは気になる. 
+路線としては Bugzilla のような BTS の追加機能として作る方が良いのかもしれない. </p>
+<h4><a href="http://csdl.ics.hawaii.edu/Tools/Jupiter/">Jupiter</a></h4>
+<p>Eclipse の plugin として動く, らしい. Web ベースではないな. </p>
+<h4><a href="http://www.cenqua.com/crucible/">Crucible</a></h4>
+<p>商用のツール. まだベータみたいだけれど, Clover や FishEye を開発している 
+<a href="http://www.cenqua.com/">Cenqua</a> の製品なので気になっている. 
+(ブックマークしたのは昨年 9 月だった. リリースはまだかなー.)</p>
+<p>このように, 色々やろうとしている人はいる. 
+個人的には Trac に Dashboard と patch ビューア(ちゃんと文脈を参照できるやつ)と
+Ticket 連携つきインラインコメントが付けば決定打だと思う. 
+Guido を崇める Python ファンの若者が勢い余って作らないかと期待しているけれど, 甘いかしら. </p>
+<h4>レビューを afford するツール (が欲しい)</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%83%94%E3%82%A2%E3%83%AC%E3%83%93%E3%83%A5%E3%83%BC-Karl-E-Wiegers/dp/489100388X%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D489100388X' class='bookcover'><img data:asin='489100388X' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41uGufLoqDL.jpg'></span></a></span></p>
+<p>もっとも現実には, こうしたツール支援以前に難しいのがレビューそのものの運用だろう. 
+Mondrian が強いのは, Google に存在した(であろう) solid な開発スタイルに
+フィットする形でアプリケーションを作った点にあると思う. 
+良い開発プロセスがなければ良いツールは生まれない. 
+逆に, よいレビューをしている人達が必要に応じて作ったツールを公開したら, 
+そのツールによってレビューそのものが afford され, 
+草の根ソフトウェア開発の底上げがおこるかもしれない. 
+あるスーパーグダグダプロジェクトが, 
+Trac を使いはじめてからいくらか改善されたのを見たことがある. </p>
+<p>かくいう私もここ一年レビューをしていない. 確実にコードの質は落ちている. 
+悲しい. レビューしたい. みんなレビューしましょう. 
+ひまな人は "<a href="http://www.dodgson.org/omo/t/?date=20060325">レビューで手を抜く</a>" も
+参照ください.</p>

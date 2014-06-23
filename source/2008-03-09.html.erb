@@ -1,0 +1,167 @@
+---
+title: "List Comprehension and Mnesia"
+date: 2008-03-09
+---
+<h3>List Comprehension and Mnesia</h3>
+<p>プログラミング Erlang に出てくる Database Mnesia. 
+query を list comprehension で書く. 
+quote みたいのはないのに, どうやって list comprehension を query に
+map するのかと思ったら, list comprehension からは query handle というのが
+返されるらしい. C++ の expression template に似ている気もする. 
+すげーな Mnesia. collective intelligence も list comprehension の
+威力を伝えていたし. だいぶ印象がかわった.</p>
+<ul>
+<li><a href="http://www.erlang.org/doc/apps/mnesia/index.html">http://www.erlang.org/doc/apps/mnesia/index.html</a></li>
+<li><a href="http://www.erlang.org/doc/man/qlc.html">http://www.erlang.org/doc/man/qlc.html</a></li>
+</ul>
+<h3><a href="http://highscalability.com/how-rackspace-now-uses-mapreduce-and-hadoop-query-terabytes-data">How Rackspace Now Uses MapReduce and Hadoop to Query Terabytes of Data</a></h3>
+<p>Hadoop. 実用してるとこ結構あるんだな. 
+Yahoo もようやく使ってるという<a href="http://developer.yahoo.com/blogs/hadoop/2008/02/yahoo-worlds-largest-production-hadoop.html">ニュースがあったし</a>. 
+あとは last.fm も使ってるんだっけ？ 
+<a href="http://wiki.apache.org/hadoop/PoweredBy">http://wiki.apache.org/hadoop/PoweredBy</a> 
+に色々書いてるか. </p>
+<p>処理するデータやアプリがあるってのは大前提だよな. このごろはほんとにアプリが羨しい. 
+この話はすげー面白い. プレインテキストから素の MySQL, 変な構成 (merge table とか), 
+でようやく v3.0 で Hadoop に到達. こうやって順にステップアップしてかんと
+分散システムってでいきないよなと思う. </p>
+<h3><a href="http://blog.recommenders06.com/?p=12">Open Issue in Recommender Systems</a></h3>
+<p>Idea</p>
+<ul>
+<li>P2P Recommendation</li>
+</ul>
+<p>引用
+attack</p>
+<ul>
+<li>Unfair Ratings in Reputation Systems Dellarocas (EC 2000)</li>
+<li>Robustness of Collaborative Filtering O’Mahony (TOIT 2004)</li>
+<li>Self-Selection, Slipping, Salvaging, Slacking, and Stoning: The Impacts of Negative Feedback at eBay Khopkar ACM EC ’05</li>
+</ul>
+<p>privacy</p>
+<ul>
+<li>Privacy-preserving recommender systems: Polat et al 2003, Berkovsky et al 2005, Ramakrishnan et al 2001</li>
+<li>Anti-Aliasing WWW 2004<ul>
+<li><a href="http://www.ra.ethz.ch/CDstore/www2004/docs/1p30.pdf">http://www.ra.ethz.ch/CDstore/www2004/docs/1p30.pdf</a></li>
+</ul></li>
+</ul>
+<ul>
+<li>Predictions Perturb Perception (Cosley CHI ’03)</li>
+</ul>
+<h3>RRTR</h3>
+<p>subdivision surface. すげー懐しい. 学生の頃はけっこう熱心に勉強した. 
+あのころから流行り物に弱かったんだな. </p>
+<h3>Squirrel</h3>
+<p>マニュアルすって読んでる. 言語は普通だ. 普通なのは良いことだ. 
+class がちゃんと first class ぽいのは面白いが, table との一貫性は
+もうちっとがんばっても良かったんじゃないか. と, 思っている様子がマニュアルから伺えた. </p>
+<h3>頭いたい. ぼーっとする</h3>
+<p>花粉のせいと鬱のせいと半分くらいかな. RRTR 言って a 氏と話しているうちに
+気分は若干改善.</p>
+<h3>Squirrel</h3>
+<p>マニュアル読んだ. 
+thread, weakref よく考えられてる. thread は別 VM になって, 
+かつ root table が share されるのね. ここが一番心配だったけど, 
+さすがによく考えられてる. root table を share しなければ concurrent に
+動かせる. すげー good. たぶん class も書き換えなければ share しても平気そうだし. 
+でも refcount のガードが心配か... </p>
+<p>コード読む甲斐がありそうだな, これは.</p>
+<h3>Weakref in Squirrel</h3>
+<p>よくできてんな.</p>
+<ul>
+<li>weakref (SQWeakRef) 自身も refcounted なオブジェクト</li>
+<li>SQObject (SQRefCounted) は最大ひとつの weakref を持つ</li>
+<li>SQRefCounted は要求されると on demand に weakref をつくってかえす</li>
+<li>SQRefCounted は削除時に weakref のもつ自身への参照を null にする</li>
+<li>weakref は削除時に SQRefCounted のもつ自身への参照に nil を代入する.</li>
+</ul>
+<p>このくらいでいいかもなー. 
+linked_ptr の方が良いところもある(no dynamic-allocation)けど, 
+こっちの方がシンプルだ. </p>
+<p>refconted-object の mixin or subclass で weak-referable ってのをつくる？
+でも weakref できるかどうかを使われる側が決めるのは厳しいか. 
+まーオブジェクトはちょっとデブになれってことかもね. 巡回参照避けるにはやむなし. </p>
+<p>Revokable とは何がちがうのか？-&gt; ちゃんと開放されて参照がなくなる. </p>
+<p>boost は？ refcount のオブジェクトに use_count と weak_count がある. 
+巡回参照はおきないのか？-&gt; おきない. 
+結局 boost も否応なしに weak 分の overhead はある. weak は業界標準認定で OK ぽい.</p>
+<p>弱参照実装の候補:</p>
+<ul>
+<li>Squirrel 方式</li>
+<li>intrusive 方式</li>
+<li>ID + テーブル方式</li>
+<li>linked_list 方式</li>
+<li>boost 方式</li>
+</ul>
+<p>trade-offs</p>
+<ul>
+<li>空間効率</li>
+<li>性能</li>
+<li>参照先書き換え</li>
+<li>thread-safety</li>
+</ul>
+<p>Idea:</p>
+<ul>
+<li>weak-ref 用のコンテナ</li>
+<li>intrusive_weak_ptr : ぐぐると話はあるが実装はないな.</li>
+</ul>
+<h3>OSS Recommenders</h3>
+<p>なんか Java のしか見当らないんだけど, 速いやつはないのかな. </p>
+<ul>
+<li><a href="http://taste.sourceforge.net/">http://taste.sourceforge.net/</a></li>
+<li><a href="http://eecs.oregonstate.edu/iis/CoFE/">http://eecs.oregonstate.edu/iis/CoFE/</a></li>
+<li><a href="http://www.nongnu.org/cofi/">http://www.nongnu.org/cofi/</a></li>
+</ul>
+<p>速いやつを書きたいなー. とりあえず taste くらいの機能を揃えれば
+使ってもらえるんだろうか. </p>
+<p>taste の文書を読んで機能と設計を学ぼう. 
+クラスタリング + item-item くらいでだいたい OK だと思うんだけど, 
+どうなんだろね. </p>
+<p>links:</p>
+<ul>
+<li><a href="http://www.paulperry.net/notes/cf.asp">http://www.paulperry.net/notes/cf.asp</a></li>
+</ul>
+<h3><a href="http://taste.sourceforge.net/">Taste</a></h3>
+<p>居ても立ってもおられず.</p>
+<p>interfaces:</p>
+<ul>
+<li>model : User(id, prefs), Item(id,recommendable), Preference(user,item,value), DataModel(database abstraction)</li>
+<li>recommender: recommend(), estimatePref(), setPref(), removePref()<ul>
+<li>ClusteringRecommender(getCluster()), ItemBasedRecommender(mostSimilarItems(item or itemlist), recommendedBecause), Rescorer, RecommendedItem, slopeone</li>
+</ul></li>
+<li>correlation<ul>
+<li>ItemCorrelation: (item, item) -&gt; double の map interfaceb</li>
+<li>UserCorrelation</li>
+<li>この package は誰が使うの？ Recommender?</li>
+<li>距離関数の実装ということだろうか？ 実装には Pearson とかあるね.</li>
+</ul></li>
+<li>neighborhood/UserNeighborhood : Q: 誰が使う？</li>
+<li>eval<ul>
+<li>RecommenderBuilder : factory</li>
+<li>IRStatistics : ようからん. IR 関係の情報って...計算できんの？</li>
+</ul></li>
+<li>extra(不要): web, ejb, transforms(たぶん. どっかのフック.)</li>
+</ul>
+<p>んー. 恐しいほど patan と似てるなー...
+設計の趣味は理解できるというか, 近い. ちゃんと java っぽい作りになってるし.</p>
+<ul>
+<li>slopeone ?</li>
+<li>なんとなく incremental にできなそうな API だけど, 実際は database になんかしてる？<ul>
+<li>もっとも patan も incremental じゃないか...</li>
+</ul></li>
+</ul>
+<p>なんか地味に書けば勝てそうだなあ. 
+アーキテクチャは似たようなかんじにして, 
+アルゴリズムの種類を増やしていけばいいのかな. 
+問題は taste がどれだけ現実に実用的なレベルなのかっつうことか. 
+ちょっと探した感じだと採用事例ないなあ. でも開発自体は active なんだよね.
+cofe とか cofi はとまってる. </p>
+<p>いちおう敬意を表して taste っぽい名前をつけるのがいいかもね. </p>
+<p>標準でローカルで動く速いデータソースを用意してやるのがよさそうね. </p>
+<p>TODO:</p>
+<ul>
+<li>datamodel の実装見る</li>
+<li>recommender の実装みる<ul>
+<li>特に clustering まわり: hybrid はあるか？</li>
+<li>計算結果のキャッシュはあるか？ 永続的か？</li>
+</ul></li>
+</ul>
+<p>ねよう...</p>

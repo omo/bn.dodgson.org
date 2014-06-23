@@ -9,27 +9,29 @@ activate :blog do |blog|
   # blog.prefix = "blog"
 
   # blog.permalink = "{year}/{month}/{day}/{title}.html"
-  blog.permalink = "{year}/{month}/{day}/"
+  blog.permalink = "{year}/{month}/{day}/index.html"
   # Matcher for blog source files
   blog.sources = "{year}-{month}-{day}.html"
   # blog.taglink = "tags/{tag}.html"
-  # blog.layout = "layout"
+  #blog.layout = "article"
   # blog.summary_separator = /(READMORE)/
   # blog.summary_length = 250
   # blog.year_link = "{year}.html"
   # blog.month_link = "{year}/{month}.html"
   # blog.day_link = "{year}/{month}/{day}.html"
   # blog.default_extension = ".markdown"
-  blog.default_extension = ".html"
+  blog.default_extension = ".erb"
 
-  blog.tag_template = "tag.html"
-  blog.calendar_template = "calendar.html"
+#  blog.tag_template = "tag.html"
+#  blog.calendar_template = "calendar.html"
 
   # Enable pagination
   # blog.paginate = true
   # blog.per_page = 10
   # blog.page_link = "page/{num}"
 end
+
+#activate :directory_indexes
 
 page "/feed.xml", layout: false
 

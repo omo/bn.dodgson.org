@@ -1,0 +1,167 @@
+---
+title: "Application of Dimensionality Reduction in Recommender System - A Case Study"
+date: 2008-03-22
+---
+<h3><a href="http://www.communitylens.org/research/technical_reports.php?page=report&amp;report_id=00-043">Application of Dimensionality Reduction in Recommender System - A Case Study</a></h3>
+<ul>
+<li>Sparsity, reduced coverage<ul>
+<li>ex. amazon: 200 万件の 1% は 20000 件: 1% を rate してるユーザはほとんどいない.</li>
+</ul></li>
+<li>user-based の手法らしい: neighbor もってきて合算</li>
+</ul>
+<ul>
+<li>SVD はオフラインでやっておく</li>
+<li>E-commerce のデータ(very sparse)では結果悪い</li>
+<li>MovieLens のデータでは結果良い</li>
+</ul>
+<p>んー. いまいちよくわからん... でも次元縮退の具体的なやりかたがわかったからいいか...
+しかし主成分分析でやった分散行列とかぜんぜん出てこないで, 
+いきなり rating matrix を SVD しちゃうのね. なんでそれで良いのかがわからん. </p>
+<p>“Indexing by Latent Semantic Analysis” (Deerwester 1990) が
+元ネタらしい. 他の SVD based recommender をいくつか見てから読もう.</p>
+<h3><a href="http://sifter.org/~simon/journal/20061211.html">http://sifter.org/~simon/journal/20061211.html</a></h3>
+<ul>
+<li>sigmoid ?</li>
+<li>何が SVD なのかわからんが, これがいわゆる "incremental SVD" らしい...</li>
+<li>empty element を fulfill する方法とか</li>
+</ul>
+<h3><a href="http://sifter.org/~simon/journal/20070815.html">http://sifter.org/~simon/journal/20070815.html</a></h3>
+<ul>
+<li>gradient descent?</li>
+<li>さっぱりだ...</li>
+</ul>
+<p>何がわかってないのか?</p>
+<ul>
+<li>そもそも recommender system でどうやって SVD を使うのか？なぜそれが成立するのか？</li>
+<li>incremental SVD の実装<ul>
+<li>grouplens での式の根拠がわかってないのが敗因だな... 出てくる式は似てるから.</li>
+</ul></li>
+</ul>
+<h3><a href="http://en.wikipedia.org/wiki/Latent_semantic_analysis">Latent Semantics Analysis</a></h3>
+<p>wikipedia again. 混乱のないように document-term の用語で...</p>
+<p>X = USV のとき, U は concept space での term vector のリスト, 
+V は concept space での document vector の list になっている. 
+SVD の残りの部分 (U なら SV) は, concept scape から元の 
+doc-term matrix への変換になる. </p>
+<p>だから類似の文書を探すには, 入力となる文書 vector d を 
+concept scape の vector d' に変換し, それから concept space の文書 vector 群
+V (の個々の列)と比較すれば良い. </p>
+<p>recommender system でも同じ理屈が使える. 
+concept space で item vector (個々の要素は user concept: SF 好きとか) を
+表現しておき, item 間の比較は concept vector で行う. 
+同様に user vector も concept space で表現しておく. 
+(個々の要素は item concept: SF とか.) すると concept space でユーザ間の距離を比較できる.</p>
+<p>ポイントは, document と term (=user と item) で別々の concept space が
+あるということ. (変換も別. US と SV.) 
+X は doc vector であり かつ term vector だったが, 
+SVD によってその二つが分離されたのがミソだった. </p>
+<p>やー, わかってなかったなあ先週は... 
+今度こそわかったはず...</p>
+<p>そして recommender system での SVD と PCA は関係なかった! なんてこったい.</p>
+<h3><a href="http://www.cs.carleton.edu/cs_comps/0607/recommend/recommender/svd.html">Dimensionality Reduction and the Singular Value Decomposition</a></h3>
+<p>なんか途中の図が間違ってるな. </p>
+<p>新しい知見はなかったけど, 理解は clarify された. 
+あとやはり incremental SVD は勉強せなあかんことがわかった. 
+simonfunk の方法は one of them らしい...</p>
+<h3><a href="http://www.kdd.org/explorations/issues/9-1-2007-06/simon-funk-explorations.pdf">Interview with Simon Funk</a></h3>
+<p>かっけー.</p>
+<p>simonfunk はフツーに incremental SVD の考案者だった. マジかよ.</p>
+<ul>
+<li><a href="http://sifter.org/~brandyn/resume6.html">http://sifter.org/~brandyn/resume6.html</a></li>
+</ul>
+<p>しかし何も面倒がないから netflix やってみたってのはスゲー理由だなー.</p>
+<h3>Korbell/BellKor</h3>
+<ul>
+<li><a href="http://www.research.att.com/~volinsky/netflix/">http://www.research.att.com/~volinsky/netflix/</a></li>
+</ul>
+<p>下から順に読んでくか.</p>
+<h3><a href="http://public.research.att.com/~yehuda/pubs/cf.pdf">Modelling relationships at Multiple Scales to Improve Accuracy of Large Recommender Systems.</a></h3>
+<p>BellKor.</p>
+<ul>
+<li>|item| &lt; |user| なら item based の方が効率的. item-item sim を前計算できる<ul>
+<li>ex. 映画.</li>
+<li>amazon はどうか？</li>
+</ul></li>
+</ul>
+<ul>
+<li>neighbor-based の欠点: similarity の計算に根拠がない</li>
+<li>neighbor 情報を生かさない: 続編モノの影響がでかくなる</li>
+</ul>
+<ul>
+<li>error-based method: "predict the quality of predictions"</li>
+</ul>
+<p>ごめん. 全然わかんない...</p>
+<h3><a href="http://stat-computing.org/newsletter/v182.pdf">Chasing $1,000,000: How We Won The Netflix Progress Prize</a></h3>
+<p>BellKor.</p>
+<ul>
+<li>複数手法を combine するのが有効だ<ul>
+<li>どうやって組合せるのか？-&gt; "confidence score" というのがあるらしい...</li>
+</ul></li>
+<li>既存手法の改善もした<ul>
+<li>Neighborhood-Aware Factorization</li>
+<li>Accounting for Which Movies are Rated</li>
+<li>Interporation Weights for Neighborhood Models</li>
+<li>Regulation</li>
+</ul></li>
+</ul>
+<p>結局よーわからんです... 理解したいけど... </p>
+<h3><a href="http://public.research.att.com/~yehuda/pubs/cf-workshop.pdf">Improved Neighborhood Based Collaborative Filtering</a></h3>
+<ul>
+<li>recommendation は missing data estimation である</li>
+<li>kNN の 3 つのコンポーネント<ul>
+<li>data normalization</li>
+<li>neighbor selection</li>
+<li>determination of interpolation weights</li>
+</ul></li>
+</ul>
+<p>global effect についてはようわからず.</p>
+<p>w の算出について</p>
+<ul>
+<li>optimization problem に帰着する</li>
+<li>least square problem になる -&gt; regress して解く (えー...)</li>
+</ul>
+<p>線形問題解くとかヤだなー...</p>
+<hr>
+<p>CMU 学生の reading memo.</p>
+<ul>
+<li><a href="http://socialmedia.scribblewiki.com/Bell_et._KDD2007_&amp;_ICDM_2007">http://socialmedia.scribblewiki.com/Bell_et._KDD2007_&amp;_ICDM_2007</a></li>
+</ul>
+<p>global effect removal は regression だといわれてもなー. さっぱしですよ...</p>
+<p>どうしたものか.</p>
+<ul>
+<li>回帰分析を勉強する？</li>
+<li>ほっといて incremental SVD を勉強する？</li>
+<li>ほっといて続きを読む？</li>
+</ul>
+<p>だいぶ脳みそがしんどくなってきたな.
+とりあえず続きを読んで, wikipedia で回帰分析読んで, incremental SVD かな. 
+とりあえずわからないのが何かは clarify しときたい. </p>
+<hr>
+<p>やー, わかんね. 
+続きも最適化問題に帰着する, というところまではわかったけど, 
+そのあとがわからん. 教養不足だなあ. </p>
+<p>とりあえず回帰分析が関係ありそうだから, 教科書で勉強してから出直そう.</p>
+<h3>[Book] パターン認識と機械学習</h3>
+<ul>
+<li><a href="http://ibisforest.org/index.php?PRML">http://ibisforest.org/index.php?PRML</a></li>
+</ul>
+<p>よく目次を見たくなるのでリンク. もう買って読もう.</p>
+<h3>updating reading queue</h3>
+<p>んー. 
+最初は generic な理解からスタートして, 途中から netflix 中心にスイッチ. 
+で KorBell で行き詰まっていまここ. </p>
+<p>たぶん古いやつや, 大仰な overview ばかり読み進めても実装の訳には立たないだろう. 
+世間の OSS 実装をみならって, item/user/rate 的なのをちょっと generalize 
+したくらいのモデルを相手にしたアルゴリズムに絞ってよいだろう. </p>
+<p>KorBell は理解したい. Incremental SVD も理解したい. 
+KorBell 理解のために PRML 読もう. 回帰分析まで.
+動機のはっきりした文献は潰していく. </p>
+<p>動機のはっきりしない, 教養的な文献, 実験的な性質の強い文献, 評価のよくわからない文献は
+優先度を下げて読み進もう. </p>
+<p>明日は PRML 買いにいくぜ予定.
+その前に掃除もせんとな. あと翻訳...</p>
+<h3>acceptable complexity</h3>
+<p>しかし Simen では回帰分析/最小二乗法とか実装すんのかな. 
+重かったり数値計算的に複雑だったりするのはパスしたいなあ. 当面は. </p>
+<p>やっぱり素朴なアルゴリズムと良いアーキテクチャで実験できる土台を固めて, 
+精度や速度の評価とかの仕組みを作ってから色々複雑なものを作ることになるんだろうねえ. </p>

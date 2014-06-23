@@ -1,0 +1,304 @@
+---
+title: "volatile は君の友達"
+date: 2006-12-29
+---
+<h3>volatile は君の友達</h3>
+<p>年末のヒマつぶしに C++ 界の過激派である 
+Alexandrescu のページを見ていたら, 
+"<a href="http://www.ddj.com/dept/cpp/184403766">volatile - Multithreaded Programmer's Best Friend</a>" という記事があった. 2003 年に書かれ, 
+"もっと volatile を使おうぜ" と主張するこの記事は, 
+おおざっぱにいうと Java の "synchronized" と似たかんじで volatile を使う方法を提案している. 
+以下受け売り. </p>
+<p>const はメモリへの書込みを制限し, volatile はメモリアクセスの最適化を制限する. 
+このように役割は違う const と volatile だが, 似たところがある. 
+実際 C++ の仕様でも "cv-qualifier" と一括りで扱い, 文法上は同じように振る舞う. </p>
+<p>たとえばこんなコードを考える.</p>
+<pre>struct object_t {
+  int m_num;
+};
+...
+const object_t o;
+o.m_num = 10; // コンパイルエラー</pre>
+<p>o を const と宣言すると, o.m_num も const になる. だから書き込めずエラーになる. 
+次は volatile 版.</p>
+<pre>volatile object_t o;
+o.m_num = 10;
+o.m_num = 20;</pre>
+<p>コンパイル結果をみてみよう. (コンパイラは OSX 付属の gcc-4.0.1 .)</p>
+<pre>omo$ g++ -S -O3 hello.cpp
+omo$ less hello.s
+...
+__Z3foov:
+	 pushl %ebp
+	 movl	 %esp, %ebp
+	 subl  $16, %esp
+ movl  $10, -4(%ebp) ; 律儀に 10 と 20 の両方を書き込む
+ movl  $20, -4(%ebp) ;
+ leave
+	 ret
+...</pre>
+<p>o を volatile と宣言すると, o.m_num も volatile になる. 
+ちなみに volatile なしだとこうなる.</p>
+<pre>__Z3foov:
+  pushl %ebp
+  movl  %esp, %ebp
+  popl  %ebp
+	 ret</pre>
+<p>ここまでは復習です. </p>
+<p>さて, Alexandrescu はメンバ関数にも volatile をつけられる点を指摘し, 
+つけられるものはつけようぜと提案する. </p>
+<pre>struct object_t {
+  void set_num(int n) volatile { m_num = n; }
+  int m_num;
+};</pre>
+<p>volatile のついたメンバ関数 ("volatile メソッド" と呼んでおこう) は, 
+その中でアクセスするメンバ変数が volatile であるように振る舞う. 
+つまりこれをコンパイルすると:</p>
+<pre>void foo() {
+  object_t o;
+  o.set_num(10);
+  o.set_num(20);
+};</pre>
+<p>こうなる:</p>
+<pre>__Z3foov:
+ ...
+movl  $10, -4(%ebp) ; 前回の volatile 版と同じ.
+movl  $20, -4(%ebp)
+ ...</pre>
+<p>const メソッドがメンバ変数へのアクセスを制限するのと同じノリだよね:</p>
+<pre>struct object_t {
+  void set_num(int n) const { m_num = n; } // コンパイルエラー
+  int m_num;
+};</pre>
+<p>面白いのは, このルールの結果として 
+volatile メソッド内で呼び出せる (this の) メンバ関数が volatile メソッドだけになること. </p>
+<pre>struct object_t {
+ void set_num(int n) volatile { m_num = n; }
+ object_t* next() { return m_next; }
+ int m_num;
+ object_t* m_next;
+ // コンパイルエラー: next() が volatile でない!
+ void set_next_num(int n) volatile { next()-&gt;set_num(n); }
+};</pre>
+<p>つまり volatile は呼び出し先に "伝播" する. 
+個々の volatile メソッドを synchronized 的に実装すれば, 
+volatile をスレッドセーフなメソッドのマークに使える. 
+自分が "このメンバ関数はスレッドセーフに作る" と決めて volatile をつければ, 
+その中でうっかりスレッドセーフでない関数やメソッドを呼んだ時に
+コンパイラが教えてくれる. なかなか便利でしょ, というわけ. </p>
+<p>ただ, もともと volatile にスレッドセーフの意味はない. 
+そこは不変を強制する const や同期を強制する synchronized と異る. 
+だからプログラマはがんばってスレッドセーフなコードを書く必要がある. 
+それなりに面倒だ. </p>
+<pre>class number_t {
+  ...
+  void increment() volatile {
+    lock(...);
+    m_num++;
+    unlock(...);
+  }
+private;
+  int m_num;
+  ...
+};</pre>
+<p>なお const と同じく, 同名で qualifier の異るメソッドを作ることもできる.</p>
+<pre>class number_t {
+  ...
+  void increment() volatile {
+    lock(...);
+    m_num++;
+    unlock(...);
+  }
+
+  void increment() {
+    m_num++;
+  }
+  ...
+};</pre>
+<p>こうしておくと, volatile なオブジェクトに対しては volatile 版が, 
+そうでない場合は非 volatile 版が呼ばれる. 
+だからオブジェクトをスレッドセーフにしても
+シングルスレッド時の性能を犠牲にすることはない. 
+mutex の分だけサイズは大きくなるけどね. </p>
+<h3>レガシーとの共存</h3>
+<p>受け売りはこのへんまでにしよう. </p>
+<p>積極的に volatile を使うは一見よさそうなアイデアだけれど, 本当にこの路線を進んでいいのかにはなんとなく不安がある. 腰がひける. 
+それに面倒だ. 既存のコードはほとんど volatile aware に作られていない. 
+特に STL が全滅なのは辛い. STL のコンテナは volatile どうこう以前に
+スレッドセーフでないから仕方ないけれど, それを volatile を使ったコードと
+組合せるのはけっこうしんどい. たとえばこう書けない:</p>
+<pre>struct vector_t {
+  ...
+  int push_back(int n) volatile {
+    lock(...);
+    m_vec.push_baacak(n); // コンパイルエラー:
+                          // std::vector::push_back() は volatile でない.
+    unlock(...);
+  }
+  ...
+  std::vector&lt;int&gt; m_vec;
+  ...
+};</pre>
+<p>このかったるさは const aware でないライブラリを使う時のものに似ている. 
+もちろん, キャストを使えばコンパイルはできる. </p>
+<pre>  int push_back(int n) volatile {
+    lock(...);
+    // なぜか const_cast をつかう. volatile_cast はない.
+    const_cast&lt; std::vector&lt;int&gt;&amp; &gt;(m_vec).push_back(n);
+    unlock(...);
+  }</pre>
+<p>ただこのコードが安全なのかはよくわからない. 
+たとえば冒頭の例を改造してこんな風にしてみる: </p>
+<pre>struct object_t {
+  void set_num(int n) { m_num = n; }
+  int m_num;
+};
+
+void foo() {
+  volatile object_t o;
+  const_cast&lt;object_t&amp;&gt;(o).set_num(10);
+  const_cast&lt;object_t&amp;&gt;(o).set_num(20);
+}</pre>
+<p>要するにキャストで volatile をとった場合の挙動を知りたいわけ.
+コンパイル結果を眺めると:</p>
+<pre>.globl __Z3foov
+ __Z3foov:
+  pushl %ebp
+  movl  %esp, %ebp
+  popl  %ebp
+  ret</pre>
+<p>あらま...ちょっと例が人工的すぎたかもしれない. 
+もう少し STL の状況に近付けよう. たとえば, 
+スレッドセーフでない number_t クラスをラップしてスレッドセーフかつ volatile な
+mt_number_t を作ってみよう. </p>
+<pre>class number_t { // volatile でないレガシーコード
+public:
+  number_t(int n) : m_num(n) {}
+  void add(int n) { m_num += n; }
+  int num() const { return m_num; }
+private:
+  int m_num;
+};
+
+class mt_number_t : public number_t {
+public:
+  mt_number_t(int n) : number_t(n) {} // ここも怪しいけど保留...
+
+  void add_mt(int n) volatile {
+    // 本当は lock が必要
+    const_cast&lt;mt_number_t&amp;&gt;(*this).add(n);
+  }
+
+};
+
+void foo() {
+	volatile mt_number_t o(0);
+	o.add_mt(10);
+	o.add_mt(20);
+}</pre>
+<p>結果:</p>
+<pre>__Z3foov:
+  pushl %ebp
+  movl  %esp, %ebp
+  subl  $16, %esp
+  movl  %ebp, %esp
+  popl  %ebp
+  ret</pre>
+<p>また消えてしまった. うーん...もう少し例に工夫がいるのかな. ポインタで間接参照してみるか.</p>
+<pre>void bar(volatile mt_number_t* o) {
+  o-&gt;add_mt(10);
+  o-&gt;add_mt(20);
+}</pre>
+<p>コンパイル.</p>
+<pre>__Z3barPV11mt_number_t:
+  pushl %ebp
+  movl  %esp, %ebp
+  movl  8(%ebp), %eax
+  addl  $30, (%eax)
+  popl  %ebp
+  ret</pre>
+<p>問題ないけれど, volatile に期待される挙動ではないなあ. 10, 20 と書き込んで欲しい. 
+やっぱり lock, unlock が必要なんだろか. </p>
+<pre>// 実体のない偽の宣言
+void lock();
+void unlock();
+...
+  void add_mt(int n) volatile {
+    lock();
+    const_cast&lt;mt_number_t&amp;&gt;(*this).add(n);
+    unlock();
+  }</pre>
+<p>これだと...:</p>
+<pre>__Z3foov:
+  pushl %ebp
+  movl  %esp, %ebp
+  subl  $24, %esp
+  movl  $0, -12(%ebp)
+  call  L__Z4lockv$stub
+  addl  $10, -12(%ebp)
+  call  L__Z6unlockv$stub
+  call  L__Z4lockv$stub
+  addl  $20, -12(%ebp)
+  leave
+  jmp L__Z6unlockv$stub</pre>
+<p>ようやくそれっぽくなった. 
+この gcc は非インラインの関数呼び出しを跨ぐような最適化をしないんだね. 
+たしかに関数の中でレジスタの値を変えられたら困るもんな. 
+関数呼び出しはコンパイラに対するのバリアみたいに振る舞うのか. 
+ついでに lock/unlock の API(=関数) 呼び出しで挟むような普通の同期処理なら, 
+変数自身は volatile である必要はないような気がする. 
+そういえば先の記事で Alexandrescu もそう言っていた. 彼は常に正しいのだった...</p>
+<p>結局 レガシーのコードと volatile メソッドを共存させる時は</p>
+<ul>
+<li>non-volatilie メソッドはキャストをして呼び出し,</li>
+<li>その呼び出しの前後は lock/unlock の API で挟む.</li>
+<li>メンバ変数には volatile をつけなくていい. かわりに volatile なメンバ関数で隠蔽する.</li>
+</ul>
+<p>という方針でよさそう. これならわかりやすいし手間も許容範囲かな. </p>
+<h3>オープンコールと volatile メソッド</h3>
+<p>スレッドセーフな volatile メソッドを書くとき, 
+関数の冒頭で lock() して戻る直前に unlock() するようなケースでは 
+volatile の伝播は特に有り難くない. 
+自分が lock を持つ以上, 呼び先がスレッドセーフである必要性は薄い. 
+むしろデッドロックの危険がある. </p>
+<p>volatile メソッドの中では他のオブジェクトの関数を呼ぶ際, volatile なものを選んでしまう. 
+これは Java でいうと synchronized メソッドの中で他の
+オブジェクトの synchronized メソッドを呼ぶようなもので, 典型的なデッドロックの原因になる. </p>
+<p>オープンコールの原則に従ってその危険をさけた方がいい. 
+オープンコールとは "ロックを持たずにメソッドを呼びだす" こと. 
+具体的には他のオブジェクトのメソッドを呼ぶ時に
+自分のロックを持たないようにする. 
+たとえば</p>
+<pre> void A::foo() volatile {
+    this-&gt;m_lk.lock();
+	 const_cast&lt;A&amp;&gt;(*this).bar(m_b-&gt;baz());
+    this-&gt;m_lk.unlock();
+ }</pre>
+<p>と書きたいところをぐっとこらえて</p>
+<pre> void A::foo() volatile {
+    int r = m_b-&gt;baz()
+    this-&gt;m_lk.lock();
+    const_cast&lt;A&amp;&gt;(*this).bar(r);
+    this-&gt;m_lk.unlock();
+ }</pre>
+<p>と書く. lock/unlock 間が 非 volatile な呼び出しなのに注目. 
+このスタイルで一貫していると, A と B のオブジェクト同士が
+デッドロックする危険をだいぶ下げることができる. 
+二つのオブジェクトが同じトランザクションに参加しているようなケースなど, 
+オープンコールを使えないこともある. 
+ただ余計なトラブルを避ける意味で知っておいていいルールだと思う. </p>
+<h3>妥協の匙加減を探して</h3>
+<p>volatile メソッドは名案だけれど, 
+そもそもこんなに色々気を使ってコードを書くのは面倒だ. 
+常に同期に気をつかったコードを書くのは私には厳しすぎる. できればやりたくない. 
+マルチスレッドのコードを書く必要ができたら, 
+メッセージキューのような疎なメッセージングの仕組みを用意し, 
+そこだけをがんばって同期化するんだろうな. それでも十分大変だけど.</p>
+<p>ムーアの法則をあと 30 年くらい先延ばしできないかなあ...
+などと甘いことを考えているうちに日も年の瀬も暮れました. </p>
+<h3>参考</h3>
+<ul>
+<li><a href="http://www.ddj.com/dept/cpp/184403766">Dr. Dobb's : volatile - Multithreaded Programmer's Best Friend </a></li>
+<li><a data:asin='4797337206' href='http://www.amazon.co.jp/Java%E4%B8%A6%E8%A1%8C%E5%87%A6%E7%90%86%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0-%E2%80%95%E3%81%9D%E3%81%AE%E3%80%8C%E5%9F%BA%E7%9B%A4%E3%80%8D%E3%81%A8%E3%80%8C%E6%9C%80%E6%96%B0API%E3%80%8D%E3%82%92%E7%A9%B6%E3%82%81%E3%82%8B%E2%80%95-Brian-Goetz/dp/4797337206%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4797337206'>Java並行処理プログラミング</a> : オープンコールの記述</li>
+<li><a href="http://gcc.gnu.org/onlinedocs/gcc-4.1.1/gcc/Volatiles.html#Volatiles">Volatiles - Using the GNU Compiler Collection (GCC)</a></li>
+</ul>

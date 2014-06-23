@@ -1,0 +1,36 @@
+---
+title: "Firefox3 のメモリ使用量"
+date: 2008-03-26
+---
+<h3><a href="http://www.hyuki.com/yukiwiki/wiki.cgi?Firefox3MemoryUsage">Firefox3 のメモリ使用量</a></h3>
+<p><a href="http://wiredvision.jp/news/200803/2008032420.html">WIREDVISION</a> の記事を
+みていたら詳しい解説にリンクがあり, 読んだらけっこう面白かったので
+ざっくり訳しました. 
+また <a href="http://www.hyuki.com/yukiwiki/wiki.cgi?Firefox3MemoryUsage">YukiWiki</a> にお邪魔しております. 
+one-pass なのでいつになく粗がありそうですが, 
+みのがしてください...じゃなくて直してやってくだい. 
+まえに <a href="http://www.dodgson.org/omo/t/?date=20060507">cycle collector の話</a>を
+書いてから二年ちかく. 感慨ぶかい. 
+私自身はというと, 今も巡回参照を素手で断つ日々. 毎夜のように涙がリークしてます. 
+かみさま...</p>
+<p>そういえば <a href="http://www.hyuki.com/yukiwiki/wiki.cgi?WhyINoLongerLikeOrUseCPlusPlus">もう C++ なんて好きでもないし使いもしない理由。</a> も
+訳したけど, C++ プログラマ以外にはどうでもいい内容なので忘れてた.  
+個人的には completely agree with でございました. </p>
+<h4>madvise()</h4>
+<p>そういえば文中に madvise() の話がちらっと出てきた. 
+これは何かと人々の胸を焦がす API らしい. </p>
+<p><a href="http://www.dodgson.org/omo/t/?date=20071215">llre</a> を作っているとき, 
+私もなんとかストールなしにファイルを map できないかと
+調べていて madvise() の存在を知った. (Gecko の逆の用途ですね.)
+よしよしと思い今度は grep のコードを見ると, 次のようなコメントがあって
+妙にがっかりした記憶がある. </p>
+<pre>/* Do not bother to use madvise with MADV_SEQUENTIAL or
+   MADV_WILLNEED on the mmapped memory.  One might think it
+   would help, but it slows us down about 30% on SunOS 4.1.  */</pre>
+<p>"prefetch madvise" でぐぐると色々泥臭そうな話題がヒットして萎える. 
+でも上の記事の, Mac では意味がなくて Linux で有効というの話は面白かった. </p>
+<p>jemalloc に限らず, メモリアロケータやファイルシステムをアプリケーションレイヤで
+再発明する話を読むと複雑な気分になる. 
+そうやれば速くなるのだという荒野への夢と, そのくらい OS でやってくれという舗装道路のぼやき. 
+現実にはアプリケーションを書くのに手一杯で下回りの高速化まで手を回せる機会は稀だ. 
+OS には頑張ってほしいし, そんな OS を応援するアプリケーションでありたい. </p>

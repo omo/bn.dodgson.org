@@ -1,0 +1,544 @@
+---
+title: "いまどきのデスクトップ処理系"
+date: 2006-09-22
+---
+<h3>いまどきのデスクトップ処理系</h3>
+<p>いまどきのデスクトップは色々モダンになっている. 
+ただモダン化は API の裏側で進んでいるため, あまり興味を持たれていないらしい. 
+一見いろいろウォッチしていそうな知り合いと話していてわかった. 
+利用者視点の話題では, 
+いまどきのデスクトップというとたとえばウィンドウが
+ヘナヘナ揺れるといったアイ・キャンディばかりが連想される. 
+でもそのアイ・キャンディに至るにはきっと山ほど苦労があったはず. 
+そのへんをちょっとねぎらってみたい. </p>
+<p>念頭にあるのは Windows Vista, Mac OSX, XGL あたり. 
+まず共通の階層化されたアーキテクチャを想定し, 
+ケーススタディを交えつつその層を下から上へ順にたどっていきます. </p>
+<h3>復習: デスクトップ処理系の階層構造</h3>
+<p>そもそもデスクトップの中味はどんな構成をとっているのか. ざっと眺めておこう. 
+典型的なデスクトップ処理系のアーキテクチャはだいたいこんなかんじになる: 
+(名前や構成にはバリエーションがある. 自分の使ってるのは違う! という人は大目に見てください.)</p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_0.png" style="display;block" /></p>
+<p>階層構造になっていると主張しているつもりです. </p>
+<p>一番下のレイヤは Graphics Device Driver .... なのはまあ割と当たり前だよね. 
+何かしらハードウェアを抽象化する手段がないと困ってしまう. 
+WDDM は Windows のドライバモデル. 
+ビデオカードの薄い抽象という意味で DirectX や OpenGL もここに置いた. </p>
+<p>次に低位な層は Window Management. 
+アプリケーションからの描画要求を整理し, 
+ウィンドウの上下関係管理やクリッピングを行う. 
+ウィンドウのサイズや位置の変更もこのへんだと思っていい. 
+描画だけでなく, キーボードやマウスといった対話装置のイベント配信もする. 
+X だと X server, Mac OS だと Quartz Extreme (Quartz Compositor) が
+この層にあたる. </p>
+<p>Window Management の上に Drawing のレイヤがある. 
+この層はウィンドウへの描画機能を提供する. 
+直線, 曲線, 円, ビットマップの貼りつけなど. 
+性能の都合でドライバを直接利用することもあるため. ちょっと下にはみ出す図にした. 
+Win32 の GDI, Mac OS の Quartz, freedesktop の cairo あたりがこれにあたる. </p>
+<p>一番上の層が Toolkit. GUI のウィジェットを用意する. 
+Drawing の描画機能を使ってボタンやリストやテキストボックスなど描いたり, 
+システムからの各種イベントに反応したりする. 
+gtk+, Qt, Cocoa あたり. </p>
+<p>素朴な時代はレイヤ間の癒着が強かった. 
+Toolkit の一部として Drawing 機能が提供されていたり, 
+Window Management の拡張として Toolkit が作られていたりした. 
+こうした役割分担や階層化はモダンになるに従って進んだ. </p>
+<p>復習を済ませたところで, モダン化のトレンドを下の層から見ていこう. </p>
+<h3>グラフィクス資源の仮想化</h3>
+<p>画面に絵を描こうと思ったとき, 計算機は最終的にフレームバッファを操作する. 
+フレームバッファはピクセルをあらわす一続きのメモリ領域で, 
+そのメモリの内容が定期的にディスプレイへ反映される. </p>
+<p>個々のアプリケーションは, このフレームバッファを更新することでウィンドウの中味を描く. 
+ただアプリケーションは同時に複数動き, そのウィンドウも重なりあっている. 
+あるアプリケーションがうっかり他のウィンドウの中味を上書きしないよう 
+ウィンドウのクリッピングを行うのは Window Management の役割だ. 
+(Drawing は Window Management 層に描画可能な範囲を問合せ, その範囲だけを描画するわけ.)</p>
+<p>ウィンドウのサイズが変わったり上にあったウィンドウがどかされたりすると, 
+サイズの変わったウィンドウや下にあったウィンドウをフレームバッファに描き直す必要がある. 
+Window Management 層は, その書き直し要求をイベントとしてアプリケーションに伝える. 
+アプリケーションはイベントに応じて自分のウィンドウを描き直す. 
+描き直し処理などを行う関数をイベントハンドラという. 
+win32 の WindowProc が代表例. 
+ふつうイベントハンドラは書き直しだけでなく入力装置からのイベントにも処理する. 
+またアプリケーションのメインループが API で直接イベントをとりだすシステムもある. </p>
+<p>古典的な Window Management はこんな風に行われている. 
+思いきって単純化すると, 古典的なシステムにおけるウィンドウとは
+クリッピング領域とイベントハンドラの対だと言える. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_1.png" style="display;block" /></p>
+<p>見え隠れするたびにウィンドウを描き直すのは苦労が多い. 性能上の問題もある. 
+内容を書き終える前に画面が更新されてしまうと, 
+描画途中の半端な状態がユーザに見えてしまう. 要するにチラつく. 
+このチラつきをふせぐため, 
+アプリケーション・プログラマはふつう主記憶上に自分のウィンドウの中味と同じ内容の
+画像を確保する. そしてこれに描画を行う. この画像をよくオフスクリーンと呼ぶ. 
+そういうアプリケーションでは, 
+再描画の要求が来てもイチから文字や画像を書き直すかわりに
+オフスクリーン画像の中味を画面にコピーする. 
+画像のコピーだけなら一連の描画処理よりずっと速い. 
+だからオフスクリーンを使うと画面のチラつきをふせぐことができる. 
+プログラムも楽になる. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_10.png" style="display;block" /></p>
+<p>ただ, この方法は性能面に限界がある. 
+主記憶上のオフスクリーンはすべて CPU を使って描画する必要がある. 
+グラフィクス・カード (GPU) の高速描画機能は利用できない. 
+いまどきのオシャレ GUI をつくるには, グラデーションや半透明, アニメーションといった
+負荷の大きな描画も遠慮なく使いたい. しかし派手になるほど描画は遅くなる. 
+無駄に遅いなどと馬鹿にされるのは悔しい. (twm + vi の人とかに.) 
+また, 主記憶上にあるオフスクリーンをビデオメモリ(VRAM)のフレームバッファに
+転送するのはそれなりに時間がかかる. これも性能の足をひきずる. </p>
+<p>そこで, モダンな Window Managemt 層は
+アプリケーションのオフスクリーンを VRAM 上に置くことにした. 
+今やオフスクリーンはテクスチャと同じ扱いになる. 
+DirectX や OpenGL でじゃんじゃか絵を描けばいい. 
+同じ VRAM 同士だからフレームバッファへのコピーも速い. 一件落着. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_11.png" style="display;block" /></p>
+<p>ただし, 単純に VRAM に置くだけでは問題が残る. 
+VRAM が足りなくなったらどうしよう. 
+すべてのアプリケーションがウィンドウを置くには, とても広い VRAM が必要だ. 
+運が悪いと VRAM が足りなくなる. 
+ウィンドウサイズを変えた瞬間におこる VRAM 不足を想像してみよう. 
+事態はなかなか複雑なのがわかってくる. </p>
+<p>この問題を解決するため, モダンな環境では VRAM が "仮想化" された. 
+要するに仮想記憶の VRAM 版ができた. 
+メモリ不足になると, 処理系は優先度の低いオフスクリーンを
+主記憶に "ページアウト" する. 必要に応じて "ページイン" もおこる. 
+(主記憶が足りなくなったら更にディスクへ追い出される. 気の毒に...) 
+Windows Vista や最近の Mac OS はグラフィクスドライバにこの仕組みを要求している. 
+今までのアプリケーションがオーバーレイみたいな仕組みでがんばっていた部分を
+処理系が肩代りしてくれるようになったというわけ. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_13.png" style="display;block" /></p>
+<p>この方法が現実的になったのは VRAM の容量が十分大きくなったからだろう. 
+たとえば 4MB の VRAM を仮想化してもきっとスラッシングがひどくて使いものにならない. 
+主記憶版の仮想記憶と同じ. 
+今時のハイエンドなカードには, 下手すると主記憶と同じくらいの VRAM が載っている. 
+3D をやらないと使い道がないよなーと思っていたけれど, あれば使うもんだね. </p>
+<p>ところで, 仮想化されたのはオフスクリーン/テクスチャ
+(OpenGL では "フレームバッファオブジェクト" と呼ぶ) だけではない. 
+VRAM 上の資源はくまなく仮想化の対象になるらしい. 
+また Microsoft の文書によると 
+Vista ではグラフィクスコマンドの実行をタイムスライスする機構もあるという. 
+再入可能なマルチタスクってやつね. 
+言ってみれば VRAM と GPU の世界にも OS が進出してきたということかもしれない. </p>
+<h3>余談: 素朴な時代の仮想グラフィクス</h3>
+<p>ひろく仮想化というと, 実際のハードウェアの上に仮想的な環境を(いくつも)作る技術を指す. 
+ユーザは仮想環境を独占して使える. Java の仮想マシンや Xen のような仮想化技術はその典型. </p>
+<p>DirectX や OpenGL はある種の仮想化グラフィクスハードウェアと考えることができる. 
+グラフィクスのハードウェアはひとつしかないのに, 
+複数のグラフィクス・アプリケーションが同時にそれを使うことができる. 
+今ではあたりまえの話だけれど, 初期のグラフィクス・ハードウェアでは 
+3D グラフィクスを使う際に単一のアプリケーションがハードウェアを独占していた. 
+フルスクリーンでしか 3D 機能を利用できないビデオカードがあったのを
+覚えている人もいるとおもう. あんなかんじ. </p>
+<p>そのころ, 高価なグラフィクス・ハードウェアでは
+複数の 3D アプリケーションが同時に動きはじめていたらしい. 
+Mark J. Kilgard (GLUT の人ですね) らによる 96 年の記事 
+"<a href="http://citeseer.ist.psu.edu/kilgard95system.html">System Support for OpenGL Direct Rendering</a>" にその様子が示されている. 
+これを読むと, 
+単一のグラフィクス・パイプラインを複数のアプリケーションで共用するのが大変な仕事だとわかる. 
+コマンド列の排他制御や直列化, 複数ウィンドウのクリッピング...
+OS でいう再入可能化やメモリ保護相当の仕組みを, 
+グラフィクスのドライバは各自がんばって実装してきたけだ. 
+OS の支援がある(だろう)とはいえ, なかなか難儀な話だとおもう. </p>
+<p>モダンなデスクトップ処理系の登場でグラフィクス資源はほぼ完全に仮想化された. 
+先の記事では今に至る進化の発端を垣間みることができる. </p>
+<p>余談おわり. </p>
+<h3>トップレベル・ウィンドウの合成</h3>
+<p>ここまでの説明には色々端折ってきたことがある. 
+たとえば, ウィンドウとオフスクリーンの関係について. 
+この節ではそのへんを少し詳しく補足する. </p>
+<p>伝統的なウィンドウ・システムの多くは Toolkit と Window Management が密着している. 
+実は大半のウィジェットそれぞれがウィンドウなのだ. 
+ボタン, テキストボックス, リスト, ツールバー... 
+こうしたウィジェットひとつひとつが独立したウィンドウを持っている. </p>
+<p>前の節で, ウィンドウは VRAM 上にオフスクリーンを持つと説明した. 
+ウィジェットがすべてウィンドウなら, 
+その細かなウィンドウすべてがオフスクリーンを持つのだろうか. そうではない. 
+実際にはトップレベルのウィンドウだけが VRAM のオフスクリーンを確保する. 
+トップレベルのウィンドウというのは背後に他のアプリか背景しかないようなウィンドウのこと. 
+他のウィンドウ(子ウィンドウ)やウィジェットがどう実現されているかは処理系により異なるけれど, 
+とりあえずこれまでのシステムと同じと思っておけばいい. </p>
+<p>モダンな Window Management は二種類のウィンドウを管理する. 
+オフスクリーンを持つトップレベル・ウィンドウと, 
+トップレベル・ウィンドウに所属する子ウィンドウ. 
+子ウィンドウの描画先はトップレベル・ウィンドウのオフスクリーンになる. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_12.png" style="display;block" /></p>
+<p>このように, 典型的な処理系はトップレベル・ウィンドウだけが実体を持つ. 
+トップレベル・ウィンドウだけに VRAM を割り当てるのは現実的な妥協だろう. 
+すべてのウィンドウに VRAM を割り振ってしまうのはさすがに容量が厳しそうだけれど, 
+この方法ならそこまで VRAM を使うことなしにチラつきはおおかた回避できる. </p>
+<p>トップレベル・ウィンドウのオフスクリーンをフレームバッファ上に合成する処理を, 
+一般にウィンドウの合成(Composition)という. 
+オフスクリーンが VRAM にあるおかげでこの合成処理には派手な効果を演出できる. 
+オフスクリーンをテクスチャとして扱い, 
+テクスチャつきのメッシュ(ポリゴン)をウィンドウとして描画する. 
+派手な効果はその際に利用する 3DAPI の恩恵だと言える. 
+OSX での Expose, Vista の Flip3d などはその典型. 
+GLX のウィンドウ・マネージャである Compiz はもっと隅々まで細かな効果を適用している. 
+(暇なひとは Youtube で動画を探してみてください.) </p>
+<h3>いまどきの描画機能</h3>
+<p>階層をひとつ上にすすもう. </p>
+<p>ウィンドウの内容を実際に描くのは Drawing の仕事だ. 
+今時の Drawing については以前書いたものがあるから, 詳しい話は省略. 
+("<a href="http://www.dodgson.org/omo/t/?date=20040720#p02"> ハードウェア化を目指すデスクトップ・グラフィクス</a>" を参照ください.) </p>
+<p>かわりに要点だけまとめておく. 
+デスクトップの描画はグラデーションやアルファブレンディングなどの高機能な描画操作を
+必要とするようになった. これらの描画操作は負荷が高い. 
+そこで一部のモダンな処理系は描画を高速化するために 
+3D グラフィクスのハードウェア支援を使うようになった. 
+そうした処理系は 2D のデスクトップを描くのに 3D 用 API を用いる. まとめおわり. </p>
+<h3>ケーススタディ: XGL と cairo/glitz</h3>
+<p>ここらへんで具体例を眺めてみたい. 最近のオープンソースな人達の間では
+XGL が流行っているようなので, こいつの資料を読んでみよう. 
+(実際に試そうとしたら, 私の VAIO Note Z では動かなかった. 
+そもそも素の X すらよくフリーズする. Web によるとハズレのモデルみたい. 悲しい...)</p>
+<p>XGL は描画部分に OpenGL を使った X Server の実装だ. 
+トップレベル・ウィンドウに VRAM のオフスクリーン (Framebuffer Object, FBO) 
+を割り当てる. 各種図形描画は OpenGL の API を通じて行われる. 
+似たような実装に AIGLX というのもある. </p>
+<p>XGL は Window Manager の compiz と一緒に使われることが多い. 
+compiz は通常の Window Management を補助する以外に, 
+XGL と連携して各種の画面効果を実現する. 
+(実物の動画は 
+<a href="http://gigazine.net/index.php?/news/comments/20060917_xgl/">gigazine の記事</a> 
+などを参照.) </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_6.png" style="display;block" /></p>
+<p>XGL は速いんだろうか? 実際に動かしている人は教えてください. 
+理屈の上では, OpenGL の恩恵でこれまでよりは速くなるだろう. 
+一方で X のボトルネックは Client-Server モデルのようにも思える. 
+Xlib への呼び出しはすべて X protocol として直列化され X Server に送られる. 
+ここが遅いんじゃないの? </p>
+<p>このオーバーヘッドを避けるため, X 上の OpenGL (GLX, not XGL) は 
+Direct Rendering という機構を用意している. 
+これを使うと X protocol をバイパスして直接 OpenGL の機能にアクセスすることができる. 
+(逆にいうと, 標準の状態では OpenGL の API も X protocol 内に直列化される. 
+これを indirect rendering と呼ぶ. 遅そうだ....)</p>
+<p>XGL は描画が X protocol で抽象化されるのを期待しているため, 
+Direct Rendering した OpenGL をうまく扱えない. 
+XGL はオフスクリーンの FBO に絵を描いてほしいのに, 
+Direct Rendering のアプリケーションは画面に直接描画をしてしまうからだ. 
+結果としてウィンドウの合成がうまくいかず, 
+件のアプリケーションは画面にぽっかり穴をあけてしまう. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_7.png" style="display;block" /></p>
+<p>これを回避するためにはアプリケーションの描画を FBO にリダイレクトする必要がある. 
+今のところそうした実装はされていないらしい. 
+アプリケーション用の OpenGL をフックするんだろうか, 
+メモリ空間は誰のをつかうんだろうかなど, 
+ちょっと想像するだけでも苦労は多そうに見える. </p>
+<p>さて, 多く人のは OpenGL アプリケーションなんて使わない. 
+だからこの問題はささいなことかもしれない. とはいえ例外もある. 
+そのひとつが gtk+ や Mozila に採用された Drawing 層のライブラリである cairo だ. 
+cairo はバックエンドに glitz を選択した場合 OpenGL を使う. すると先の件で困る. 
+つまり Drawing と Window Management でそれぞれ OpenGL を使ったために
+ある種の衝突がおきてしまう. 
+(それで困ったという人がいないところを見ると, 
+glitz バックエンドはさほど使われていないのかもね.) 
+また Java2D の実装にも試験的な OpenGL バックエンドがある. 
+これもデフォルトでは無効化さている. </p>
+<p>この問題も将来なんらかの方法で解決されるとは思う. 
+個人的には OpenGL の Direct Rendering を使いつつ 
+XGL のオフスクリーン(FBO)へ描画してほしい. 
+そうすると cairo を使ったアプリケーションは
+モダンな Window Management の恩恵をうけ, 
+かつ X protocol をバイパスすることができる. 
+そうなると X Window System の長年の懸念である性能問題が一気に片付くかもしれない. </p>
+<p>XGL も glitz も同じ人物, Novell の David Reveman によって実装されている. 
+私は glitz が捨てられないか気が気でない. うまくやってほしいと思う. 
+他力本願でごめんなさい... (Novell が雇ってくれたらがんばる :D)</p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_8.png" style="display;block" /></p>
+<h3>いまどきの Toolkit : ウェブの台頭</h3>
+<p>ようやく一番上の層, Toolkit まで辿りついた. 長くてすんません. </p>
+<p>今時の Toolkit は二つの面で進歩している. 
+下位レイヤに近い実装と, アプリケーション寄りの設計だ. 
+実装の話はわかりやすい. 
+モダンな Drawing を使ったおかげで高速綺麗になりましたというのが基本. 
+たとえば, 最近の gtk+ は描画エンジンに cairo を利用している. 
+<a href="http://www.gnome.org/~seth/blog/xshots">Seth Nickell のページ</a> や 
+<a href="http://www.gnome.org/~davyd/gnome-2-12/">GNOME の紹介</a> にある
+スクリーンショットをみるとその恩恵がわかる. 
+Vista も OSX も似たような画質を実現している. </p>
+<p>設計に目をやると事態はもう少し複雑になる. 
+まず, よく知られた Toolkit のうち
+いまどきの設計と言えるのは Windows の WPF しかない. 
+Mac OSX の Cocoa も UNIX の gtk+ や Qt も割と古参. モダンという感じからは遠い. 
+(だから悪いってわけではないけれど. あと Cocoa はだいぶがんばってる.) </p>
+<p>WPF のどのへんがモダンかというと, 
+まずマークアップ主導であること. そして柔軟なレイアウト機構を持つこと. 
+あとは仮想マシンを一級市民として扱っていること. 
+要するに XAML で .NET なのってすごいよねという話. 
+他にもメディアとの統合だとか強力なプロパティ・モデルだとか
+色々特徴はあるんだけれど, 話の都合で上の三点に焦点を絞る. </p>
+<p>他のプラットホームにはなぜいまいちモダンな Toolkit が登場しないかというと, 
+いまどきの新しいアプリケーションはみなウェブに移動してしまったからだろう. 
+そしてウェブ・アプリケーションの実行環境であるブラウザは
+先に挙げたモダンな Toolkit の条件を満たしている. 
+HTML でマークアップして CSS でレイアウトして Javascript が VM だ. 
+(VM な実装じゃない処理系があるののは御愛嬌.) 
+Flash を組み合わせるとメディアもなんとか使える. 
+モダンなデスクトップ・アプリケーションとウェブ・アプリケーションの
+アーキテクチャは近づきつつある. </p>
+<p>ウェブの技術はモダンだけれど, 
+モダンなものが必ずしも使いやすいとは限らない. 
+プログラマの視点から見て 
+JavaScript が C++ より優れているか, HTML+CSS や XUL が Qt より優れているか. 
+あまり自明でない. 
+ユーザから見ても, ウェブ・アプリケーション が win32 アプリケーションより
+使いやすいかは怪しい. 
+一方で, はっきりと次世代を謳っている WPF がウェブの技術から影響を受けているのは明らかだ. 
+C# はさておき XAML は明らかに better HTML+CSS を目標の一つとして作られている. 
+未来はこっち. Microsoft はそう判断した. 
+だから MFC も ATL も WinForms も捨てて XAML を選んだのだ. 
+(最近は HTML+CSS に浮気気味だけれど路線に大差はない.) </p>
+<p>一旦ウェブ・アプリケーションに目をやる. 
+ウェブの開発者は JavaScript や HTML を直接相手にしているわけではない. 
+実際はサーバサイドのフレームワークに乗って仕事をすることが多いだろう. 
+だからモダンな Toolkit としてウェブを議論する時は
+ウェブ・アプリケーションのフレームワークまで視野に入れた方がいい. 
+特に MVC の V と C に注目したい. 
+モダンな Toolkit の候補としては 
+ウィジェットやコンポーネントのメタファを持つフレームワークを挙げることができる. 
+Java では Tapestry, JSF, WebObjects や GWT. MS 製では ASP.NET といったところ. 
+Adobe Flex も方向は同じ. </p>
+<p>昔ながらのフレームワークは文字列として HTML を出力する
+テンプレートのメタファを採用している. 
+これをデスクトップの Toolkit と呼ぶのは苦しい. 
+私の知る限り, よく知られた LL のフレームワークに Toolkit 指向のものは見当たらない. 
+テンプレート指向が支配的に見える. 
+LL はもともと文字列処理を得意としており, 
+その点でテンプレートの方が相性がいいのかもしれない. 
+モダンなものが使いやすいとは限らない. 
+(このへんはよくしらないので名誉毀損だったらごめんなさい. 識者の意見もとむ.) </p>
+<h4>いまどきな Toolkit の証: レイアウトとマークアップ</h4>
+<p>Windows 上で動く .NET アプリケーションでの Toolkit と
+Mozilla で動く ウェブ・アプリケーションの Toolkit を並べて図にしてみた. 
+一番右は昔ながらの GNOME アプリのつもり. </p>
+<p><img src="http://dodgson.org/omo/t/images/20060922_5.png" style="display;block" /></p>
+<p>Toolkit の内部は図の左にあるような階層構造として理解できる. 
+絵を描く機能 (Drawing) を使ってボタンとかを作り (Widget), 
+それをうまい具合に並べられるようにする (Layout) . 
+ウィジェットの位置や種類は XML みたいなテキストで決めて (Markup), 
+バックエンドと繋ぐのは約束事 (Framework) に従う. </p>
+<p>実際は Layout と Widgets はこんなに綺麗にわかれないし, 
+Markup を組合せて Widget を作るようなこともできる. 
+この図は Toolkit 層の役割分担をおおざっぱに説明しているだけだと思ってほしい. </p>
+<p>このうち Toolkit のモダン化に大きな役割を果たしたのは
+柔軟なレイアウト機構とマークアップだろう. 
+このふたつによってアプリケーションの RAD 性が大きく高まった. </p>
+<p>まず柔軟なレイアウト機構. HTML を考えればわかるとおり, 
+マークアップ内で上から並べていけば何かが適当に表示される. 
+位置を制御したくなったら相対位置指定や float を指定していけばいい. 
+画面のサイズやテキスト量の変化にもつよい. 
+このモデルだとキッチリとした固定的なレイアウトは苦手だけれど, 
+世の中の多くの人は適当で楽なレイアウトを好んだのだろう. </p>
+<p>あとはテキストを使ったマークアップ. 
+これの有難味はわかりにくいけれど, おそらく二種類ある. 
+一つ目は生成/パースしやすいテキストであること. 
+このおかげで商用ツールを買わないプログラマやデザイナにも
+エディタとブラウザ再読み込みを使った poorman's RAD が可能になったし, 
+サードパーティのツール屋やフレームワーク書きに参入の余地ができた. </p>
+<p>二つ目はより宣言的であること. 
+マークアップなら宣言的になるということはないけれど, 
+もともと HTML が文章+装飾という宣言的な性質を持っていたおかげで, 
+世間はマークアップをつかい宣言的に画面を作る便利さに気付くことができた. 
+この宣言的な性質のおかげでバックエンドとの切り離しが楽になり, UI の多様化が進んだ. 
+(バックエンドとの切り離しが楽になったのは他の理由もあるだろう. 
+たとえば Web の対話性が比較的プアでも許容されたとか.)</p>
+<p>こうした特徴を生かしつつ他の欠点をとりのぞくために, 
+Web 開発者はフレームワークを, Microsoft は WPF を開発した. 
+私はそんな風に解釈している. 結果論だけどね. </p>
+<h3>ケーススタディ: Windows Presentation Foundation</h3>
+<p>...といのうのを書こうとしたけど実は詳しくない自分に気がつき, 
+そそくさと <a href="http://windowssdk.msdn.microsoft.com/en-us/library/ms754130.aspx">MSDN</a> を読んだ. (その後すぐに挫けた.) 以下はざっくり付け焼刃です. </p>
+<p>Windows Presentation Foundation (WPF) は 
+MS 謹製の対話的アプリケーション用フレームワークだ. 
+かつては Avalon というコードネームで呼ばれ, Windows Vista の目玉のひとつだった. 
+いまは名前をかえて .NET 3.0 の一部になり, ふつうに XP でも動くらしい. 
+アーキテクチャの構成図は MSDN の記事 "<a href="http://windowssdk.msdn.microsoft.com/en-us/library/ms750441.aspx">WPF Architecture</a>" に載っている. </p>
+<p>WPF のプログラミングモデルは Web とよく似ている. 
+XAML というマークアップで UI を書き, イベントハンドラのコードを C# などで追加していく. 
+HTML で UI を書き JavaScript でイベントハンドラを書くようなもの. 
+コードは XAML のファイルに埋めこむことも, 別ファイルに分離することもできる. </p>
+<p>WPF では Visual というモジュールが Drawing 層を担当する. 
+Visual は描画データをあらわすツリー構造 (Visual Tree) を持っている. 
+これまで説明してきた Drawing 層より担当範囲が広い. 
+3DCG の言葉をつかうなら, Visual Tree は一種のシーングラフだ. 
+そして Visual は retained mode のグラフィクス API だと言える. 
+(データ構造を保持...retain...しているから retained mode なわけ.) 
+描画のプリミティブとして多角形や画像の貼り付け, 
+ほかにビデオや 3D など各種のメディアをサポートする. </p>
+<p>HTML との類比でいくと Visual Tree は DOM に相当しそうだが, 少し違う. 
+Visual Tree は論理的な意味を持っていない. 描画に特化している. 
+無理矢理 HTML で考えるなら div と span と table/tr/td しかないようなかんじ. </p>
+<p>よりアプリケーション寄りな意味構造, 
+HTML でいう &lt;h1&gt; や &lt;p&gt; や &lt;em&gt; などの文書マークアップや
+リストやボタンといった各種 GUI 部品は, Visual Tree と別のツリー構造をつくる. 
+それを Element Tree と呼ぶ. この Element Tree が XAML の DOM だ. 
+各要素は自分がどのような Visual Tree (の部分木) を作るか知っている. 
+WPF の処理系は Element Tree から Visual Tree を作り, それを描画する. 
+プログラマはもっぱら Element Tree を操作して UI をつくる. </p>
+<p>Element Tree の要素名は対応する .NET のクラスを持つ. 
+たとえば &lt;Button&gt; 要素は System.Windows.Controls.Button  クラスに対応する. 
+またユーザはフレームワークに従い独自の Element Tree 要素を定義できる. 
+たとえば天気予報ウィジェット WeatherForecast クラスを定義し, XAML 内で 
+&lt;WeatherForecast&gt; 要素として利用することができる. 
+要するにアプリケーション寄りの語彙が拡張可能になっている. </p>
+<p>WPF はこのように描画用のデータ構造とアプリケーション寄りなデータ構造を分離している. 
+すこし HTML と比べてみよう. 
+HTML でのミタメと論理構造の分離は CSS を使って行われている. 
+ただ CSS はちょっとプアだ. 色と位置と大きさくらいしか調整できない. 
+コード(JavaScript)との関係もはっきりしない. 
+たとえば CSS と HTML だけで ツリー・コントロールをつくるのはしんどいだろう. </p>
+<p>世のウェブ・フレームワークは独自に Element Tree 相当の仕組みをつくることで
+似たようなことをしている. 
+開発者が専用のマークアップを書くとフレームワークがそれを HTML に展開する. 
+専用マークアップが Element Tree (XAML), HTML が Visual Tree に対応する. 
+JSF なんかはこの発想が露骨でわかりやすい. </p>
+<p>ウェブ・フレームワークは, ロジック(サーバサイドのコード)と
+論理マークアップの対応づけが難しい. 
+ブラウザが解釈するのは HTML であり, 元のマークアップは失われている. 
+だからたとえばフレーワークでツリー・コントロールを用意しても,
+"子を開く" 操作に対応するイベントハンドラをサーバサイドで呼び出すのは大変だ. 
+フレームワーク作者はそれぞれに工夫をしている. 
+でも元々それを考慮した枠組みの上で仕事をする方が楽なのは確かだろう. </p>
+<p>さて, 描画の仕組みにも目を向けてみよう. 
+前のほうで二種類のウィンドウ階層 (トップレベル・ウィンドウと子ウィンドウ)の話をした. 
+トップレベル・ウィンドウの子はこれまで通りの仕組みで動いているといったけれど, 
+WPF の場合は違う. Visual Tree がこの子ウィンドウに相当する. 
+描画の際, WPF のランタイムは Visual Tree を深さ優先でたどり, 
+その順に各ノードを描画する. 基本は上書き. この "出てきた順に上書き" モデルを 
+<a href="http://en.wikipedia.org/wiki/Painter's_algorithm">Painter's algorithm</a> と
+呼ぶ. Painter's algorithm は PDF などの描画モデルとおなじもの. 
+従来のモデルではウィンドウ・システムがクリッピング領域を管理し, 
+必要な領域だけを描こうとがんばってきた. それと比べるとけっこうおおざっぱだ. 
+もちろん実際は描画範囲の最小化や描画コマンドのキャッシュといった高速化をするわけだけれど, 
+"見えるところだけ描く" モデルとの違いは大きい. 
+オブジェクトの数が多い時や半透明のオブジェクトには 
+Painter's algorithm が向いている. 
+また VRAM の向こうに色々置くとなるとチマチマした細工はバンド幅を浪費し, 
+かえって性能を落とすのかもしれない. </p>
+<p>Toolkit としての WFP はこのような特徴を持つ. 
+<a href="http://windowssdk.msdn.microsoft.com/en-us/library/system.windows.controls.aspx">標準のコントロールが豊富</a> だとかメディアの扱いが楽といった物量系の利点を別にしても
+なかなか優れた作りなのがわかるとおもう. </p>
+<h3>登場しなかったもの</h3>
+<p>だいたい書きたいことは書いて気がすみました. </p>
+<p>ただデスクトップ処理系を議論する上で重要な話題をいくつか欠いているので, 
+その点(欠いているという事実)を補足. 
+まずイベントモデル. ユーザ操作の結果がどのようにアプリケーションへ通知され, 
+プログラマはそれをいかに扱えばいいのか. 
+これは Toolkit とセットで話せばわかりやすいんだろうけれど大変なのでパス. 
+おなじくデータ連結もパス. バックエンドのデータをどう UI につなぐかという話ね. 
+アプリケーション間通信. クリップボードとか. よくわからないのでパス. 
+そのうち OLE とかをちゃんと勉強しないといかんのかもしらん... 
+テキスト処理. 国際化されたテキストのレイアウトとか, ラップとか. ぜんぜん知らないのでパス. 
+LG3D. Sun の Java 製次世代 3D デスクトップ環境. 
+比較の対象としては面白いけれど流行らなそうなのでパス. </p>
+<p>実際にアプリケーションを作る時はこういう機構のお世話になる. 
+今回は力尽きずに書き終えるのを目標にし, 画面に絵をだす話にしぼりました. </p>
+<p>でもしばらくデスクトップはいいや. (一行もコード書いてないけど...) </p>
+<h3>まとめ</h3>
+<p>いまどきのデスクトップ処理系はこんなかんじにモダンですよ</p>
+<ul>
+<li>トップレベルウィンドウのオフスクリーンが VRAM 上に確保される. おかげでちらつかない.<ul>
+<li>そのためにビデオカードの資源が仮想化された.</li>
+</ul></li>
+<li>描画はビデオカードから 3D 描画機能の恩恵を得ている.</li>
+<li>いまどきはみんな Web だけど, Microsoft は Web っぽい自分世界でがんばってていいね.</li>
+</ul>
+<h4>参考リンク</h4>
+<p>Windows Vista /  WFP</p>
+<ul>
+<li><a href="http://windowssdk.msdn.microsoft.com/en-us/library/ms754130.aspx">Windows Presentation Foundation</a> : MSDN. チュートリアルからリファレンスまで.</li>
+<li><a href="http://windowssdk.msdn.microsoft.com/en-us/library/ms750441.aspx">WPF Architecture</a> : MSDN. 上のケーススタディのぱくり元.</li>
+<li><a href="http://channel9.msdn.com/Showpost.aspx?postid=67522">Chris Anderson - Talking shop about Avalon</a> : WPF 開発者によるアーキテクチャの解説. remoting の話も.</li>
+<li><a href="http://channel9.msdn.com/Showpost.aspx?postid=190253">Greg Schechter: Windows Presentation Foundation(WPF) Architecture</a> : WPF の... ってなんだこれ. まだ見てない.</li>
+<li><a href="http://blogs.msdn.com/greg_schechter/archive/2006/04/02/566767.aspx">Greg Schechter's Blog : The role of the Windows Display Driver Model in the DWM</a> : WPF 開発者による Vista 用ビデオカードドライバの意義について. 仮想化の話とか.</li>
+<li><a href="http://msdn.microsoft.com/library/default.asp?url=/library/en-us/directx9_c/Graphics_APIs_in_Windows_Vista.asp">Graphics APIs in Windows Vista</a> : Windows, ドライバ, 3D API の関係など</li>
+<li><a href="http://blogs.msdn.com/greg_schechter/archive/2006/06/09/623566.aspx">greg Schechter's Blog : How underlying WPF concepts and technology are being used in the DWM</a> : Vista での Window Manager (DWM) の役割について. compiz と比べるとおもしろい.</li>
+</ul>
+<p>XGL, X Window System</p>
+<ul>
+<li><a href="http://developer.nvidia.com/object/xdevconf_2006_presentations.html">XDevConf 2006 Presentations</a> NVIDIA 内ページ<ul>
+<li>An Overview of the NVIDIA UNIX Graphics Driver : NVIDIA のドライバ・アーキテクタの概観や X のいまいちなところ指摘.</li>
+<li>Using the Existing XFree86/X.Org Loadable Driver Framework to Achieve a Composited X Desktop : XGL いまいちだから Window まわりはドライバに任せとけという話. よくわからず.</li>
+</ul></li>
+<li><a href="http://www.freesoftwaremagazine.com/articles/accelerated_x">Accelerated X flame wars!... Maybe not</a> : GLX vs. AIGLX が熱いぜ, という話<ul>
+<li><a href="http://lists.freedesktop.org/archives/xorg/2006-February/013306.html">AIGLX, metacity, nvidia and Xgl</a> : XGL と AIGLX をめぐるごたごたに関する当事者の発言メール. ごたごたが好きな人向け.</li>
+</ul></li>
+<li><a href="http://principe.homelinux.net/">How xgl works</a> : XGL の仕組み解説.</li>
+<li><a href="http://ja.opensuse.org/Xgl">xgl - openSUSE</a> : XGL のページ (日本語)</li>
+<li><a href="http://ja.opensuse.org/Compiz">compiz- openSUSE</a> : Compiz のページ (日本語)</li>
+<li><a href="http://citeseer.ist.psu.edu/kilgard95system.html">System Support for OpenGL Direct Rendering (1995)</a> : OpenGL の昔話. Direct Rendering とかの基本的なアイデアに詳しい.</li>
+<li><a href="http://fedoraproject.org/wiki/RenderingProject/aiglx">AIGLX</a> : Redhat による, XGL みたいなことをやる別の実装. Accelerated Indirect GLX らしい.</li>
+<li><a href="http://cairographics.org/">cairo - introduction</a><ul>
+<li><a href="http://www.freedesktop.org/wiki/Software/glitz">freedesktp.org - Software/glitz</a></li>
+</ul></li>
+</ul>
+<p>ほか</p>
+<ul>
+<li><a href="http://www.apple.com/macosx/features/quartzextreme/">Quartz Extreme</a> : Mac OSX の Window System...なのかなあ. いまいち何を指すのかわからん.</li>
+<li><a href="http://www.udnimweb.de/Texte/sg2002bof_apple.pdf">Apple OpenGL and Quartz Extreme</a> : SIGGRAH2002 の BOF で使われたとおぼしきスライド. 世に出回るなかでは一番詳しい Quartz Extreme 資料な気がするけどなぜか Apple ではない人のサイトにある.</li>
+<li><a href="https://lg3d.dev.java.net/">lg3d: LD3G Core Project</a> : ld3g のページ.</li>
+<li><a href="http://ja.wikipedia.org/wiki/Quartz">Quartz - Wikipedia</a> : 日本語</li>
+<li><a href="http://weblogs.java.net/blog/campbell/archive/2005/03/strcrazy_improv_1.html">Chris Campbell's Blog: STR-Crazy: Improving the OpenGL-based Java 2D Pipeline</a> Java2D の OpenGL バックエンドについて</li>
+</ul>
+<h4>追記: libglade など</h4>
+<p>コメント欄でおしえてもらいました. </p>
+<p><a href="http://www.jamesh.id.au/software/libglade/">libglade</a> は
+gtk+ 用の RAD ツール <a href="glade.gnome.org/">glade</a> から
+出力された XML を実行時に解釈するライブラリらしい. 
+上のほうにある GNOME アプリケーションの図の "missing" な部分にくるものとのこと. 
+私の中では glade というと C のコードを吐く one-way RAD ツールだと思っていたけれど, 
+こんなのがあるんですね. 先のページには C と python の binding が紹介されている. </p>
+<p>直接 libglade は使っていないかもしれないけれど, 
+Mono の <a href="http://www.gotmono.com/docs/gnome/bindings/glade/glade.html">Glade#</a> 
+も実行時構築の系統だ. これは他の言語の binding より一歩先を行っており, 
+コードと GUI を結びつけるのに文字列ではなくプロパティ名をつかう. 
+プロパティにアノテーションをつけておくと, 
+処理系がそこにウィジェットのインスタンスを注入してくれるわけ. 
+つまり GUI の Dependency Injection. かっこいい. 
+(<a href="http://nat.org/demos/gtksharp.html">この screencast</a> をみると雰囲気が伝わるかも.)</p>
+<p>残念なことに Mono はいくぶん風向きがわるい．以前 osnews.com に 
+"<a href="http://osnews.com/story.php?news_id=15266">On Politics, GNOME, and Mono</a>" 
+という記事があった. 
+要するに GNOME には(おそらく)政治的な事情で Mono が入ってない. ひどいよ. という話. 
+この議論がどう決着したのか私は知らない. 
+たださすがの凄腕ハッカー達も C 言語と sed と awk だけで生きてくのは辛いだろうし, 
+そろそろモダンな高級言語に移行していいとは思う. 
+python の gtk+ binding はけっこう良くできているけれど, 
+C から以降するなら型付けの強い C# の方が馴染みはよさそうだ. 
+個人的には CLR のつかう .dll や .exe などの win32 風拡張子が
+アレルギー反応の原因じゃないかという気がしている. 
+このへんを .so にするだけで流行らないかなあ. 楽観的すぎかしら...</p>
+<p>このほか, モダンと主張しているマークアップは既存の GUI リソース類と同じという指摘があった. 
+たしかにそうだなあ. </p>
+<p>私が HTML を便利だと感じるのはなぜだろうと考えてみる. 
+たとえば win32 のリソースはテキストだけれど, 手でいじるのはしんどい. 
+レイアウトが割と固定的だからかもしれない. 
+手で編集してボタンを増やすと既存のボタンなどと重なってしまったりする. 
+HTML だと勝手にずれてくれる. 
+マークアップはフロー型のレイアウトとセットになると便利さを増すのかもしれない. 
+そのほかにも detail matters な部分がありそうだけれど
+私は GUI プログラミングは経験が浅いので, 
+普段から GUI を作っている人の意見を聞きたいところです. </p>
+<h4>追記 1-2</h4>
+<p>Mac OS X について
+<a href="http://ruriko.denpa.org/200609c.html#27">指摘をいただきました</a>. 
+ありがとうございます. </p>
+<pre>OS X について事実誤認がありますね。
+Quartz は単なる描画ライブラリではありません。 Quartz は最初の図での
+「Window Management」と「Drawing」にまたがって存在します。
+一応階層があって、Quartz 2D が 2D系の描画系全般、Quartz Compositor が
+ウインドウシステム機能を提供してます。</pre>
+<p>だそうです. 本文中の "Quartz" となっている部分を "Quartz 2D" に, 
+"Quartz Extreme" となっている部分を "Quartz Compositor" に
+読みかえるとだいたい辻褄があうかも. </p>
+<p>本文の修正は図を直す必要がありしんどいんで勘弁を...</p>
+<h4>追記 2: リファラより</h4>
+<ul>
+<li><a href="http://cappuccino.jp/keisuken/logbook/20060925.html#p03">モダンなデスクトップ処理系 - 航海日誌 (2006-09-25)</a></li>
+<li><a href="http://d.hatena.ne.jp/NyaRuRu/20060925/p1">NyaRuRuの日記 - デスクトップの裏側</a></li>
+<li><a href="http://tiki.is.os-omicron.org/tiki.cgi?c=v&amp;p=GUI">Omicron GUI</a></li>
+<li><a href="http://diary.okotama.org/?date=20060926#p03">みんな仲良しのつもり(2006-09-26)</a></li>
+<li><a href="http://ruriko.denpa.org/200609c.html#27">電波とどいた？ - 2006/09c Diary</a></li>
+<li><a href="http://b.hatena.ne.jp/entry/http://www.dodgson.org/omo/t/?date=20060922">はてなブックマーク</a></li>
+</ul>

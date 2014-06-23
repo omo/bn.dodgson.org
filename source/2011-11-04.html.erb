@@ -1,0 +1,332 @@
+---
+title: "Finagle - 都会育ちのメッセージングフレームワーク"
+date: 2011-11-04
+---
+<h3>Finagle - 都会育ちのメッセージングフレームワーク</h3>
+<p><img class='diagram' src='http://farm4.static.flickr.com/3087/3195193007_db1787b93c.jpg' /></p>
+<p>Scala でもやるかとぶつやく同僚を見て, たしかに Scala したいかも...などと意思の弱い私は気をそそられ, 
+しかし特に書くものも思いつかずなんとなくウェブをぶらぶらしていた. 
+そういえば Heroku が Scala をサポートしたニュースを読んだっけと検索すると, 
+<a href="http://blog.heroku.com/archives/2011/10/3/scala/">たしかにアナウンスがあった</a>. </p>
+<p>このアナウンスにあるサンプルコードは面白い. <a href="http://liftweb.net/">Lift</a> でも 
+<a href="http://www.playframework.org/">Play</a> でもなく, Twitter の RPC フレームワークである 
+<a href="https://github.com/twitter/finagle">Finagle</a> が使われている. 
+Finagle でサンプルを書いた理由の一つは画面におさまる簡潔さ, あとは流行り物の目新しさだろうけれど, 
+Heroku の勧める <a href="http://blog.heroku.com/archives/2011/8/3/polyglot_platform/">Polyglot Platform</a> の
+ありかたを示す意味もある気がしなくもない.</p>
+<h4>Polyglot</h4>
+<p>Polyglot という言葉を最初に目にしたのは <a href="http://www.amazon.co.jp/dp/4873114020">プロダクティブプログラマ</a> だったと思う. 
+この本がどのように Polyglot Programming を主張していたのかよく覚えていないけれど, 
+適材適所でプログラミング言語を混ぜることがあるのは確かだとうなずいたのは覚えている. 
+仕事で参加していたプロジェクトが割と polyglot で, いつも this と self のタイポに苦しんでいたからだ.</p>
+<p>その時のプロジェクトは</p>
+<ul>
+<li>クライアントが ActionScript (と C++)</li>
+<li>フロントエンドが C++</li>
+<li>バックエンドが Python, ビルドシステムが SCons</li>
+<li>細々したウェブベースのツールが JavaScript と Python</li>
+<li>テストツールが C#</li>
+<li>RPC コンパイラが Ruby</li>
+</ul>
+<p>という惨状. Ruby と C# と JavaScript は小規模だから良かったものの, 
+Python/C++/ActionScript は毎日ぜんぶさわる有様だった. 
+私は C++ 以外でコードを書けてちょっとウキウキだったけれど, 
+隣席の若者はしばらく苦労していた気がする.</p>
+<p>6 種類はやりすぎだとしても, 
+最近のウェブっぽいお仕事をしている人なら 2-3 種類は使うのではないか. 
+要するに 1. ウェブサーバや手元のマシンで動くラブリーな言語 (Ruby, Python など), 
+2. クライアント環境に強いられる言語 (Objective-C, ActionScript, JavaScript など), 
+そして場合によっては 3. なんか速いのが欲しいときの言語 (Java, Scala, C++ など) 
+くらいはさわることがあるだろう. どれか一つの言語に統一できればいいけれど, 
+それはえてして <a href="http://en.wikipedia.org/wiki/Law_of_the_instrument">Law of the instrument</a> になる. 
+だから無理せずいろんな言語を使い Polyglot しよう - おおよそこれが Heroku の主張だった. 
+(私の主張ではないので反論は Heroku blog のコメント欄にどうぞ.) </p>
+<p>サンプルに Finagle を使ったのは, 適材適所 Polyglot を提案する Heroku からのメッセージなのだ. 
+バックエンドは Scala で書いて, Ruby とは RPC すればいいじゃない...私はこう解釈し, ひとり勝手に納得した. </p>
+<p>Heroku からのメッセージがたぶん気のせいなのを認めるのにはやぶさかでない. 
+けれど少なくとも Finagle の開発元たる Twitter での Scala 利用はそんなかんじだと 
+<a href="http://www.infoq.com/interviews/kallen-scala-twitter">Nick Kallen はインタビューで説明している</a>. 
+そして田舎(Mountain View)にいると都会(San Francisco)っ子の発言がなにもかもおしゃれで素敵なものに思える. 
+Scala なおしゃれ Polyglotter を気取り, 今日は Finagle を拝むことにした. </p>
+<h4>Finagle</h4>
+<p><a href="http://twitter.github.com/finagle/">Finagle</a> は Twitter 製の RPC フレームワークである...と聞くと
+食傷気味な人もいるかもしれない. Thrift, ARVO, MessagePack(-RPC)...
+ウェブ世代の RPC は山ほどある. Scala で書けば良いってもんじゃない.</p>
+<p>けれど, Finagle はこうした流れとは少し毛色が違う. 
+Finagle は直列化より下のレイヤに重点があり, 
+イメージとしては <a href="http://msdn.microsoft.com/en-us/netframework/aa663324">WCF</a> なんかに近い. 
+PRC よりメッセージングのフレームワークと呼ぶ方がふさわしい. 
+開発者の <a href="http://days2011.scala-lang.org/node/138/286">Marius A. Eriksen による Scala Days での講演</a> 
+では "A Network Stack for the JVM" を謳っている. 
+このスタックは各コンポーネントが pluggable にできており, 
+たとえば直列化形式には Thrift を使うこともできる. 
+<a href="https://github.com/mariusaeriksen/thrift-0.5.0-finagle">Finagle 向けに 改造した Thrift コンパイラ</a> がある. </p>
+<p>プラガブルなネットワークスタックというアイデアもまた, 使い古しにみえるかもしれない. 
+昔は UNIX の <a href="http://en.wikipedia.org/wiki/STREAMS">STREAMS</a> から
+最近だと Java の <a href="http://mina.apache.org/">MINA</a> や <a href="http://www.jboss.org/netty">Netty</a> まで, 
+よく知られたパターンといえる. 
+実際, Finagle は Netty をベースに作られている. </p>
+<p>それなら...と次の疑問がわきあがる: なぜ Netty のフレームワークに従わず似たようなレイヤを再発明したのだろう. 
+たぶん Scala でクールに書きたかったからだと私はおもう. 
+都会っ子だからってそんな若気の至りが許されるのか. 田舎の中年として最初はハラスメントな気持で一杯だったが, 
+先の講演を聞いてそれなりに納得した. たしかに Scala だと色々クールに書けるかもしれない.</p>
+<h4>com.twitter.util.Future</h4>
+<p>Finagle は <a href="https://github.com/twitter/util/blob/master/util-core/src/main/scala/com/twitter/util/Future.scala">Scala で書かれた Future クラス</a> 
+を中心に非同期のプログラミングモデルを組み立てている. 
+RPC サービスは Future として結果を返すし 
+(<a href="https://github.com/twitter/finagle/blob/master/finagle-core/src/main/scala/com/twitter/finagle/Service.scala">Service.scala</a>)), 
+クライアントも同じスタイルで書く. </p>
+<p>名前は同じでも, Twitter の Future と <a href="http://download.oracle.com/javase/6/docs/api/java/util/concurrent/Future.html">Java 標準のやつ</a> は別物.
+コールバックに頼るモデルで, Python の <a href="http://twistedmatrix.com/documents/current/core/howto/defer.html">Deferred</a> なんかに近い. 
+ノンブロッキングモデルに従う Netty の上で動くことを思えばまっとうなつくりといえる. </p>
+<p>Marius A. Eriksen の講演で題材に使われていた 
+<a href="https://github.com/twitter/scala_school/">Twitter 製 Scala 教材</a> から, 
+簡易検索エンジンのコードを一例として除いてみよう. </p>
+<pre> 
+ def get(key: String) = try {
+   println("GET", key)
+   val queries = indices.map { idx =&gt;
+     idx.get(key) map { r =&gt; Some(r) } handle { case e =&gt; None }
+   }
+
+   Future.collect(queries) flatMap { results =&gt;
+     println("got results", results.mkString(","))
+     results.find { _.isDefined } map { _.get } match {
+       case Some(v) =&gt; Future.value(v)
+       case None =&gt; Future.exception(new SearchbirdException("No such key"))
+     }
+   }
+ } catch {
+   case e =&gt;
+     println("got exc", e)
+     throw e
+ }</pre>
+<p>Future.collect() のところがポイント. 一見すると単なる Ruby っぽいコードだけれど, 
+collect() の戻り値から flatMap に連なるコードに登場する変数は半分くらいが Future に染まっている. 
+Future に対して collect() や flatMap() をしておくと, 非同期のコールバックが
+帰ってきたタイミングでうまいこと仕事を進めてくれる. sharding されたバックエンドに
+まとめてリクエストを発行し, その結果を集計して返すような処理が簡潔に書ける. </p>
+<p>個人的には Future の Seq を Seq の Future に変換する collect() の未来っぽさにときめいた. 
+Future.scala は比較的善良なの Scala コードだったから, 暇なひとは眺めてみても面白いとおもう.</p>
+<h4>フィルタ/デコレータ</h4>
+<p>クライアントやサービスを直接使う部分は Finagle がもつ面白さの半分でしかない. 
+フレームワークが提供する様々な付加機能の実装も面白い.
+たとえば RPC の呼び出しを失敗に応じて再試行してくれる 
+<a href="https://github.com/twitter/finagle/blob/master/finagle-core/src/main/scala/com/twitter/finagle/service/RetryingFilter.scala">RetryFilter</a>
+なんてのがある. </p>
+<pre>
+class RetryingFilter[Req, Rep](
+  backoffs: Stream[Duration],
+  statsReceiver: StatsReceiver = NullStatsReceiver,
+  shouldRetry: PartialFunction[Try[Rep], Boolean],
+  timer: Timer
+) extends SimpleFilter[Req, Rep] {
+  private[this] val retriesStat = statsReceiver.stat("retries")
+
+  private[this] def dispatch(
+    request: Req, service: Service[Req, Rep],
+    replyPromise: Promise[Rep],
+    backoffs: Stream[Duration],
+    count: Int = 0
+  ) {
+    val res = service(request) respond { res =&gt;
+      if (shouldRetry.isDefinedAt(res) &amp;&amp; shouldRetry(res)) {
+        backoffs match {
+          case howlong #:: rest if howlong &gt; 0.seconds =&gt;
+            timer.schedule(Time.now + howlong) {
+              Trace.record("finagle.retry")
+              dispatch(request, service, replyPromise, rest, count + 1)
+            }
+          ...
+        }
+        ...
+      }
+    }
+    ...
+  }
+
+  def apply(request: Req, service: Service[Req, Rep]) = {
+    val promise = new Promise[Rep]
+    dispatch(request, service, promise, backoffs)
+    promise
+  }
+}</pre>
+<p>ここでいう Filter (SimpleFilter) は 
+<a href="http://www.oracle.com/technetwork/java/filters-137243.html">ServletFilter</a> や 
+<a href="http://rack.rubyforge.org/">Rack</a> の middleware などを
+Finagle の文脈で一般化したものだと思えばいい. </p>
+<p>RPC 呼び出しの成否判定が PartialFunction になってるところも Scala ぽくて素敵だけれど, 
+もっと面白いのは再試行間隔をあらわす backoff 変数が(無限)ストリームなところ. </p>
+<pre>
+object Backoff {
+  private[this] def durations(next: Duration, f: Duration =&gt; Duration): Stream[Duration] =
+    next #:: durations(f(next), f)
+
+  def apply(next: Duration)(f: Duration =&gt; Duration) = durations(next, f)
+
+  def exponential(start: Duration, multiplier: Int) =
+    Backoff(start) { _ * multiplier }
+  ...
+}</pre>
+<p>無駄にかっこいい...なんすかその変な演算子は...</p>
+<p>Filter という独立したインターフェイスではなく, RPC 本体をあらわす 
+<a href="https://github.com/twitter/finagle/blob/master/finagle-core/src/main/scala/com/twitter/finagle/Service.scala">Service</a> を 
+decorate/proxy するタイプの補助機能もある. 
+たとえば <a href="https://github.com/twitter/finagle/blob/master/finagle-core/src/main/scala/com/twitter/finagle/service/ShardingService.scala">ShardingService</a>.</p>
+<pre>
+class ShardingService[Req, Rep](
+  distributor: Distributor[Service[Req, Rep]],
+  hash: Req =&gt; Option[Long]
+) extends Service[Req, Rep] {
+
+  def apply(request: Req): Future[Rep] = {
+    hash(request) map { hash =&gt;
+        val shard = distributor.nodeForHash(hash)
+        if (shard.isAvailable)
+          shard(request)
+        else
+          Future.exception(ShardingService.ShardNotAvailableException)
+    } getOrElse(Future.exception(ShardingService.NotShardableException))
+  }
+
+  override def isAvailable: Boolean = distributor.nodes exists { _.isAvailable }
+  override def release() = distributor.nodes foreach { _.release() }
+}</pre>
+<p>Service の リスト(distributor) から適当なインスタンスを選んで呼び出すクラス. 
+リクエストに応じて Distributor が shard 先の実サービスを選んでくれるらしい. 
+当然 Distributor はインターフェイス (trait) になっており, 
+<a href="https://github.com/twitter/util/blob/master/util-hashing/src/main/scala/com/twitter/hashing/KetamaDistributor.scala">KetamaDistributor</a> 
+のような consistent hash 実装があったりする. かっこいい. </p>
+<p><a href="http://twitter.github.com/finagle/">マニュアルのページ</a> で宣伝されているほかの機能もだいたい似たかんじで実装されている. 
+それにしてもこんな flexible にするほど色々サービスの実装が必要なのだろうか. 都会のコードはむずかしいです...</p>
+<h4>スタックとの統合: Memcached, Kestrel, Ostrich</h4>
+<p>さてデザインの話はこのくらいで切り上げ, 野次馬っぽい見方もしていきたい. </p>
+<p>Finagle の<a href="https://github.com/twitter/finagle">トップディレクトリ</a> には, 
+いくつか気になる名前のサブディレクトリがある. 
+<a href="https://github.com/twitter/finagle/tree/master/finagle-kestrel">finagle-kestrel</a>
+や
+<a href="https://github.com/twitter/finagle/tree/master/finagle-memcached">finagle-memcached</a>
+なんてのを見ると, 各種ストレージへのアクセスは Finagle スタイルで抽象化されていることがわかる. 
+本来 RPC でないシステムにも一貫した API を与えるのは良いアイデアに思える. 
+なお finagle-mysql とかがないのは, そのレイヤを shard manager である <a href="https://github.com/twitter/gizzard">Gizzard</a> に押し込み, 
+Gizzard 相手には Thrift でアクセスするためだと思われる. この Gizzard も Scala で書かれていて何やってるのかさっぱりわからんのだけれど, 
+これは万一気がむいた時にでも読みたいとおもいます. </p>
+<p>他のモジュールも眺めてみる. <a href="https://github.com/twitter/finagle/tree/master/finagle-ostrich">finagle-ostrich</a> 
+は <a href="https://github.com/twitter/ostrich">Ostrich</a> と呼ばれる集計ライブラリとのインテグレーション. </p>
+<p>Finagle の本体であるコアパッケージは, 各所に性能を追跡する instrumentation が埋め込まれている. 
+たとえば先の RetryingFilter にも統計収集用のコードがある.</p>
+<pre>
+class RetryingFilter[Req, Rep](
+  backoffs: Stream[Duration],
+  statsReceiver: StatsReceiver = NullStatsReceiver,
+  shouldRetry: PartialFunction[Try[Rep], Boolean], // これ
+  timer: Timer
+) extends SimpleFilter[Req, Rep] {
+  private[this] val retriesStat = statsReceiver.stat("retries") // これ
+
+  private[this] def dispatch(
+    request: Req, service: Service[Req, Rep],
+    replyPromise: Promise[Rep],
+    backoffs: Stream[Duration],
+    count: Int = 0
+  ) {
+    val res = service(request) respond { res =&gt;
+      if (shouldRetry.isDefinedAt(res) &amp;&amp; shouldRetry(res)) {
+        backoffs match {
+          ....
+          case _ =&gt;
+            retriesStat.add(count) // これ
+            ...
+        }
+      ...
+      }
+    ...
+    }
+  ...
+  }
+
+ }</pre>
+<p>"retries" と名付けられたインスタンスが再試行回数の分布を追跡しているのがわかる. </p>
+<p>finagle-ostrich モジュールはコアパッケージで定義された StatsReceiver などのインターフェイスを実装している. 
+コアは集計すべき情報を提供し, finagle-ostrich と Ostrich がその情報を実際に集計, 記録する役割分担がある.</p>
+<p>Ostrich 自体は小さなライブラリで, それほど多機能ではない.
+<a href="https://github.com/twitter/ostrich/blob/master/src/main/scala/com/twitter/ostrich/stats/Histogram.scala">ヒストグラム</a> のような
+統計記録のためのデータ構造を定義したり, 収集した統計情報を定期的にロガー 
+(<a href="https://github.com/twitter/util/tree/master/util-logging">com.twitter.logging</a>) 
+に書き出したり, 統計収集の有効/無効フラグを制御する HTTP の API を提供したりといった程度. 
+ただ Ostrich が Finagle と別のパッケージに切り出されているということは, 
+少なくとも Scala で書かれたいくつかのコンポーネントがこれを使い回しているのだろう. </p>
+<p>Instrumentation のマメさはコードベースの成熟度を推し量る指標になる. 
+だから Ostrich 本体よりも, Finagle のコアの側に含まれる instrumentation を眺める方が面白い. 
+QPS や遅延のようなよくある指標以外に何を記録しているのか調べれば, 
+multitier なアーキテクチャのもつ性能上の関心事がわかりそうでしょ.</p>
+<p>適当に grep 結果を眺めてみよう:</p>
+<ul>
+<li>"connect_latency_ms" (ChannelService.scala)</li>
+<li>"failed_connect_latency_ms" (ChannelService.scala)</li>
+</ul>
+<p>この二つはあるサービスがバックエンドとの接続を終え準備完了するまでの時間を記録している. 
+システムが起動するまでの時間が案外重要な指標なのかしら. </p>
+<ul>
+<li>"connection_duration" (ChannelStatHandler)</li>
+<li>"connection_received_bytes" (ChannelStatHandler)</li>
+<li>"connection_sent_bytes" (ChannelStatHandler)</li>
+</ul>
+<p>これは netstat で見えるような値を接続単位で記録している.
+multitier だとフロントエンドとバックエンドの接続は維持することが多いので, 
+こういう接続単位の情報を眺めるのにも意味があるんだろうね.</p>
+<p>他にもロードバランスの負荷や各種の遅延などをちまちま測っている. エラい.</p>
+<h4>Dapper-like Tracing, BigBrotherBird</h4>
+<p>Finagle は <a href="http://research.google.com/pubs/pub36356.html">Dapper</a> 風の
+分散プロファイリング(tracing)をサポートを売りにしている. 
+ここでいう分散プロファイリングというのは, 
+複数ノードをまたぐ RPC の呼び出し関係を追跡し, どの呼び出しにどれだけ時間がかかったかを追跡するようなもの. 
+RPC のメッセージにトレース用の ID などを紛れこませ, その情報をもとにログをとって分析する.</p>
+<p>Finagle は tracing のために自身の Thrift 用メッセージングスタックを細工している. 
+(<a href="https://github.com/twitter/finagle/blob/master/finagle-thrift/src/main/scala/com/twitter/finagle/thrift/ThriftServerFramedCodec.scala">ThriftServerFramedCodec.scala</a> など.)
+メッセージを送信するときデータに <a href="https://github.com/twitter/finagle/blob/master/finagle-thrift/tracing.thrift">トレーシング用識別子</a> をうめこみ, 
+受信先でそれを取り出して記録する. こうした instrumentation をもとに Dapper でいう span を組み立ててログを出力する, のだろう.</p>
+<p>トレーシングの仕組み自体はプロトコルに依存しないけれど, 
+HTTP 側の実装にはぜんぜん tracing のコードがなかった. 
+単に必要がないから作ってないかんじ. 
+ヒマな人は Finagle の HTTP まわりをいじって tracing 機構を組み込んでみると面白いかもしれない. </p>
+<p>さて Ostrich と同じく, tracing についてもコアはインターフェイスだけを提供している. 
+実際のログ収集を担当するのは b3 (BigBrothrBird) と呼ばれるコンポーネントのしごとらしい. 
+<a href="https://github.com/twitter/finagle/tree/master/finagle-b3">finagle-b3</a> モジュールに
+インテグレーション用のコードがあった. </p>
+<p>ただ大変残念なことに, finagle-b3 には
+ログを書き出すコードまでしかツリーに含まれていない. 
+<a href="https://github.com/facebook/scribe">Scribe</a> で転送されたログの集計や
+プロファイル結果の表示部分は, 今のところオープンソースじゃないらしい. 
+トレースしても結果が見れないなら意味ないじゃんか...</p>
+<p>ドキュメントなどを物色したところコードは <a href="https://github.com/imownbey/BigBrotherBird">https://github.com/imownbey/BigBrotherBird</a>
+にホストされている様子を窺えたので, そのうちオープンソースいならないかなーと期待しつつ imownbey さんを follow しておいた. 
+ストーカーめ... オープンソースにしなくてもいいので, Heroku の add-on にして使えるようにしてほしいです.</p>
+<p>finagle-b3 をみてもわかるように, Finagle をきちんと使おうとするとデプロイの面倒は多そうだ. 
+開発元が内製したツールをそのままオープンソースにしただけといった風情なので, 
+運用環境に乗せる部分は文書もツールも揃っていない. 
+オープンソースにしている時点で立派なので文句を言う気にはならないけれど, 
+もうちょっと敷居が低い感じになればなあ.</p>
+<h4>RPC と AOP</h4>
+<p>といったところでだいたいひとめぐりして気がすんだ. Scala 成分も補充できて心なしか都会っ子になれた気がする. </p>
+<p>RPC で使うようなオブジェクトの直列化は, どこかリフレクション(イントロスペクション)に似ている. 
+プログラミング言語が本来もっている表現能力を越えてオブジェクトをさわることができる. 
+C++ でオブジェクトの直列化ツールを使うと楽しい理由の一つは, このドーピング感にあると個人的には思う.
+言語にはないリフレクションがツールの力で使えるようになる. </p>
+<p>そして RPC の下にあるメッセージング機構のプラガビリティは AOP に似ている. 
+フィルタやデコレータを使えば, RPC の呼び出し前後をフックできる. 
+プログラマはこのフックを AOP の Pointcut がわりに使える. 
+統計情報収集やプロファイリングなんて Pointcut の典型的な応用だ. </p>
+<p>メッセージングフレームワークの制約を受け入れることで, 
+Scala の言語が本来持っていなかったアスペクト指向の真似事ができる. 
+C++ で直列化ツールを使うのに似たドーピング感がある. 
+(最近の Java フレームワークはバイトコード生成を使ったアスペクト指向ができるので, 
+言語の限界は曖昧になっているけれど...)</p>
+<p>Future の抽象もノンブロッキングの面倒をなんとなく隠してくれて, 
+そこには Erlang 的軽量プロセスに通じる幻を見れなくもない. 
+冒頭で紹介したインタビューの中で Nick Kallen は Actor より Future を推していた. 
+Finagle を見たあとならその気持もわかる.</p>
+<p>ドーピングでハイになり未来の幻をキメる一方, 一連のスタックとの統合や instrumentation を忘れない手堅さもある. 
+そんな都会派フレームワークの Finagle で Polyglot な明日を感じてみたいものでありますが, 気のせいかもしれません.  </p>
+<p>東京には来週かえります. 都会だ! あらあらかしこ. </p>
+<p>( 写真: <a href="http://www.flickr.com/photos/kevineddy/3195193007/">http://www.flickr.com/photos/kevineddy/3195193007/</a> )</p>

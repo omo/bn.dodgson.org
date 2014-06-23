@@ -1,0 +1,81 @@
+---
+title: "無事です"
+date: 2011-03-12
+---
+<h3>近況</h3>
+<p>無事です. </p>
+<p>はいいとして, 先週 <a href="http://shibuyajs.org/articles/2011/02/28/test">Shibuya.js で話してきました</a> 
+(<a href="http://www.slideshare.net/omododgsonorg/2011-0302drt">スライド</a>).
+空気をよまず JS と無関係の話をしてしまいやや申しわけなかったけれども, 
+WebKit の<del>様々な幻想をぶちこわす</del>開発の様子を知ってもらうことには個人的な使命感を感じておりつまりこれはちょっとした十字軍なのです.</p>
+<h4>JS のテストってなんでむずかしいの?</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%83%AC%E3%82%AC%E3%82%B7%E3%83%BC%E3%82%B3%E3%83%BC%E3%83%89%E6%94%B9%E5%96%84%E3%82%AC%E3%82%A4%E3%83%89-Object-Oriented-SELECTION-%E3%83%9E%E3%82%A4%E3%82%B1%E3%83%AB%E3%83%BBC%E3%83%BB%E3%83%95%E3%82%A7%E3%82%B6%E3%83%BC%E3%82%BA/dp/4798116831%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4798116831' class='bookcover'><img data:asin='4798116831' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51MtlVCi45L.jpg'></span></a></span></p>
+<p>地震さわぎで自宅警備中の人も多いだろうから, 
+お互いの気晴らしをかねてだらだら書きたい. </p>
+<p>JavaScript のテストについてぐぐったりついったを読んだりしていると,
+JavaScript でテストを書くのは大変だとか難しくてやってないという話が多くて不思議におもった. 
+私は JavaScript を使ってウェブアプリを作る仕事をしたことがなく, いまいち難しさがピンとこない. 
+趣味でさわっている範囲だと普通に書ける. 
+なぜ人は難しさを感じるのだろう. 誹謗中傷は承知のうえ印象を書いてみるので, 
+俺は違う理由だという人は教えてください.</p>
+<p>印象: <em>JavaScript 周辺では開発者テストの歴史が繰り返されている.</em></p>
+<p>私はあるとき割とテストの書きにくいレガシー気味の仕事をしていたことがあって, 
+その仕事中はどうテストを書くかにもっぱら頭をひねっていた. 
+その仕事が済んだ少し後に <a data:asin='4798116831' href='http://www.amazon.co.jp/%E3%83%AC%E3%82%AC%E3%82%B7%E3%83%BC%E3%82%B3%E3%83%BC%E3%83%89%E6%94%B9%E5%96%84%E3%82%AC%E3%82%A4%E3%83%89-Object-Oriented-SELECTION-%E3%83%9E%E3%82%A4%E3%82%B1%E3%83%AB%E3%83%BBC%E3%83%BB%E3%83%95%E3%82%A7%E3%82%B6%E3%83%BC%E3%82%BA/dp/4798116831%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4798116831'>レガシーコード改善ガイド</a> を読んだとき
+いたく感動したのは, 自分が苦労してなんとなくやっていた(以上の)ことが, 綺麗に整理された形で示されたからだと思う. </p>
+<p>ところが, その後スクラッチからコードを書く仕事や Python や Ruby なんかでウェブを作る
+仕事をしたときは, レガシーコード対策について苦労することはなかった. 
+新しい環境には最初からテストの仕組みが備わっているし, 仕組みがない時もわざわざテストできないコードは書かない. 
+そんな仕事をするうち, 
+レガシーコード改善ガイドは過渡期のテクニック集にすぎず
+<a data:asin='0131495054' href='http://www.amazon.co.jp/xUnit-Test-Patterns-Refactoring-Addison-Wesley/dp/0131495054%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0131495054'>xUTP</a> の方がより根深い問題に挑んでいると感じはじめた. 
+細かい違いはあれ, 世の中の人もおおおむねこの順番で学んだのではないかと思う.</p>
+<p>JavaScript のテストに関する不平不満は,
+レガシーコード相手にテストをしない人達の言い訳によく似ている. 
+レイアウトや副作用, ブラウザの互換性, イベントのエミュレーションといった最近の苦労話は, 
+システムコールや 外部入出力, コンパイラやターゲット OS の互換性, フレームワークとの結合のような十年前の言い訳に呼応する. 
+JavaScript のまわりだけ時代が xUTP 紀からレガシーコード紀に先祖返りした感じで面白い.</p>
+<h4>レガシーな JavaScript?</h4>
+<p>私の趣味 JavaScript がテストに苦労しないのは,
+新しく書かれた非レガシーコードだから...つまり趣味だから, というだけの話に思える. </p>
+<p>JavaScript にとってのレガシーコードとは, たとえばどんなものだろう. 
+出来合いの DOM を jQuery でちょろっと動かすようなやつ...というと語弊があるけれども, 
+サーバ側で生成したページの DOM を動かしたり XHR で取得した HTML 片をページに差し込むようなコードは
+レガシーと呼ぶにふさわしいテスト難度を持っている気がする. </p>
+<p>ブラウザの中で動くコードだけをテストしたくても, 
+コードが HTTP ... JavaScript にとっての外部入出力 ... にべったりくっついていると, 単独でテストするのは難しい. 
+20 世紀でいうと継承元の MFC クラスが HWND を抱えて簡単にインスタンス化できないかんじ. 
+テストしたい自分のコードが, 扱いにくい資源(ウィンドウ, アプリケーションサーバ)と密着している.</p>
+<p>そのレガシーをどうテストすべきかは当事者に考えてもらうとして, 
+同じ文脈の "レガシーでないコード" とはどんなものだろう. 
+たぶん JavaScrpt が HTML 全体を組み立てるスタイルだと思う. </p>
+<h4>レガシーでない JavaScript?</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Closure-Definitive-Guide-Michael-Bolin/dp/1449381871%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1449381871' class='bookcover'><img data:asin='1449381871' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51-cKV0pS8L.jpg'></span></a></span></p>
+<p><a href="http://www.sproutcore.com/">SproutCore</a>, 
+<a href="http://www.sencha.com/products/extjs/">Sencha (Ext JS)</a>, 
+<a href="http://code.google.com/closure/">Closure</a> といった JavaScript ライブラリは
+JavaScript の中で GUI を組み立てる. 自分でも GUI 部品を書く. 
+ページ自体を一つの GUI コントロール(コンテナ)にできる. </p>
+<p>テストでは対象の GUI コントロールをインスタンス化しメソッドを呼べばいい. 
+私は Closure しか試していないけれど, こうしたテストは特に労なく書けた. 
+GUI を組み立てるのに必要なデータは (View に対する) Model として分離し, 
+適当な fixture を与えればいい. サーバ用に書いていたテストがごっそりブラウザ側に来る感じ. </p>
+<p>凝った GUI の必要ないアプリケーションなら
+大仰なコンポーネントライブラリはいらない. 
+テンプレートで一気に HTML を生成したい.
+このテンプレート路線でも, 
+Model と View を分離し View の HTML をクライアント側で生成するとテストしやすい. 
+私は <a href="http://documentcloud.github.com/backbone/">Backbone.js</a>(+<a href="http://documentcloud.github.com/underscore/">Underscore.js</a>) 
+という小さなライブラリを試しているけれど, 最低限必要なものは揃っているかんじ. 
+テンプレートのテキストは CoffeScript のヒアドキュメントとして View のコードに埋め込むとだいぶすっきりする. </p>
+<p>ただ Closure は大袈裟すぎ, Backbone.js は非力すぎる. jQuery には構造がない. 
+かつて Rails をさわった時のようなぴたっと収まる座りのよさを, 
+私はまだ JavaScript から感じたことがない. 
+JavaScript のテスト手法に決定打がないと感じるのは, 
+こうしたレガシーでない(と私が思う) JavaScript 開発の足場に決定打がない症状なのかもしれない. 
+いいのがあったら教えてください. </p>
+<p>開発者テストの歴史に照らし, 
+Rails のようなテスト支援を持つ足場がレガシーを駆逐しプログラマは末永く幸せに暮らしましたとさ...
+というハッピーエンドを趣味プログラマとしての私は夢みているけれど, 
+職業 JavaScript プログラマに必要なのはレガシー JavaScript と闘うテクニックなのだろうなあ. 
+そういう話をそのうち誰かに書いてほしいです.</p>

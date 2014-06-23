@@ -1,0 +1,229 @@
+---
+title: "正規表現はお好き?"
+date: 2007-12-15
+---
+<h3>正規表現はお好き?</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Beautiful-Code-Leading-Programmers-Practice/dp/0596510047%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596510047' class='bookcover'><img data:asin='0596510047' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41KgoUYIbiL.jpg'></span></a></span>
+積んであった <a data:asin='0596510047' href='http://www.amazon.co.jp/Beautiful-Code-Leading-Programmers-Practice/dp/0596510047%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0596510047'>Beautiful Code</a> を読んでみる. 
+第一章はカーニハンによる正規表現の話. 数十行のコードで簡単な正規表現を実装してみせる. 
+パターン文字列を内部表現に変換せずマッチに使うぜ, コードも短い, ビューティホー! 
+...という主張なのだが, それはほんとにビューティホーなのか. UNIX 人の感覚にはついていけない. </p>
+<p>それにしても彼らは正規表現が好きだ. いつものその話ばかりしている. 
+<a data:asin='4756149480' href='http://www.amazon.co.jp/The-UNIX-Programming-Eric-S-Raymond/dp/4756149480%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4756149480'>artu</a> はいうまでもなく <a data:asin='4756136494' href='http://www.amazon.co.jp/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0%E4%BD%9C%E6%B3%95-%E3%83%96%E3%83%A9%E3%82%A4%E3%82%A2%E3%83%B3-%E3%82%AB%E3%83%BC%E3%83%8B%E3%83%8F%E3%83%B3/dp/4756136494%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4756136494'>プログラミング作法</a> にも正規表現が出てきた. 
+まったくこのマンネリめ. そう斜に構えつつ読み直してみると, 案外ラディカルな話も載っているのに気付く. 
+9.7 "オンザフライコンパイル" より:</p>
+<blockquote><p>Ken Thompson はまさにこの方法によって 1967 年に IBM7094 上に正規表現を実装した. 
+彼のバージョンは, 正規表現に含まれる様々な処理を小さなブロック単位の7094バイナリ命令とし生成し, 
+それらを互いに組合せたものを通常の関数のように呼び出すことによって
+プログラムを実行するようになっていた.</p>
+</blockquote>
+<p>正規表現で JIT! かっこいい. しかも 40 年前. UNIX の先人はエラかった. 
+ちょっとくらいマンネリでもいい. 私もその敏腕にあやかりたい. </p>
+<h4>llre : LLVM で JIT つき正規表現</h4>
+<p>そんなわけで JIT つき正規表現をつくってみた. 
+(<a href="http://dodgson.org/omo/toybox/">hg</a>, <a href="http://dodgson.org/omo/toybox/?file/tip/llre/">ブラウズ</a>, <a href="http://dodgson.org/omo/toybox/?archive/tip.tar.gz">スナップショット</a>)</p>
+<ul>
+<li>正規表現の機能は minimum なので実用には耐えない.<ul>
+<li>対応しているもの: アルファベット, 数字, "*", "|", カッコ, エスケープ, epsilon</li>
+<li>対応していないものの例: マルチバイト文字, "?", "+", "^", "$", ".", 文字クラス, そのほか...</li>
+</ul></li>
+<li>サンプルとしてしょぼい grep もどきを添付</li>
+</ul>
+<p>JIT はしたいけど x86 の仕様を調べるのが辛い現代っ子の私は LLVM を頼った. 
+LLVM からとりだした関数ポインタを呼び出しマッチが動く瞬間はちょっと感動. Thompson, オレやったよ.</p>
+<h4>ベンチマーク</h4>
+<p>JIT でどのくらい速くなったかベンチマークをとってみよう.
+まずテスト用に作ったインタプリタと比較する. これより遅いとまずい.</p>
+<p>こんなかんじで:</p>
+<pre># benchmark.sh
+PATTERN_LLGREP="\/\/\ *(TODO|FIXME)" # コメント行に TODO か FIXME が含まれる
+for i in `jot 10 1`; do
+  # -i でインタプリタモードに.
+  find ~/src/boost_1_33_1/ -name "*.cpp" -or -name "*.hpp" | xargs ./llgrep -i -q -v "${PATTERN_LLGREP}"
+done</pre>
+<p>ためす:</p>
+<pre>$time sh benchmark.sh
+real    0m58.354s
+user    0m38.798s
+sys     0m5.435s</pre>
+<p>JIT で動かすと...</p>
+<pre>$vi benchmark.sh # -i オプションを消す
+$time sh benchmark.sh
+real    0m36.370s
+user    0m16.869s
+sys     0m5.423s</pre>
+<p>1.6 倍か. うーん...遅くはないけど苦労の割に速くないなあ. 
+ただ boost のファイルは全部で 6000 近くあるから, ファイル開閉のオーバーヘッドが気になる. 
+そこで, まず対象のファイルをひとつにまとめる.</p>
+<pre>$find ~/src/boost_1_33_1/ -name "*.cpp" -or -name "*.hpp" | xargs cat &gt;&gt; boost_cat.cpp
+$wc boost_cat.cpp
+  875578 2892653 28791016 boost_cat.cpp</pre>
+<p>87 万行, 28MB のファイルができた. これで測りなおそう. </p>
+<p>スクリプトは同じ.</p>
+<pre>PATTERN_LLGREP="\/\/\ *(TODO|FIXME)"
+A_FILE=boost_cat.cpp
+for i in `jot 10 1`; do
+  ./llgrep -i -q -v "${PATTERN_LLGREP}" ${A_FILE}
+done</pre>
+<p>インタプリタ:</p>
+<pre>$ time sh ./benchmark.sh
+real    0m25.514s
+user    0m25.093s
+sys     0m0.391s</pre>
+<p>JIT:</p>
+<pre>$ time sh ./benchmark.sh
+real    0m3.556s
+user    0m3.166s
+sys     0m0.377s</pre>
+<p>7.2 倍! このくらい速いなら JIT した甲斐もあるよね. </p>
+<h4>grep との比較</h4>
+<p>ついでに grep とも比べてみた.</p>
+<p>正規表現を grep 用になおして...</p>
+<pre>PATTERN_GREP="// *\(TODO\|FIXME\)"
+A_FILE=boost_cat.cpp
+for i in `jot 10 1`; do
+   grep -q "${PATTERN_GREP}" ${A_FILE}
+done</pre>
+<p>実行.</p>
+<pre>$ time sh ./benchmark.sh
+real    0m0.102s
+user    0m0.050s
+sys     0m0.045s</pre>
+<p>うは! 35倍って... ちなみに xargs 版は 9 倍.</p>
+<pre>$ time sh ./benchmark.sh
+real    0m4.098s
+user    0m2.416s
+sys     0m1.398s</pre>
+<p>なんでこんなに速いんだ. 精神的ダメージのあまり GNU grep のコードを覗いてみることに. 
+(私はマカーなので BSD grep で実験しているけれど, 試してみると GNU grep も同じくらい速かった.)</p>
+<p>grep は正規表現を DFA にコンパイルし, 状態マシンとして動作する. 
+<a data:asin='0321486811' href='http://www.amazon.co.jp/Compilers-Principles-Techniques-Alfred-Aho/dp/0321486811%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321486811'>dragon book</a> をコピっただけの llre も大枠では同じアルゴリムに倣っている. なのに性能差 35 倍...
+実行時のホットスポットである状態遷移ループを見てみよう. </p>
+<pre>
+/* from dfa.c : マルチバイト対応部などは省略 */
+size_t
+dfaexec (struct dfa *d, char const *begin, size_t size, int *backref)
+{
+   ...
+  s = 0;
+  p = (unsigned char const *) begin;
+  end = p + size;
+  trans = d-&gt;trans; /* trasn はアルファベットを索引とする dfa の遷移表 */
+
+  for (;;)
+    {
+      while ((t = trans[s])) /* このループがメインの状態遷移 */
+        s = t[*p++];
+
+      /* 遷移配列がない: 遷移できないハズレ状態を引いた? */
+
+      if (s &lt; 0)
+        {
+          /*
+           * 一度もマッチすることなくハズレ状態に遷移した場合はリジェクト.
+           * 最初の状態から再開. (終端なら失敗)
+           * p はこのままでいいんだろうか?
+           * llre は保守的に前回の一文字次まで戻している...
+           */
+          if (p == end)
+            {
+              return (size_t) -1;
+            }
+          s = 0;
+        }
+      else if ((t = d-&gt;fails[s]))
+        {
+          /* 直前は受理状態だった? */
+          if (d-&gt;success[s] &amp; sbit[*p])
+            { /* offset を返す.
+               * ポインタは進みすぎてる気がするけど grep 的には問題ない
+               */
+              if (backref)
+                *backref = (d-&gt;states[s].backref != 0);
+              return (char const *) p - begin;
+            }
+
+          /* 潜在的な受理状態が続く:
+           * d-&gt;fails がもうひとつの遷移表として使われている (ややこしすぎる...)
+           */
+          s = t[*p++];
+        }
+      else
+        { /* 遷移配列がまだない. 再構築してリトライ */
+          build_state(s, d);
+          trans = d-&gt;trans;
+        }
+    }
+}</pre>
+<p>中心となるループが単純な二段の配列ルックアップに収まっている. なかなかビューティホー. 
+llre のループは lex が出力するコードのような二段の switch 文. 
+ここだけ見てもだいぶ差がありそうだとわかる. ビューティー度も劣る. 
+また llre では文字列の先頭からマッチを判断する match() を実装し, 
+grep のように部分一致を探す search() は match() を使って実装している. grep は search() に特化しており無駄がない. 
+こりゃ 35 倍速くても不思議じゃないかも...</p>
+<p>grep はこのほかにも細かな高速化を行っている. 
+たとえばパターンが単一文字列の時は Boyer-Moore を, 複数文字列のセットの時は trie を使う. 
+長い時間をかけて鍛えられたコードの貫禄がある. </p>
+<h4>正規表現 VM たち</h4>
+<p>ついでに他の実装も覗こうと 
+<a href="http://www.geocities.jp/kosako3/oniguruma/">鬼車</a>, 
+<a href="http://www.pcre.org/">PCRE</a>, 
+<a href="http://jakarta.apache.org/oro/">ORO</a> を眺めた. 
+偶然なのか, これらには共通の特徴がある. 
+どれも正規表現をバイトコードにコンパイルし, 内部の VM がそれを実行するのだ. おどろき. 
+正規表現というのは DFA に変換して状態マシンにするものだと思っていた. 
+状態マシンが入力文字列をイテレートして処理を進めるのに対し, 
+VM 実装はバイトコードの命令列が処理を駆動する. 
+スタック(の配列)があって PC(のローカル変数)もある. アーキテクチャが全然違う. </p>
+<p>正規表現 VM にどんな命令セットを用意すべきか私には見当もつかない. 
+それでも実際の opcode をみると, 色々と納得するところはある. 
+perl や ruby など, 世の中の正規表現はプリミティブな正規表現を大きく拡張している. 
+そうした拡張は理論上どれもプリミティブな表現に変換できる構文糖だとされている. 
+しかし実際には変換なしに解釈した方がずっと効率よく動かせるものもある. </p>
+<p>たとえば "[:alpha:]" は "(a|b|c|....)" に変換できるが, テーブルを引く関数 isalpha() を使った方が速いだろう. 
+それに対象の文字セットが大きいと, "(あ|い|...)" と変換するのがそもそも現実的でない. "." なんて目もあてられない.</p>
+<p>もう一つの例としては "x+" がある. これを "xx*" に変換すると "x" を複製する必要がある. 
+"+" をそのまま解釈できれば内部表現を小さくできるかもしれない. {m,n} もおなじ. </p>
+<p>このように, 拡張を直接解釈する潜在的なメリットは大きい. 
+しかし状態マシンにこれらの拡張を組み込もうとすると事態が複雑になるだろうと察しがつく. 
+DFA のアルファベット集合をどう表現するか, firstpos や followpos の計算は? 
+そんなややこしい問題を抱えながら DFA に変換するくらいなら, 
+いっそ正規表現を言語とみなしてコンパイルしてしまおう. 
+そう考えるのはアリかもと思えてくる. </p>
+<p>命令主導の制御構造と相性のいい高速化もある. 
+たとえば鬼車には OP_EXACTN という opcode があり, 
+operand で指定された長さの文字列と入力の文字列をマッチする. </p>
+<pre>
+
+/* regexec.c:match_at() */
+...
+   case OP_EXACTN:  MOP_IN(OP_EXACTN);
+     GET_LENGTH_INC(tlen, p);
+     DATA_ENSURE(tlen);
+     while (tlen-- &gt; 0) {
+       if (*p++ != *s++) goto fail;
+     }
+     sprev = s - 1;
+     MOP_OUT;
+     continue;
+...</pre>
+<p>これは文字単位でループを駆動する状態マシンだとやりにくい仕組みだと思う. 
+鬼車にはこの亜種で OP_EXACT1 ... OP_EXACT5 が用意されており, 
+五文字までの文字列は比較のループがアンロールされていたりする. がんばってるなー. </p>
+<p>なお VM ベースのエンジンは基本的に NFA 的なマッチを行う. 
+後方参照や部分マッチのとりだしを実現するにはその方が楽だからだという. 
+Russ Cox による "<a href="http://swtch.com/~rsc/regexp/regexp1.html">Regular Expression Matching Can Be Simple And Fast</a>" 
+という記事では特定のパターンで見せる大きな性能低下を根拠に NFA ベースの実装を批判し, 
+NFA と DFA のハイブリッドなアルゴリズムを紹介している. </p>
+<p>この記事では PCRE 6.4 を遅いライブラリのひとつとして槍玉に上げている. 
+私の見た最新版の PCRE 7.4 ではこの批判を受けて ... かどうかはさておき, DFA のハイブリッドアルゴリズムも実装していた. 
+(pcre_dfa_exec.c) 
+この実装は一つ面白い特徴がある: pcre_dfa_match() は NFA 実装である pcre_exec() と同じバイトコードを解釈する. 
+言ってみれば PCRE には一つのバイトコードを動かす二種類の VM が入っている. 
+Cox の記事は NFA の状態グラフを使って DFA を実行する話だった. 
+PCRE はそれをうまく VM の仕組みに取り入れている. ビューティホーだと思う.</p>
+<h4>最速の正規表現ライブラリがあるなら</h4>
+<p>これだけ VM スタイルの実装が幅を利かせているところをみると, JIT つき正規表現もそう悪くない気がしてくる. 
+VM の高速化といえば JIT でしょ. 評価ループが消えるだけでなく, 
+細かなオプションでの分岐や文字コード関係の多態もコンパイル時に解決できる. VM の JIT 化には夢があるなあ. 
+35 倍の大敗を喫した llre だけれど, これは JIT が悪いのではなく私の実装がへぼいだけ...だよね, Thompson?</p>

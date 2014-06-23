@@ -1,0 +1,383 @@
+---
+title: "C++ と DI"
+date: 2007-08-17
+---
+<h3>C++ と DI</h3>
+<p>Java と DI (<a href="http://kakutani.com/trans/fowler/injection.html">Dependency Injection</a>) の世界から C++ に戻ってくると気が滅入る. すべてがくっついている. ああ... "<a data:asin='0131177052' href='http://www.amazon.co.jp/Working-Effectively-With-Legacy-Code/dp/0131177052%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0131177052'>Working Effectively With Legacy Code</a>" に従ってバリバリと依存を引き剥がすことになるんだけれど, もうウンザリ. せめて新たに書くコードはレガシー風味とさよならしたい. DI したい. </p>
+<p>C++ にも少しは DI コンテナの実装がある. 
+<a href="http://code.google.com/p/autumnframework/">Autumn Framework</a> とか. 
+ただリフレクションのない C++ では DI コンテナを使う有難味が薄い. 
+Autumn Framework の<a href="http://code.google.com/p/autumnframework/wiki/Manual_1_A_Sample">チュートリアル</a>を見ると無力感に襲われる. 閉じた型システムの再発明. 
+C++ の限界もあるだろうから, あまり責める気は起きない. 
+COM のような既存のオブジェクトシステムに DI を載せることはできるかもしれない. 
+けれど資産を活かせる事情がない限りオーバーヘッドが大きすぎる. 
+できれば Plain Old C++ Object を使いたい. </p>
+<p>コンテナのフレームワークがなくても DI の旨味は十分にある. 
+依存関係を外に押し出せるし, テストもできる. 
+そこでフレームワークを使わない手動の DI について少し考えてみたい. </p>
+<h4>方針</h4>
+<p>DI にはいくつかのバリエーションがある. 
+大きな区分としては setter injection と constructor injection という
+注入方法の違い. どちらかに絞る必要はないけれど, 
+C++ の RAII 原則に揃えるなら constructor injection が自然. 
+基本はこちらに揃えつつ, 
+循環参照が必要などの事情に合わせて setter injection を併用すればよさそうだ. </p>
+<p>そのほか C++ 固有の問題がある. </p>
+<ul>
+<li>C++ には GC がない. 寿命管理はどうしよう.</li>
+<li>C++ には テンプレートがある. コンパイル時の多態をうまく使えないかしら.</li>
+</ul>
+<p>こうした点を踏まえつつ話を進める予定. </p>
+<h4>案 1: 実行時多態とスマートポインタ</h4>
+<p>まずは素朴に行こう. Martin Fawler の例をそのまま C++ に移植してみる. 
+寿命管理にはスマートポインタを使っておく. </p>
+<pre>
+
+ /* movie の値オブジェクト */
+ class movie_t {
+ public:
+   movie_t(const std::string&amp; t, const std::string&amp; d)
+     : m_title(t), m_director(d) {}
+
+   // ...
+ private:
+   std::string m_title;
+   std::string m_director;
+ };
+
+ /* movie finder インターフェイス */
+ class movie_finder_t {
+ public:
+   typedef std::vector&lt;movie_t&gt; list_type;
+
+   virtual ~movie_finder_t() {}
+   virtual list_type find_all() const = 0;
+ };
+
+ /* 参照はスマートポインタで */
+ typedef boost::shared_ptr&lt;movie_finder_t&gt; movie_finder_ptr;
+
+ /* movie lister は具象クラス */
+ class movie_lister_t : boost::noncopyable {
+ public:
+   typedef movie_finder_t::list_type list_type;
+
+   /* constructor injection */
+   movie_lister_t(movie_finder_ptr finder) : m_finder(finder) {}
+
+   list_type find_directed_by(const std::string&amp; director) const {
+     list_type ret = m_finder-&gt;find_all(); // ここで finder を使っている
+     // ...
+     return ret;
+   }
+
+ private:
+   movie_finder_ptr m_finder;
+ };
+
+ // ...
+
+ /* movie finder の実装 */
+ class colon_movie_finder_t : public movie_finder_t, boost::noncopyable {
+ public:
+   colon_movie_finder_t(const std::string&amp; filename)
+     : m_filename(filename) {}
+
+   virtual list_type find_all() const {
+     list_type ret;
+     // ...
+     return ret;
+   }
+
+ private:
+   std::string m_filename;
+ };
+
+ /* アプリケーションはコンストラクタで接続を行う */
+ class application_t {
+ public:
+  application_t(const std::string&amp; filename)
+     : m_lister(to_ptr(new movie_lister_t
+                       (to_ptr(new colon_movie_finder_t(filename))))) {}
+
+ // ...
+ private:
+   movie_lister_ptr m_lister;
+ };</pre>
+<p>例では boost::shared_ptr を使っているけれど, 
+COM のように侵入的な参照カウンタを使っているなら自身のスマートポインタを使ってもいい. </p>
+<h4>案 2: 実行時多態と寿命コンテナ</h4>
+<p>スマートポインタには循環参照を扱えない欠点がある. 
+オーバーヘッドもある. 動的にメモリを確保するし, 
+参照カウンタの操作にはロックがいるかもしれない. 
+それに世の中の C++ プログラマは案外スマートポインタ嫌いが多い. 
+そこでスマートポインタを使わない方法も考えてみる. </p>
+<p>多くのアプリケーションは固有のスコープをいくつか持っており, 
+それに合わせてオブジェクト群を作ったり捨てたりする. 
+ウェブサーバならリクエスト, ブラウザならページ, レンダラならフレーム, 
+データベースならトランザクション... 
+そのスコープ内にあるオブジェクトを管理するためのコンテナを作ろう. 
+コンテナが一括して寿命を握り, 
+コンテナ内のオブジェクトは寿命を気にせず素のポインタを使う. 
+(<a href="http://svnbook.red-bean.com/en/1.1/ch08s05.html">APR のような Memory Pool</a> 
+の型付けバージョンだと思ってもいい.)</p>
+<pre>
+ class movie_lister_t {
+ public:
+   movie_lister_t(movie_finder_t* finder) : m_finder(finder) {}
+
+   // ...
+ private:
+   movie_finder_t* m_finder; /* 素のポインタで OK */
+ };
+
+ //...
+
+ /* 寿命コンテナ */
+ class application_t {
+ public:
+   application_t(const std::string&amp; filename)
+     : m_finder(filename), m_lister(&amp;m_finder) {} /* 接続 */
+
+   //...
+ private: /* 寿命がスコープに付随するオブジェクトを保持 */
+   colon_movie_finder_t m_finder;
+   movie_lister_t m_lister;
+ };</pre>
+<p>なお, 循環参照があると
+コンストラクタの初期化子だけで接続を済ませることができない. 
+オブジェクトを接続するコードをコンストラクタ内に書く必要がある. 
+RAII が弱まるけれど仕方ない. </p>
+<h4>案 3: テンプレートによるコンパイル時多態</h4>
+<p>これまでの DI は実行時多態を使っているけれど, 
+実行時の多態がいつも必要とは限らない. 
+Java でもテスト用のモックと実クラスの二種類しかないことは多い. 
+どちらを使うかはコンパイルの時点でわかっている. </p>
+<p>そんな時, C++ ならテンプレートによるコンパイル時多態を使うことができる. 
+コンパイル時多態なら仮想関数のオーバーヘッドがないだけ速くなる. 
+インライン展開も期待できる. 性能への影響は大きい. </p>
+<pre>
+ /* インターフェイスのかわりに型パラメタを使う */
+ template&lt;class MovieFinder&gt;
+ class movie_lister_t {
+ public:
+   typedef MovieFinder finder_type;
+   typedef typename finder_type::list_type list_type;
+
+   movie_lister_t(finder_type* finder)
+     : m_finder(finder) {}
+
+  // ...
+ private:
+   finder_type* m_finder;
+ };
+
+ /* MovieFinder の実装. インターフェイスクラスを継承しなくなった */
+ class colon_movie_finder_t : boost::noncopyable {
+ public:
+   colon_movie_finder_t(const std::string&amp; filename)
+     : m_filename(filename) {}
+
+   list_type find_all() { /* virtual でない */
+     // ...
+   }
+
+   // ...
+ };
+
+ // ...
+
+ /* 寿命コンテナに大きな違いはなし. */
+ class application_t {
+ public:
+   typedef colon_movie_finder_t finder_type;
+   typedef movie_lister_t&lt;finder_type&gt; lister_type;
+
+   application_t(const std::string&amp; filename)
+     : m_finder(filename), m_lister(&amp;m_finder) {}
+
+   // ...
+ private:
+   finder_type m_finder;
+   lister_type m_lister;
+ };</pre>
+<h4>案 4: 実体の埋め込み</h4>
+<p>Java は関連と集約を区別しない. オブジェクトは常に参照を通して扱う. 
+C++ では関連をポインタ, 集約 (特にコンポジション) を実体として扱うことができる. </p>
+<pre>
+/* ポインタを使った関連 */
+class Foo {
+  Bar* m_bar;
+};
+
+/* 実体を使ったコンポジション */
+class Foo {
+  Bar m_bar;
+};</pre>
+<p>実体を使うとポインタのぶんだけ空間効率がいい. ついでに寿命管理もシンプルになる. 
+データベースの問合せ結果やメッシュの頂点のように大量に作られるオブジェクトでは
+できるだけ空間効率を上げたい. </p>
+<p>手動 DI でも実体を使おう. 
+movie finder の実体を movie lister に埋めこんでみる. 
+(意味的にはおかしいけれど見逃してください.) </p>
+<pre>
+ template&lt;class MovieFinder&gt;
+ class movie_lister_t {
+ public:
+   typedef MovieFinder finder_type;
+   typedef typename finder_type::list_type list_type;
+
+   movie_lister_t(const std::string&amp; filename)
+     : m_finder(filename) {}
+
+   list_type find_directed_by(const std::string&amp; director) const {
+     list_type ret = m_finder.find_all(); /* "-&gt;" が "." に */
+     // ...
+     return ret;
+   }
+
+ private:
+   finder_type m_finder; /* finder を実体で持っている */
+ };
+
+ // ...
+
+ class application_t {
+ public:
+   typedef movie_lister_t&lt;colon_movie_finder_t&gt; lister_type;
+
+   application_t(const std::string&amp; filename)
+     : m_lister(filename) {}
+   // ...
+ private: /* finder を持たなくなった */
+   lister_type m_lister;
+ };</pre>
+<h4>案 5: コンストラクタ引数の制約</h4>
+<p>実体の埋め込みには面倒なことがある. 
+埋めこまれたオブジェクトのコンストラクタにはどうやって引数を渡そう. 
+上の例では適当にごまかしたけれど, 
+たとえばモックと実クラスで引数の型や個数が違うと困る. 
+テスト用 mock_movie_finder_t の
+コンストラクタには find_all() で返す値のリストを渡したい, なんてことはある. </p>
+<p>仕方ないのでクラスに制限をつけよう. 
+DI するクラスはコンストラクの引数を ctor_type 型として
+公開しなければいけないことにする. </p>
+<pre>
+ class colon_movie_finder_t : boost::noncopyable {
+ public:
+   typedef std::vector&lt;movie_t&gt; list_type;
+   typedef std::string ctor_type; /* コンストラクタ引数の型を公開 */
+
+   colon_movie_finder_t(const ctor_type&amp; ctor)
+     : m_filename(ctor)
+   {}
+
+   // ...
+ };</pre>
+<p><a href="http://www.generic-programming.org/languages/conceptcpp/tutorial/">concept</a> 
+で書くとこんなかんじ. (たぶん.)</p>
+<pre>
+ concept ConstructorInjectable&lt;typename T&gt; {
+   typename ctor_type;
+   T::T(const ctor_type&amp;);
+ };</pre>
+<p>結局こんなふうになる:</p>
+<pre>
+ /* 別の ConstructorInjectable クラス */
+ class rental_status_database_t : boost::noncopyable {
+ public:
+   typedef std::string ctor_type; /* ConstructorInjectable の要件 */
+
+   rental_status_database_t(const std::string&amp; uri)
+     : m_uri(uri) {}
+
+   // ...
+ };
+
+ /* レガシー用ユーティリティ. 特殊化して ctor_type を定義できる */
+ template&lt;class T&gt; struct ctor_type_of {
+   typedef typename T::ctor_type type;
+ };
+
+ template&lt;class MovieFinder, class RentalStatus&gt;
+ class movie_lister_t {
+ public:
+   typedef MovieFinder finder_type;
+   typedef RentalStatus rental_status_type;
+   typedef typename finder_type::list_type list_type;
+   typedef boost::tuple&lt; typename ctor_type_of&lt;finder_type&gt;::type,
+                         typename ctor_type_of&lt;rental_status_type&gt;::type &gt; ctor_type;
+
+   movie_lister_t(const ctor_type&amp; ctor)
+     : m_finder(boost::tuples::get&lt;0&gt;(ctor)),
+       m_rental_status(boost::tuples::get&lt;1&gt;(ctor)) {}
+
+   // ...
+ private: /* コンポジションは実体のまま */
+   finder_type m_finder;
+   rental_status_type m_rental_status;
+ };
+
+ // ...
+
+ /* 寿命コンテナは実質的に手書きの DI コンテナになる */
+ template&lt;typename MovieFinder, typename RentalStatus&gt;
+ class basic_application_t {
+ public:
+   typedef MovieFinder finder_type;
+   typedef RentalStatus status_type;
+   typedef movie_lister_t&lt;finder_type, status_type&gt; lister_type;
+   typedef typename ctor_type_of&lt;lister_type&gt;::type ctor_type;
+
+   basic_application_t(const ctor_type&amp; ctor)
+     : m_lister(ctor) {}
+
+   // ...
+ private:
+   lister_type m_lister;
+ };
+
+ typedef basic_application_t&lt;colon_movie_finder_t,
+                             rental_status_database_t&gt; application_t;
+
+ // ...
+
+ /* コンテナのインスタンス化はこんなかんじ */
+ sc::application_t app(sc::application_t::ctor_type
+                       ("foo.txt", "local://foo/"));</pre>
+<p>ctor_type が再帰的に使われているのがわかると思う. </p>
+<p>この方法にも制限はある. 
+まず複数の引数を渡すことができない. 
+適当なオブジェクトに詰めて渡す必要がある. (上の例では boost::tuple を使った.) 
+またコンストラクタをオーバーロードすることもできない. 
+個人的にはそう理不尽な制限ではないと思う. どうだろね. </p>
+<pre></pre>
+<h4>総称プログラミングとしての DI</h4>
+<p>C++ に慣れた人なら, 最後の例は単なる総称プログラミング, 
+特に Alexandrescu 風 policy 様式の亜種に見えるかもしれない. 
+その感触はおよそ正しいと思う. 
+実装同士の結びつきを遅らせてインターフェイスとプログラミングをする, 
+そんな手口への合意がある. その実現手段として Java は DI を, C++ は GP を選んだ. 
+意図に大きな違いはない. </p>
+<p>ただ総称性を強調したせいか, 
+C++ の GP は多くのプログラマにとって敷居が高くなっている気がする. 
+インターフェイス主導のプログラミングをする方法の一つとして GP を捉えなおし, 
+気楽に使えばいいと思う. </p>
+<p>コンパイル時間の制限から全てのコードを GP 風 DI で組み立てるのは現実的でない. 
+大きなブロックは実行時多態で組み立て, 性能を要求される部分はコンパイル時多態でチューンする. 
+既存の C++ コードで広く使われているこうしたやりかたは DI になっても変わらない.</p>
+<p>まとめ: </p>
+<ul>
+<li>C++ でも DI がしたい</li>
+<li>DI コンテナは辛い. 手で繋ごう.</li>
+<li>寿命管理はバリエーションあり<ul>
+<li>スマートポインタ / 寿命コンテナ / 実体の埋め込み</li>
+</ul></li>
+<li>多態も選べる<ul>
+<li>実行時多態 (仮想関数) / コンパイル時多態 (テンプレート)</li>
+</ul></li>
+<li>DI って総称プログラミングなの?<ul>
+<li>そうかもしらんけど気にしなくていいよ</li>
+</ul></li>
+<li><a href="http://dodgson.org/omo/toybox/?file/tip/cppdi/main.cpp">サンプルコード</a></li>
+</ul>

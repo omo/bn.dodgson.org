@@ -1,0 +1,127 @@
+---
+title: "近況つづき"
+date: 2008-03-16
+---
+<h3>近況つづき</h3>
+<p>頭が痛いだけでなく, 寝ている時に頭の傷を庇うせいか首がいたい. 鞭打ちかもしらんけど... 
+そして頭とセットで打った臀部もいたい. 満身創痍で出かける気力もなく, 
+家でうだうだしているところ. こんなに良い天気なのになあ.</p>
+<p>うだうだついでに貰った本の紹介. </p>
+<h4>最近貰った本: <a data:asin='4274067149' href='http://www.amazon.co.jp/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0Erlang-Joe-Armstrong/dp/4274067149%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4274067149'>プログラミング Erlang</a></h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0Erlang-Joe-Armstrong/dp/4274067149%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4274067149' class='bookcover'><img data:asin='4274067149' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51bZh24YhqL.jpg'></span></a></span></p>
+<p>いただきました. ありがとうございます &gt; 著者およびオーム社の中の方. 
+Erlang の親玉が書いた入門書の翻訳です. </p>
+<p>Erlang は言語として特に斬新なところはなく, 処理系の提供するサービスの出来がいい, 
+というのを伝聞で聞いていた. 読んでみるとたしかにそうだった. 
+本の内容も言語仕様(文法)の話は前半だけ. 後半は分散だとか並列の話をしている. 面白いのは後半. </p>
+<p>私はお仕事の関係もあって分散メッセージングの仕組みには少し興味があったから, 
+これはとても勉強になった. actor model とか. 
+知り合いのゲームプログラマと話すたびによく聞かされるのが 
+"ゲームのオブジェクトは自律的/疎結合 につくっとけ" という話. 
+actor はそういう感じかもしれない. 
+actor (プロセス) の寿命管理の話もなるほどだった. 
+死亡通知もメッセージにすればいいのねという. </p>
+<p>そのほか Mnesia という Erlang 製データベースについて, 
+問い合わせが list comprehension なのに驚いた. 
+quote もないのにどうやって list comprehension を実際の問合せに使うんだろうと思ったけれど, 
+そこは実装側が <a href="http://www.erlang.org/doc/man/qlc.html">query handle</a> という仕組み
+でがんばるらしい. Expression Template みたいなもんだろうか...</p>
+<p>多少言語が地味でも, "分散アプリがちゃちゃっと作れますよ" と言われたら心は揺らぐよね. 
+私が最近さわった新しい言語は VB と Squirrel で, 
+それぞれ VC++ のマクロとアプリ組み込み用. どちらの言語にも愛はないけれど, 
+愛がなくても用はあるからさわらざるをえない. 
+言語にとって処理系やランタイムの出来はとても大事だと痛感. </p>
+<h3>C++ と Actor</h3>
+<p>さて, C++ プログラマであるところの私は悩む: C++ の上でどうやって actor をつくったものか. 
+たぶん負け戦だけど, どのへんが負け戦かは知っておいて良かろう. </p>
+<p>面倒そうに思えたのは三つ.</p>
+<ul>
+<li>coroutine</li>
+<li>メッセージの直列化</li>
+<li>RPC との相性</li>
+</ul>
+<p>どれも C++ プログラマが苦闘して散った分野なのが見てとれる. </p>
+<h4>coroutine</h4>
+<p>Erlang の actor は receive() 関数でメッセージが届くのをまつ. 
+数千の actor が receive() すると, 素朴な実装では数千のスレッドができて, 
+主記憶を食い潰してしまう. 
+Erlang や <a href="http://www.stackless.com/">Stackless Python</a> 
+のような (scheme も？) まともな actor システムを持つ言語は, そうした問題を回避している. 
+actor 自身が使う stack だけなら大した量じゃないから, 
+その部分だけを switch できれば OS のスタック全体を switch するより軽量で済む, というのが
+私の理解. 実装を知らないので違ったらごめんなさい.</p>
+<p>C/C++ で coroutine ライブラリというときは, 
+あの手この手でコンテクスト切り替えを実装している. 
+無理矢理スタックをコピーするものもある. あまり近づきたくない. 
+できれば言語の上だけでなんとかしたい. </p>
+<p>Scala Actor は, それをなんとかしたと主張している. 
+JVM 上で動く Scala は C/C++ と同じ OS stack の制限を持つ. 
+どうやってなんとかしたのか. 
+<a href="http://lamp.epfl.ch/~phaller/doc/ActorsTutorial.html">サンプルコード</a>
+を見てみると...</p>
+<pre>
+def act() {
+  var pongCount = 0
+  loop {
+    react {
+      case Ping =&gt;
+        if (pongCount % 1000 == 0)
+          Console.println("Pong: ping "+pongCount)
+        sender ! Pong
+        pongCount = pongCount + 1
+      case Stop =&gt;
+        Console.println("Pong: stop")
+        exit()
+    }
+  }
+}</pre>
+<p>react() の引数が block になっている. 
+一見すると loop() によってループが回りつづけるよるに見えるが, 
+実際は react() が例外を投げる. 処理はフレームワークに戻り, 
+受信すべきメッセージが届いたら block の関数オブジェクトが呼び出される. 
+例外による脱出で continuation を模倣する手法は Java 界隈の標準らしく, 
+<a href="http://docs.codehaus.org/display/JETTY/Continuations">Jetty continuation</a> も
+似たようなことをしている. ただし関数オブジェクトでの CPS はしない. 
+例外で脱出せず利用者側が return してもよさそうだけど, そこは趣味の問題と思う. </p>
+<p>というわけで, OS スタック依存言語で actor をするには
+関数オブジェクトと例外を組合せればいいらしい. </p>
+<p>もっとも C++ は関数オブジェクトを "ぱっと見は連続した" コードに見せる 
+block や lambda のような仕組みがない. 
+なので Scala 式 Actor がどれだけ有り難いかはわからない. 
+ぐぐってみつけた C++ による actor 
+実装 <a href="http://theron.ashtonmason.net/index.php">Theron</a> では, 
+actor は react() 相当の処理をするために親クラスの Receive() メソッドを実装する. 
+この方が C++ ユーザ的な馴染みはいいかもしらん. </p>
+<p>Scala actor の作者もそうした解決があることは承知している. 
+<a href="http://lamp.epfl.ch/~phaller/doc/haller06jmlc.pdf">解説記事(PDF)</a> 
+によれば, インターフェイスを実装してフレームワークに呼ばせる IoC 形式を
+回避した設計を選んだと主張している. 
+個人的にはどっちでもいいんじゃね, とおもう. 
+それに IoC を回避した結果, 親クラスが fat になってしまうのは嬉しくない. </p>
+<p>結論: どれもいまいち. </p>
+<p>もっとも lua や Squirrel と繋いでしまえば
+その上で coroutine が使えるから, 足回りが多少みっともないのは許容できるのかもしれない. 
+世間のゲーム屋さんはどうしてるんでしょうね. </p>
+<h4>メッセージの直列化, RPC との相性</h4>
+<p>あとは細かい話ふたつ. まずメッセージの直列化. 
+Erlang では receive() の引数に任意(たぶん)の Erlang 項を渡せる. 
+項ってのは lisp のリストみたいなやつ. 
+分散環境だとこれを適当に直列化して遠くの actor に送ったりする. 
+で, C++ にはそういう軽量な直列化の仕組みがない. 
+boost::serialize を使えばいいという反応はありうるが, 
+適切な deserializer を選ぶ部分が悩ましい. </p>
+<p>そういう問題に対する解の一つが RPC だと言える. 
+ポートに対応する deserizlier と callback を振り分ける仕組みが RPC なわけだから. 
+RPC の末裔はそれなりに広く使われているわけだけれど, actor とはまったく独立している.
+Erlang の RPC は actor の上に実装されている. 
+できればこういう風にしたい. が, あまり妙案はない. </p>
+<p>RPC の serializer はふつうオブジェクトからバイト列への変換を行う. 
+そこにもう一段中間表現を設ければいいのかもしれない. 
+バイト列 -&gt; erlang term/lisp list -&gt; オブジェクト みたいな. 
+C++ からその中間表現を扱う良い API があれば便利なものになるだろう. 効率は落ちそうだけれど. </p>
+<p>こうして考えてみると, C++ でも actor model に則った分散環境を
+作ることはできそうな気がしてきた. ただ, 
+それが既存の仕組みと比べて有り難いものなのかはわからない. 
+とりあえず分散はあきらめて, 
+インプロセスの actor model を作るくらいが妥当なのかもしれない. 
+世間でいう task-system の中にも actor ぽいのは多そうだしね. </p>

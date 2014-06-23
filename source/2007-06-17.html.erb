@@ -1,0 +1,279 @@
+---
+title: "1975 年のプログラミング"
+date: 2007-06-17
+---
+<h3>1975 年のプログラミング</h3>
+<p>少し前に Varnish という逆プロキシサーバが紹介されていた: 
+<a href="http://journal.mycom.co.jp/articles/2007/05/24/bsdcan1/001.html">【レポート】高速化プログラミングの参照実装としても活用される「Varnish」 (2) vanishが採用している実装技術 : エンタープライズ : マイコミジャーナル</a>. 気になったので資料を眺めてみる. プロジェクトの Wiki にある記事 <a href="http://varnish.projects.linpro.no/wiki/ArchitectNotes">Notes from the Architect</a>, あとは <a href="http://phk.freebsd.dk/pubs/varnish_tech.pdf">講演のスライド(PDF)</a> などが概略には良さそうだ. 
+中味は仮想記憶やキャッシュ, SMP を有効活用して高速化しましょうという話. </p>
+<p>仮想記憶の活用方法は二つ紹介されている. 一つ目は, 
+"サイズに合わせて realloc() するかわりに最初からでかいサイズを malloc() しろ" 
+というもの. 確保してもアクセスしなければ物理メモリにはコミットされないから, 
+拡張のたびにコピーの必要な realloc() より この大容量 malloc() の方が速いという. 
+もう一つは "ファイルを read()/write() するのではなく mmap() しろ" というもの. 
+こっちはデータベースなんかでやられてますね. 
+あとはファイルシステムのツリーを表として使うのではなく
+メモリ上のデータ構造を用意した方が良いという話もある. 
+つまり HTTP のコンテンツ毎にファイルをわけるかわりに
+単一のファイルに全てのデータをまとめ, 
+外側のインデクスで検索をしろというわけ. これもデータベースの話に近い. </p>
+<p>キャッシュの話は, 主に SMP 環境での false sharing を懸念している. 
+メモリは各スレッドのプールに確保しスレッド間での共有は避けようと主張する. 
+<a href="http://www.hoard.org/">Hoard</a> なんかと同じ路線か. 
+他にはメモリの解放を(データ構造をトラバースして順次解放するかわりに)
+ブロック一括で行えともいう. <a href="http://apr.apache.org/docs/apr/0.9/group__apr__pools.html">APR の pool</a> が近いかもね. </p>
+<p>遅い実装の例として引き合いに出されるのはプロキシの古参 Squid サーバ. 
+広く使われている割にそのへんの高速化は甘かったのだろう. 
+作者は OS を活用しないこうした実装を "1975 programming" と揶揄している. 
+広く使われている Squid が mmap() などの便利な仕組みを使っていない点には少し驚いた. </p>
+<h4>1985 年のプログラミング</h4>
+<p>varnish の作者によれば, その高速なコードには啓蒙の意図もあるという. 
+それじゃちょっと啓蒙されてみるかとコードを読んでみた... が, 
+このコードはその, なんというか, 悪い意味でハッカー的なコードだなあ. 
+がっくり...以下はどのへんでがっくりきたかの悪口です. </p>
+<p>まず名前づけに一貫性がなく, コンセプトが不透明なのがいけない. 
+たとえば一連の関数についた "VSL_" という prefix はたぶん "vernish shmem log" の略だと
+思うが, これの入っているファイルは shlog.c だったりする. vsl にしといてよ...
+同様のことが他の部分にも言える. たとえば cache_backend.c の関数名は 
+"VBE_" で prefix されている. cache_ はどうしたよ. 
+そもそも backend で一つの単語じゃないの... </p>
+<p>関数名の prefix は大文字と小文字が入り交じている. backend だと VBE_ と vbe_ がある. 
+大文字は公開関数, 小文字は static 関数という意図を感じなくもないが, 
+きちんと守られていない. 
+(static は付けたり外したりすることがあるから, この命名戦略が良いものには思えませんね.) 
+HTTP 関連に至っては prefix は小文字の http_ で統一されている. 
+グローバルな関数に prefix なしの名前がつけられていることもある. Fetch() がそれ. 
+スコープの広いものには長い名前をつけようよ...</p>
+<p>構造体のメンバには直接アクセスが基本. カプセル化のような概念はなさそうだ. 
+その割に名前の付け方は男らしい. コメントを書くくらいなら名前をなんとか....</p>
+<pre>struct http {
+ ...
+char			*s;		/* (S)tart of buffer */
+char			*t;		/* start of (T)railing data */
+char			*v;		/* end of (V)alid bytes */
+char			*f;		/* first (F)ree byte */
+char			*e;		/* (E)nd of buffer */
+ ...
+};</pre>
+<p>カーネルのコードによくあるマクロを使ったデータ構造 mixin は varnish でも
+広く使われている. もういいかげん C++ を使えばいい気もする. </p>
+<pre>#define	LIST_HEAD(name, type)						\
+  struct name {								\
+  struct type *lh_first;	/* first element */			\
+}
+....
+#define	LIST_INSERT_BEFORE(listelm, elm, field) do {			\
+ QUEUEDEBUG_LIST_OP((listelm), field)				\
+ (elm)-&gt;field.le_prev = (listelm)-&gt;field.le_prev;		\
+ (elm)-&gt;field.le_next = (listelm);				\
+ *(listelm)-&gt;field.le_prev = (elm);				\
+ (listelm)-&gt;field.le_prev = &amp;(elm)-&gt;field.le_next;		\
+} while (/*CONSTCOND*/0)</pre>
+<p>コードの中で広く使われている AZ というマクロがある. </p>
+<pre> AZ(pipe(&amp;heritage.fds[0]));
+ AZ(pipe(&amp;heritage.fds[2]));
+ AZ(pipe(child_fds));</pre>
+<p>名前に二文字はどうかというのはさておき, 実装を見ると...</p>
+<pre>#define AZ(foo)	do { assert((foo) == 0); } while (0)</pre>
+<p>assert() に副作用のある式を書くなよ...
+もっと明らさまなやつもある. </p>
+<pre>assert(sizeof sp == write(pipes[1], &amp;sp, sizeof sp));</pre>
+<p>他にも関数の戻り値が意味の混った整数でエラー種別はマジックナンバーだったりと
+つっこみどころは多いけれどきりがない. このへんにしておく. </p>
+<p>世間のプログラマが varnish から何かを学ぶ一方, 
+作者自身も 21 世紀のプログラムから学べることは多い気がする. 
+人々は抽象化やツールの力でコードの一部を脳からページアウトする仮想記憶を身につけてきた. 
+Varnish のコードは一貫性を欠き, ファイルから脳内への明示的なロードを要する. 
+スケーラビリティが高いとはいえない. 1985 年の様式だと揶揄しておきたい. </p>
+<h4>Varnish そのほかの見所</h4>
+<p>まあいいや...悪口はこのくらいにして, 中味を見てみよう. 
+Varnish 1.0.4 のコードは全体で 2.3 万行. 
+このうち本体のデーモンである varnishd が 1.2 万行. 
+他には VCL 言語のコンパイラ(?)や CLI のツール, 
+細かいデータ構造やユーティリティなどがある. 
+眺めたのは varnishd の中味だけです. </p>
+<p>リバースプロキシである varnishd の仕事は, 
+クライアントからの HTTP 要求を受け付ける部分 (acceptor) と, 
+その要求に従ってキャッシュを検索したり実際のサーバにアクセスする部分 (cache) に
+わけることができる. これらはひとつのプロセス内で動く. 
+大規模な構成との連想でいくと, acceptor は lighttpd なりのロードバランサ, 
+cache は アプリケーションサーバだと思えばわかりやすい. </p>
+<h5>acceptor</h5>
+<p>acceptor はイベント駆動のノンブロッキング, シングルスレッド構成. 
+古い資料には libevent を使っている(が気に入らない)と書いてあったけれど, 
+1.0.4 では自前のコードになっている. epoll とか kqueue とかそういうのね. 
+acceptor の仕事は HTTP 要求のヘッダを読み込むだけの単純なもの. 
+(cache_acceptor.c:vca_pollsession) 
+コードの単純さは徹底しており, ヘッダをまともにパースすらしない. 
+ソケットからバイト列を読み込んで保存し, "\n\r\n" という並びを探すだけ. 
+ヘッダが揃った接続(session) は, キューに詰めて cache 層に送られる. 
+(cache_pool.c:WRK_QueueSession) ヘッダのパースなどは必要に応じて cache 層で行われる.</p>
+<p>(なおヘッダの読み込みがシングルスレッドで動くというのは一部嘘がある. 
+イベント駆動の acceptor が活用されるのは Keep-Alive な接続の二個目の要求から. 
+初回の処理はヘッダの読み込みも含めてワーカスレッドに移譲される. 不思議...)</p>
+<h5>cache</h5>
+<p>cache 層はワーカプール式のマルチスレッド構成. 
+各ワーカスレッド (cache_pool.c:wrk_thread) は 
+acceptor 層からキューごしにセッションを受け取り, それを処理する. 
+(...というようほど見通しのいい作りではないが, WRK_QueueSession あたりがそんなかんじ.) 
+スレッド数は負荷に応じて増減する. </p>
+<p>ちょっと面白いのは, キューの同期プリミティブに pipe を使っていること. 
+各ワーカスレッドは pipe を持っていて, その pipe を read() することでブロックする. 
+呼び出し側はワーカを起こすために pipe へ write() する. 
+同じプロセス内でこうしたやり方をするのがカーネルハッカーらしい. 
+(pthread に似たような同期プリミティブはないんだっけと調べたら, 
+pthread_cond_signal() というのがあった.) </p>
+<p>cache のコードは状態マシン風に書かれており, 状況に応じて処理を yield できる. 
+(cache_center.c:CNT_Session) 
+ただ実際に yield することは少なく, 基本はブロッキングありの直線的な処理になる. 
+バックエンドにある実サーバへの HTTP 要求もブロッキングで書かれているのは少し意外. 
+(cache_center.c:cnt_fetch, cache_fetch.c:Fetch) 
+たとえば lighttpd だとこういう proxy 機能も本体と同じイベント機構の上で動く. 
+どちらのアプローチが優れているのかはわからないけれど, 
+Fetch() などブロッキングに頼って書かれた部分は見通しがいい. スレッドの有難味を感じる. </p>
+<p>この状態マシンが varnishd の中心になる. 
+返信するデータにキャッシュを使うか
+バックエンドに問合せるかの判断には VCL が大きく関与しており, 
+コードのあちこちで VCL に問い合わせている. 
+(cache_center.c を "vcl_" で grep.) </p>
+<p>キャッシュの索引は単純な辞書のデータ構造を使う. キーはホスト名と URL から求める. 
+データ構造にはハッシュテーブルと線形リスト, 二種類の実装が用意されている. 
+オプションでどちらかを選ぶ. 線形リストも実用になるのかな... 
+(hash_classic.c, hash_simple_list.c) </p>
+<p>辞書に保存するデータ本体のバイト列はストレージモジュールから確保する. 
+いわゆるメモリアロケータだと思えばいい. 
+このストレージにも実装が二つ, mmap() 版と malloc() 版がある. 
+(storage_file.c, storage_malloc.) 
+これもオプションで選ぶ. </p>
+<p>インターフェイスに realloc がなく, 
+かわりに trim があるあたりは 21 世紀なかんじ. 
+(Wikpedia によれば "<a href="http://en.wikipedia.org/wiki/Stevedore">stevedore</a>" は荷物番のことだそうです). </p>
+<pre>
+typedef void storage_init_f(struct stevedore *, const char *spec);
+typedef void storage_open_f(struct stevedore *);
+typedef struct storage *storage_alloc_f(struct stevedore *, size_t size);
+typedef void storage_trim_f(struct storage *, size_t size);
+typedef void storage_free_f(struct storage *);
+
+struct stevedore {
+  const char       *name;
+  storage_init_f   *init;  /* called by mgt process */
+  storage_open_f   *open;  /* called by cache process */
+  storage_alloc_f  *alloc;
+  storage_trim_f   *trim;
+  storage_free_f   *free;
+
+  /* private fields */
+  void *priv;
+};</pre>
+<p>目玉である mmap() 版は自前でアロケータのコードを持っている. 
+OS を活用しろといいつつ自分で malloc() 相当を再発明しているんだから,  
+これは一見すると不毛に思える. 
+またコードを見る限り, varnishd はプロセス終了時にキャッシュの索引を保存しない. 
+だからキャッシュを永続化するためにファイルを使っているわけでもなさそうだ. </p>
+<p>それでも mmap() に利点はある. ポイントはデータの返信に sendfile() を使っていること. 
+(cache_response.c:RES_WriteObj, cache_pool.c:WRK_Sendfile) 
+mmap() でファイルに保存すれば sendfile() でデータを送り出せる. 
+データがページアウトしている時, これは効き目が大きいだろう. 
+malloc() じゃディスクに書かれたページを直接送信できないからね. 
+どれくらい効き目があるのかはわからないけれど...</p>
+<h5>排他制御</h5>
+<p>そういえばスライドには共有データの排他制御をがんばって細粒度にしているという話もあった. 
+"LOCK" で grep すると山ほどでてくる...
+一つくらい見てみよう.</p>
+<pre>struct object *
+HSH_Lookup(struct sess *sp)
+{
+  ...
+  if (!http_GetHdr(h, H_Host, &amp;host))
+    host = url;
+    if (sp-&gt;obj != NULL) {
+      ...
+      oh = o-&gt;objhead;
+      CHECK_OBJ_NOTNULL(oh, OBJHEAD_MAGIC);
+      LOCK(&amp;oh-&gt;mtx);
+      goto were_back;
+    }
+    oh = hash-&gt;lookup(url, host, w-&gt;nobjhead);
+    ...
+    LOCK(&amp;oh-&gt;mtx);
+    TAILQ_FOREACH(o, &amp;oh-&gt;objects, list) {
+      o-&gt;refcnt++;
+      if (o-&gt;busy) {
+        TAILQ_INSERT_TAIL(&amp;o-&gt;waitinglist, sp, list);
+        sp-&gt;obj = o;
+        UNLOCK(&amp;oh-&gt;mtx);
+        return (NULL);
+      }
+   were_back:
+    ...
+  }
+  if (o != NULL) {
+    UNLOCK(&amp;oh-&gt;mtx);
+    (void)hash-&gt;deref(oh);
+    return (o);
+  }
+  ...
+  TAILQ_INSERT_TAIL(&amp;oh-&gt;objects, o, list);
+  /* NB: do not deref objhead the new object inherits our reference */
+  UNLOCK(&amp;oh-&gt;mtx);
+  BAN_NewObj(o);
+  return (o);
+}</pre>
+<p>...メンテナンスできる気がしない. LOCK して goto は厳しいよ ...
+そういえば最近 lock free のデータ構造が流行っているけれど, 
+それは使っていない. トラバースが必要で読み書きの多いデータ構造は難しいのかもしれない. </p>
+<h4>まとめと所感など</h4>
+<p>という感じで varnish の概観を眺めたつもりになった:</p>
+<ul>
+<li>カーネルハッカーぽいコード</li>
+<li>HTTP 要求の受付(acceptor)はノンブロッキング/イベント駆動のシングルスレッド. (ただし接続後の初回は例外.)</li>
+<li>実質の要求処理(cache)はワーカ式のマルチスレッド.</li>
+<li>キャッシュはインメモリのハッシュテーブルに mmap() から取得したメモリブロックを保存.<ul>
+<li>仮想記憶の活躍に期待した作り. データの返信には sendfile() も使う.</li>
+</ul></li>
+<li>排他制御は面倒そう.</li>
+</ul>
+<p>例のごとく読んでいない部分は多い. たとえば以下は読んでいない. </p>
+<ul>
+<li>CLI による管理機能</li>
+<li>設定記述言語 VCL</li>
+<li>キャッシュの寿命管理など HTTP 周辺の仕組み</li>
+</ul>
+<p>個人的には気に入らないところも多かったけれど, 
+イベント駆動で接続を受けつつ重い処理をワーカーに移譲するところや, 
+mmap() で管理するデータを sendfile() で送り出すあたりは手法として学ぶところがあった. </p>
+<p>もうひとつ. キャッシュサーバというのはある意味で素朴なデータべースと言える. 
+大枠で似たサーバに memcached がある. 
+インメモリ(+ページアウト有)で高速に動くネットワーク指向の簡易データベースは 
+HTTP/HTML/ResultSet キャッシュ以外にも面白いものを考えられる気がする.</p>
+<p>...などと商売っ気を出してみた梅雨の合間の静かな夜でした. </p>
+<h4>追記: コメントより</h4>
+<p>コメントいただきました.</p>
+<pre>「do { ... } while (0)」って副作用はありますか？</pre>
+<p>はい. do-while に副作用はありません. 
+問題なのは do-while ではなく, その中にある assert() です. 
+AZ マクロは結局ある種の assert() なのですが, その中に副作用のあるコード
+(上の例だと pipe()) を置くのが問題だという指摘でした. </p>
+<pre>作者の phk は FreeBSD では有名な人です。たぶん設計がきれいというよりは、
+どちらかというと腕力があるというタイプの人だと思います。</pre>
+<p>なるほど. まさに腕力な印象をうけました.</p>
+<pre>あと全然コードを読んでないので頓珍漢なコメントかもしれませんが、
+mmap(2) を使う件と sendfile(2) を使う件は、実は独立なんじゃないでしょうか？
+mmap(2) せず read(2) した場合でも、現在読んでいるファイルオフセット位置だけ
+注意しておけば、sendfile(2) できる筈だと思います。</pre>
+<p>はい. 送信方法として mmap() と write() を比較しているのではなく, 
+メモリの確保方法として mmap() と malloc() を比較していました. 
+malloc() で確保したメモリは sendfile() では送れない, という話題です. 
+ただ指摘していただいた通り, write() を使うことはできますね. </p>
+<p>メモリの確保方法と送信方法の組合せはどれがいいんでしょうね.</p>
+<ul>
+<li>OK: mmap() - sendfile()</li>
+<li>OK: mmap() - write()</li>
+<li>NG: malloc() - sendfile() (fd がないため.)</li>
+<li>OK: malloc() - write()</li>
+</ul>
+<h4>追記2: リファラより</h4>
+<ul>
+<li><a href="http://alohakun.blog7.fc2.com/blog-entry-765.html">ホワット・ア・ワンダフル・ワールド</a></li>
+</ul>

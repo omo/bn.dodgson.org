@@ -1,0 +1,142 @@
+---
+title: "Apache 2.2 experimental/event MPM に降参"
+date: 2007-02-19
+---
+<h3>Apache 2.2 experimental/event MPM に降参</h3>
+<p>前回のつづき. </p>
+<p>そもそも Apache のコードを読んだのは, Comet みたいにちびちびはりっぱな 
+HTTP ハンドラを C++ で書ける基盤はないかというもっと壮大な現実逃避の一部なのだった. 
+(逃避は壮大なほどいい. 現実味が乏しくなるから...)</p>
+<p>速いという評判から, 最初は lighttpd のコードを眺めていた. 
+でも lighttpd のコードはやや男らしすぎる. この上で作業をするのは辛そうだ. 
+それに中の人が同じ路線で <a href="http://blog.lighttpd.net/articles/2006/11/27/comet-meets-mod_mailbox">mod_mailbox を作る</a> と言っている. こっちを待つ方が良い気もする. 
+(今のところ進展はなさそう.) </p>
+<p>Apache は I/O の多重化をしていないという話が 
+"<a href="https://www.codeblog.org/blog/inoue/20060713.html">Apache の話</a>" に
+書いてあるのを読みしょんぼりしていたが, 
+一方で Apache 2.2 から入った 
+<a href="http://httpd.apache.org/docs/2.2/mod/event.html">event MPM のマニュアル</a> 
+には "keep alive problem" に対処するとある. 
+Comet 路線の難しさも Keep-Alive 問題も, 本質的には同じはず. 
+それが回避できるなら別に超高速じゃなくてもいいか. うまい方法があるかもしれないし. 
+そう思って Apache を眺めてみることにした. </p>
+<p>"keep alive problem" で一番困ってしまうのは, 
+TCP コネクションを処理するスレッドが休眠状態で保持されてしまう点にある(と伝え聞いている). 
+不用意にスタックを確保しておくと, えらくメモリを消費してしまう. 
+節約のためには一つの HTTP リクエストを終了したら一端スレッドごと終了してほしい. 
+イベント駆動の IO 多重化を使うとそれが実現できる. </p>
+<p>これまでの Apache MPM はそのへんに容赦がない. 
+コネクション単位で関数呼び出しひとつにまとめてしまう. </p>
+<pre>/* worker.c */
+static void process_socket(apr_pool_t *p, apr_socket_t *sock,....)
+{
+   ...
+   current_conn = ap_run_create_connection(p, ap_server_conf, sock,
+                                           conn_id, sbh, bucket_alloc);
+   if (current_conn) {
+       ap_process_connection(current_conn, sock);
+       ap_lingering_close(current_conn);
+   }
+}</pre>
+<p>ひとつのコネクションは while ループで処理される. </p>
+<pre>/* http_core.c : ap_process_connection() から呼ばれる. */
+static int ap_process_http_connection(conn_rec *c)
+{
+    ...
+    while ((r = ap_read_request(c)) != NULL) {
+       ...
+        if (r-&gt;status == HTTP_OK)
+            ap_process_request(r); /* ここで色々なモジュールが呼ばれる */
+       ...
+        if (c-&gt;keepalive != AP_CONN_KEEPALIVE || c-&gt;aborted)
+            break;
+       ...
+    }
+
+    return OK;
+}</pre>
+<p>これだと ap_read_request() あたりでブロックしそうだ. 困る. 
+でもふと考えると, MPM が移植層としてコアから隠蔽されているのだとしたら, 
+MPM の上にある ap_process_http_connection() は MPM に何を使っても
+呼ばれそうな気がする. なんで event MPM はブロックしないのだろう. 
+そう思ってよく見ると. こんなコードがあった. </p>
+<pre>/* http_core.c */
+static void register_hooks(apr_pool_t *p)
+{
+    /**
+     * If we ae using an MPM That Supports Async Connections,
+     * use a different processing function
+     */
+    int async_mpm = 0;
+    if (ap_mpm_query(AP_MPMQ_IS_ASYNC, &amp;async_mpm) == APR_SUCCESS
+        &amp;&amp; async_mpm == 1) {
+        ap_hook_process_connection(ap_process_http_async_connection, NULL,
+                                   NULL, APR_HOOK_REALLY_LAST);
+    }
+    else {
+        ap_hook_process_connection(ap_process_http_connection, NULL, NULL,
+                                   APR_HOOK_REALLY_LAST);
+    }
+    ...
+}</pre>
+<p>非同期用と同期用で別々にフックが用意されているらしい. 
+まじかよー... 同期/非同期の両方でポータブルな
+うまい書き方があるわけじゃないのか. がっくし. </p>
+<p>なお, 現時点で非同期に対応しているのは event MPM だけのようす. </p>
+<pre>/* event.c */
+AP_DECLARE(apr_status_t) ap_mpm_query(int query_code, int *result)
+{
+    switch (query_code) {
+        ...
+    case AP_MPMQ_IS_ASYNC:
+        *result = 1;
+        return APR_SUCCESS;
+        ...
+    }
+    return APR_ENOTIMPL;
+}</pre>
+<p>気をとりなおして非同期バージョンの ap_process_http_async_connection() 
+も覗いておこうか. </p>
+<pre>/* http_core.c */
+static int ap_process_http_async_connection(conn_rec *c)
+{
+   request_rec *r;
+   conn_state_t *cs = c-&gt;cs;
+
+   while (cs-&gt;state == CONN_STATE_READ_REQUEST_LINE) {
+       ...
+       if ((r = ap_read_request(c))) {
+           ...
+           if (r-&gt;status == HTTP_OK)
+               ap_process_request(r);
+           ...
+           if (c-&gt;keepalive != AP_CONN_KEEPALIVE || c-&gt;aborted
+                   || ap_graceful_stop_signalled()) {
+               cs-&gt;state = CONN_STATE_LINGER;
+           }
+           else if (!c-&gt;data_in_input_filters) {
+               cs-&gt;state = CONN_STATE_CHECK_REQUEST_LINE_READABLE;
+           }
+           ...
+       }
+       ...
+   }
+   return OK;
+}</pre>
+<p>while の条件が慎重になっているのがわかる. 
+コードを眺めた限り, ふつうのパスだと while ブロックは一回しか回らない気がする. 
+かわりに ap_process_http_async_connection() が (イベント駆動で)何度も呼ばれる. </p>
+<p>ap_process_request() を呼ぶのは同期バージョンと同じだ. 
+結局, event MPM はリクエスト単位ではブロックするけれど
+コネクション単位では途中で yield できるというものだとわかった. 
+考えてみればあたりまえか. 下手にノンブロッキングにしたら
+既存モジュールが動かなくなっちゃうもんな. </p>
+<p>そもそも私が勝手にノンブロッキングと言っているけれど, 
+event MPM は読み書きのソケットをノンブロックにはしない. 
+(listen 用のソケットはしている.) 
+リクエストの境目でブロックしないのは, 
+Content-Length を気にしながら recv() しているからなんだね. </p>
+<p>このままだと Comet 風は難しいなあ. ヘッダのパーサなんかはあるから, 
+それを使い回しつつ HTTP のレイヤからモジュールを書けば実装はできそう. 
+でもそこから書くのはしんどい. うー... 降参. 
+やはり "Apache の話" は正しかったのでした. </p>

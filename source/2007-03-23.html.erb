@@ -1,0 +1,32 @@
+---
+title: "Shibuya"
+date: 2007-03-23
+---
+<h3>近況</h3>
+<p><a href="http://shibuyajs.org/articles/2007/03/09/shibuya-js-technical-talk-3-shibuya-es/">"Shibuya.js Technical Talk #3 - Shibuya.es"</a> へ. 
+枠を頂いたので, ちょっと喋ってきました. 
+資料は <a href="http://dodgson.org/omo/work/20070323/stop_monkeys_fall.pdf">これ</a>. 
+(所用があり挨拶もせず帰ってしまいました. すみません. &gt; 関係者の皆様.) </p>
+<p>色々面白かったけれど, プログラマが自分の作ったものを紹介する話はいいな. 
+<a href="http://spreadsheet.sakura.ne.jp/">cycal</a> とか 
+<a href="http://subtech.g.hatena.ne.jp/secondlife/20070214/1171379890">fcwrap</a> などは
+ひたすたホヘーと聞いていました. 
+特に cycal はすごいね. <a href="http://www.pj-blog.net/blog/index.php/xdaisuke/1172195376/#title">これをネタに書かれた修論</a> のタイトルが 
+"Ajax を用いた Online Office の開発と ビジネスモデルの提案" 
+となっているのが可笑しかった. 
+これだけごついのを作ったら, ビジネスモデルなんか無くたってどこかに売れるよ...</p>
+<p>以下は参考資料:</p>
+<ul>
+<li><a href="http://www.onflex.org/ACDS/AS3TuningInsideAVM2JIT.pdf">ActionScript 3.0 and AVM2: Performance Tuning(PDF)</a>： AVM2 のアーキテクチャから最適化のヒントまでの網羅的な内容. ネタが被らないよう気をつけたら大変だった...</li>
+<li><a href="http://www.stanford.edu/class/ee380/Abstracts/061206.html">Flash Player ActionScript Virtual Machine (Tamarin)</a> : だいたい上と同じ. <a href="http://stanford-online.stanford.edu/courses/ee380/061206-ee380-300.asx">Video</a> (<a href="http://vijayram.wordpress.com/2007/02/12/rick-at-stanford/">聴衆のレポート</a>より) は長いのでヒマな人むけ.</li>
+</ul>
+<p>参考資料から refer されている参考資料:</p>
+<ul>
+<li><a href="http://www.cs.ucla.edu/~palsberg/course/cs132/linearscan.pdf">Linear Scan Register Allocation</a> : AVM2 で使われているレジスタ割り当てのアルゴリズムらしい. これを読んでから実コードを眺めると, 出てくる単語が似ていて面白い. アルゴリズムがどれくらい同じなのかは知らない. 元の記事の方法もそれなりに実装の幅は広そうだった.</li>
+<li><a href="http://www-hydra.stanford.edu/publications/JVM02.pdf">Targeting Dynamic Compilation for Embedded Environments</a> : ちゃんと読んでない. 途中で出てくるバイトコードや中間表現の注記, 用語なんかはコードを見ていると見覚えがある. ちなみに AVM+ には basic block のグラフを graphviz 形式で出力するオプションがある. 使い道あるんかいな.</li>
+</ul>
+<p>他:</p>
+<ul>
+<li><a href="http://www.shudo.net/publications/prosym0108/shudo-IEICE-J86-DI-4-shuJIT.pdf">Java Just-in-Time コンパイラのためのコスト効率の良いコンパイル手法</a> from <a href="http://www.shudo.net/jit/index-j.html">shuJIT</a>. 後学のために読んでおいた. AVM もインライン化くらいはして欲しいなあ...</li>
+<li><a href="http://www.dodgson.org/omo/t/?date=20061111">手前味噌</a></li>
+</ul>

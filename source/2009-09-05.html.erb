@@ -1,0 +1,23 @@
+---
+title: "ブリュワーの CAP 定理"
+date: 2009-09-05
+---
+<h3><a href="http://www.hyuki.com/yukiwiki/wiki.cgi?BrewersCapTheorem">ブリュワーの CAP 定理</a></h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Distributed-Algorithms-Kaufmann-Management-Systems/dp/1558603484%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1558603484' class='bookcover'><img data:asin='1558603484' class='asin image-right' src='http://ecx.images-amazon.com/images/I/514hGPKOYML.jpg'></span></a></span></p>
+<p>"<a href="http://www.julianbrowne.com/article/viewer/brewers-cap-theorem">Brewer's CAP Theorem - The kool aid Amazon and Ebay have been drinking</a> "
+を <a href="http://www.hyuki.com/yukiwiki/wiki.cgi?BrewersCapTheorem">訳してみました</a>. 
+また YukiWiki にお邪魔しております. </p>
+<p>以前 <a href="http://www.hyuki.com/yukiwiki/wiki.cgi?EventuallyConsistent">結果整合性</a> などを読んでいた頃, 主に知ったかぶり目的で
+<a href="http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.20.1495&amp;rep=rep1&amp;type=pdf">CAP 定理の元ねた</a> を読んだのだけれど, 
+私のしょうもない解読レベルでは "ケーブル抜いたらダメですよ" という話と 
+"あとから挿しても遅いんだよ" という話が書いてあるようにしか読めず, 
+そんな掴みどころのなさに途方に暮れた. (そして証明から参照されている <a data:asin='1558603484' href='http://www.amazon.co.jp/Distributed-Algorithms-Kaufmann-Management-Systems/dp/1558603484%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1558603484'>教科書</a> は本棚の肥やしとなった.)
+日経グーグルコンピュータを読んでその悲しみを思いだし, 
+もう少し素人フレンドリーな話はどこかに無いかとぐぐった結果が今回訳したもの. 色々書いてあって割と面白かった. </p>
+<p>でも証明の解説は...やっぱり "ケーブル抜いたらダメですよ" という話にしか読めないんだよなあ. 
+ここから CAP 定理のような強い条件をほんとに導けるのだろうか... 
+個人的には CAP 定理が実は &lt;ケーブルひっこ抜いちゃダメ定理/Cables Ain't Pulled Theorem&gt; だった説を提唱せずにはおれません. 
+これに殺されてしまっては RDBMS も浮かばれない気がする. 
+それに関係代数とトランザクションは独立してるはずなので, 
+RDB 各氏におかれましては Join のできる子としてレゾンデートルを取り戻していただければと思います. 
+(雲の子データベースに Join がつけばそれでもいいけどね.)</p>

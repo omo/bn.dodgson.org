@@ -1,0 +1,303 @@
+---
+title: "Mono の正規表現 JIT (を誰か試して)"
+date: 2008-06-21
+---
+<h3>Mono の正規表現 JIT (を誰か試して)</h3>
+<p>tamarin-devel を見ていたら, 
+"Mono のやつらは正規表現を JIT するらしいぜオレもやるぜ" 
+という旨の<a href="https://mail.mozilla.org/pipermail/tamarin-devel/2008-June/000613.html">メール</a>があり, 
+<a href="http://www.advogato.org/person/lupus/diary/26.html">Mono のやつらのページ</a>をリンクしていた. 
+今年の 2 月頃にやろうとしていたらしい. </p>
+<p><a href="http://anonsvn.mono-project.com/viewcvs/trunk/mcs/class/System/System.Text.RegularExpressions/">Mono のコード</a>をざっと見てみると, たしかにそれらしい形跡がある. 
+ただし, また未完成らしく JIT 化のパスがコメントアウトされている. 
+(<a href="http://anonsvn.mono-project.com/viewcvs/trunk/mcs/class/System/System.Text.RegularExpressions/Regex.cs?view=markup">Regexp.cs</a> の CreateMachineFactory() 参照.) 
+2 月には頻繁にチェックインされていたが, 4 月を最後に更新がない. 飽きたのかしら... 
+せっかくなのでコメントを外して動かしてみようかと思うも, 私は私でクランチ中. 
+Mono をビルドする気力がおきなかった. 誰かためしていたら教えてください. </p>
+<p>以下は中身の話をすこし. </p>
+<h4>Mono Regexp のアーキテクチャ</h4>
+<p>Mono の正規表現は, 例にもれず独自バイトコードのインタプリタになっている. 
+Parser クラスが文字列を解析して構文木 (RegularExpression クラス) をつくり, 
+ICompiler インターフェイスの実装がこの構文木をコンパイル, バイトコードをつくる. 
+バイトコードの処理系は IMachineFactory を実装し, IMachineFactory#NewInstance() で
+IMachine をつくる. IMachine が java なんかでいうところ Matcher オブジェクト. 状態を持ち, 
+文字列をパターンにマッチする. IMachine には Scan(), Split(), Replace() といったメソッドがある. </p>
+<p><img src='/images/20080621_0.png' class='diagram'></p>
+<p>コードもちょっとみてみる. 
+文字列をコンパイルして MachineFactory をつくるところ:</p>
+<pre>
+
+ // Parser.cs
+ private static IMachineFactory CreateMachineFactory (string pattern, RegexOptions options)
+ {
+   Parser psr = new Parser ();
+   RegularExpression re = psr.ParseRegularExpression (pattern, options); // 構文木を作る
+
+   ICompiler cmp;
+   //if ((options &amp; RegexOptions.Compiled) != 0)
+   //      //throw new Exception ("Not implemented.");
+   //      cmp = new CILCompiler (); // これが JIT コンパイラ
+   else
+   cmp = new PatternCompiler ();
+
+   re.Compile (cmp, (options &amp; RegexOptions.RightToLeft) != 0); // コンパイル!
+
+   IMachineFactory machineFactory = cmp.GetMachineFactory ();
+   machineFactory.Mapping = psr.GetMapping ();
+   machineFactory.NamesMapping = GetGroupNamesArray (machineFactory.GroupCount, machineFactory.Mapping);
+
+   return machineFactory;
+ }</pre>
+<p>よくみると Compile() は構文木である RegularExpression のメソッドになっている. 
+RegularExpression はよくある polymorphic なノードクラス. 
+この Compile() は子ノードの Compile() を再帰的に呼び出し, その中で ICompiler#emitXx() を呼ぶ. 
+visitor パターンぽい作り. ださい気もするけれど, こんなもんかとも思う. 
+どうせ木構造の書き換えみたいな本格最適化をするわけじゃないからね. </p>
+<h4>ICompiler</h4>
+<p>RegularExpression から呼ばれる ICompiler が正規表現バイトコードの肝になる. 
+コンパイラの実体は RegularExpression#Compile() で, 
+ICompiler はどちらかというとアセンブラに近い.</p>
+<p>ICompiler には emitPosition(), emitOpen() など emitXx() メソッドが一式用意されている. 
+これは OpCode 列挙型のメンバに対応している. </p>
+<pre>
+ // arch.cs
+ enum OpCode : ushort {
+   False    = 0,  // always fails
+   True,      // always succeeds
+
+   // matching
+
+   Position,    // zero-width position assertion
+   ....
+   // character matching
+
+   Character,    // match character exactly
+   ...
+   Set,      // match character from set
+   ....
+
+   // capturing
+
+   Open,      // open group
+   Close,      // close group
+   ....
+
+   // control flow
+
+   IfDefined,    // conditional on capture
+   Sub,      // non-backtracking subexpression
+   ....
+   Anchor,      // anchoring expression
+   ....
+ }</pre>
+<pre>
+ // compiler.cs
+ interface ICompiler {
+   ...
+   void EmitFalse ();
+   void EmitTrue ();
+   ...
+   void EmitCharacter (char c, bool negate, bool ignore, bool reverse);
+   void EmitCategory (Category cat, bool negate, bool reverse);
+   void EmitNotCategory (Category cat, bool negate, bool reverse);
+   ...
+ }</pre>
+<p>PatternCompiler クラスは ICompiler を実装し, 
+OpCode で定義されるバイトコードを生成する. </p>
+<pre>
+ // compiler.cs
+ class PatternCompiler : ICompiler {
+   ...
+   public void EmitCategory (Category cat, bool negate, bool reverse) {
+     Emit (OpCode.Category, MakeFlags (negate, false, reverse, false));
+     Emit ((ushort)cat);
+   }
+   ...
+   private void Emit (OpCode op, OpFlags flags) {
+     Emit (EncodeOp (op, flags));
+   }
+   ...
+   private void Emit (ushort word) {
+     pgm.Add (word);
+   }
+   ...
+   // C# の世界でわざわざ type safety を捨てなくてもいいのに...
+   public static ushort EncodeOp (OpCode op, OpFlags flags) {
+     return (ushort)((int)op | ((int)flags &amp; 0xff00));
+   }
+   ...
+ }</pre>
+<p>IMachine を実装した(, BaseMachine を継承した), Interpreter が
+このバイトコードを実行する. 対応する InterpreterFactory もある. (IMachineFactory を実装.) </p>
+<pre>
+ // interpreter.cs
+ partial class Interpreter : BaseMachine {
+   ...
+   private bool Eval (Mode mode, ref int ref_ptr, int pc) {
+     int ptr = ref_ptr;
+   Begin:
+     for (;;) {
+       ushort word = program[pc];
+       OpCode op = (OpCode)(word &amp; 0x00ff);
+       OpFlags flags = (OpFlags)(word &amp; 0xff00);
+
+       switch (op) {
+       case OpCode.Anchor: {
+         int skip = program[pc + 1];
+         ...
+       }
+       ...
+     }
+     ...
+   }
+   ...
+ }</pre>
+<p>ああループで switch してますね, くらいの理解で先に進みます...</p>
+<h4>CILCompiler</h4>
+<p>ICompiler の更なる実装として, RxCompiler と CILCompiler がある. </p>
+<p>RxCompiler は OpCode とは別のバイトコードである RxOp (RxOp.cs で定義)を出力する. 
+RxOp は OpCode に比べてもう少し命令が多い. 単純に粒度が低いというよりは, 
+これまではフラグやオペランドだった正規表現のバリエーションを命令セットに押し出した感じ. 
+たとえば...</p>
+<pre>
+// OpCode
+ Category,  // match character from category
+ NotCategory,		// match character _not_ from category</pre>
+<p>と定義され, </p>
+<pre>
+// ICompiler
+ public void EmitCategory (Category cat, bool negate, bool reverse) {
+ 	Emit (OpCode.Category, MakeFlags (negate, false, reverse, false));
+ 	Emit ((ushort)cat);
+ }</pre>
+<p>と出力される Opcode が, RxOp ではこうなる:</p>
+<pre>
+ // RxOp
+ CategoryAny,
+ NoCategoryAny,
+ CategoryAnyReverse,
+ NoCategoryAnyReverse,
+ CategoryDigit,
+ NoCategoryDigit,
+ CategoryDigitReverse,
+ NoCategoryDigitReverse,
+ CategoryWord,
+ NoCategoryWord,
+ CategoryWordReverse,
+ NoCategoryWordReverse,
+ CategoryWhiteSpace,
+ NoCategoryWhiteSpace,
+ CategoryWhiteSpaceReverse,
+ NoCategoryWhiteSpaceReverse,
+ ... // この 4 倍くらいの定義が続く.</pre>
+<p>RxCompiler の出力した RxOp バイトコードを解釈するために RxInterpreter というクラスもあるが, 
+基本的に RxOp は CLR のバイトコード (CIL) へコンパイルするための中間表現だと思っていい. 
+そして CILCompiler クラスが RxOp バイトコードを CIL に変換する. </p>
+<pre>
+ class CILCompiler : RxCompiler, ICompiler { // この継承はッ...
+   ....
+   private DynamicMethod EmitEvalMethodBody (DynamicMethod m, ILGenerator ilgen,
+   	    		  		      Frame frame, byte[] program, int pc,
+				      bool one_op, out int out_pc)
+   {
+     int start, length, end;
+
+     out_pc = 0;
+
+     int group_count = 1 + (program [1] | (program [2] &lt;&lt; 8));
+
+     while (true) {
+       RxOp op = (RxOp)program [pc];
+
+       switch (op) {
+       case RxOp.Anchor: {
+         length = program [pc + 3] | (program [pc + 4] &lt;&lt; 8);
+         pc += program [pc + 1] | (program [pc + 2] &lt;&lt; 8);
+
+         // Optimize some common cases by inlining the code generated for the
+         // anchor body
+         RxOp anch_op = (RxOp)program [pc];
+         // FIXME: Do this even if the archor op is not the last in the regex
+         if (group_count == 1 &amp;&amp; anch_op == RxOp.Char &amp;&amp; (RxOp)program [pc + 2] == RxOp.True) {
+            ....
+           /*
+            * while (strpos &lt; string_end) {
+            *   if (str [strpos] == program [pc + 1]) {
+            *     match_start = strpos;
+            *     strpos_result = strpos + 1;
+            *     marks [groups [0]].Start = strpos;
+            *     if (groups.Length &gt; 1)
+            *    marks [groups [0]].End = res;
+            *     return true;
+            *   }
+            *   strpos ++;
+            * }
+            * return false;
+            */
+           // Add some locals to avoid an indirection
+           LocalBuilder local_string_end = ilgen.DeclareLocal (typeof (int));
+           ilgen.Emit (OpCodes.Ldarg_0);
+           ilgen.Emit (OpCodes.Ldfld, fi_string_end);
+           ilgen.Emit (OpCodes.Stloc, local_string_end);
+           LocalBuilder local_str = ilgen.DeclareLocal (typeof (string));
+           ilgen.Emit (OpCodes.Ldarg_0);
+           ilgen.Emit (OpCodes.Ldfld, fi_str);
+           ilgen.Emit (OpCodes.Stloc, local_str);
+           ....
+         }
+         ....
+       }
+       ....
+     }
+     ....
+   }
+   ...
+ }</pre>
+<p>生成する命令の疑似コードを書いているあたりに親近感を感じなくもない. 
+C# 2.0 標準のバイトコード生成クラス (DynamicMethod) を利用しているのが印象的. 
+Java もバイトコード生成ライブラリには事欠かないけれど, 
+標準にあると一段敷居が下がる気がする. Beautiful Code にも DynamicMethod を使った
+コード生成の話があったよね. </p>
+<p>こうして生成された DynamicMethod は (IMachine の実装である) RxInterpreter に引き渡される. 
+RxInterpreter は DynamicMethod があればそれを呼び, なければ自身の評価ループを呼び出す. </p>
+<pre>
+// RxInterpreter.cs
+ sealed class RxInterpreter: BaseMachine {
+   ...
+   public RxInterpreter (byte[] program, EvalDelegate eval_del)
+   {
+   	this.program = program;
+   	this.eval_del = eval_del;
+       ....
+   }
+   ....
+   public override Match Scan (Regex regex, string text, int start, int end) {
+     str = text;
+     string_start = start;
+     string_end = end;
+     int res = 0;
+
+     bool match;
+     if (eval_del != null) {
+       match = eval_del (this, start, ref res);
+     } else {
+       match = EvalByteCode (11, start, ref res);
+     }
+     ...
+   }
+   ...
+ }</pre>
+<p>おしまい. </p>
+<p>それにしても, 私はこうやっていくつも命令セットを定義するスタイルを理解できない. 
+コンパイラのリテラシーがあれば朝飯前の範疇なんだろうか. 
+ちゃんと勉強した方がいいなあ, コンパイラは...</p>
+<h4>まとめ</h4>
+<p>Mono の実験的正規表現は</p>
+<ul>
+<li>RegularExpression の構文木(?)になり</li>
+<li>RxOp のバイトコードになり</li>
+<li>DynamicMethod の CIL になり</li>
+<li>VM の JIT で機械語になる, はず.</li>
+</ul>
+<p>という風にコンパイルされそうで, 
+めでたしめでたし. あとは誰か動かしてくれー</p>

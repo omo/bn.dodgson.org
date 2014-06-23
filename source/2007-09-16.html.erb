@@ -1,0 +1,74 @@
+---
+title: "papergraph"
+date: 2007-09-16
+---
+<h3>papergraph</h3>
+<p><img src='/images/20070916_0.png' class='image-right'>
+隣の同僚が papervision 3d で遊んでいた. 
+案外よくできていて面白い. 私もコードを眺めてみようと 
+まず <a href="http://code.google.com/p/papervision3d/">Google Code にある</a>
+レポジトリからチェックアウト. まえ "<a href="http://gamenokasabuta.blog86.fc2.com/blog-entry-206.html">かさぶた。</a>" に Z ソートだと書いてあったのを思いだし調べてみたら, たしかにソートしている. わーおい...</p>
+<p>そんなかんじで読み進めたけれど, いまいち好みが合わない. 
+それにシーングラフの API だけなのはもどかしい. 
+もっと DirectX や OpenGL みたいな切り口にできないものか ... というわけで書いてみた. 
+本家に敬意を表し "papergraph" と命名した:  
+<a href="http://dodgson.org/omo/papergraph/hello/teapot.html">デモ</a>, 
+<a href="http://dodgson.org/omo/papergraph/hg/">レポジトリ</a>, 
+<a href="http://www.dodgson.org/omo/papergraph/hg/?archive/tip.tar.gz">スナップショット</a></p>
+<p>最小限のコードはこんなかんじ:</p>
+<pre>
+
+package
+{
+    ....
+    public class Hello extends Sprite
+    {
+        ....
+        public function Hello()
+        {
+            var attrs:RenderingAttributes = new RenderingAttributes();
+
+            var eye:Tuple = new Tuple(0.0, 0.0, 100.0);
+            var center:Tuple = new Tuple(0.0, 0.0, 0.0);
+            var up:Tuple = new Tuple(0.0, 1.0, 0.0);
+            attrs.modelMap = Map.lookAt(eye, center, up);
+            attrs.projectionMap = Map.perspective(Math.PI/3.0, WIDTH/HEIGHT);
+            attrs.viewport = new Rectangle(0.0, 0.0, WIDTH, HEIGHT);
+
+            var v0:Vertex = new Vertex(-50.0, -50.0, 0.0);
+            var v1:Vertex = new Vertex(-50.0,  50.0, 0.0);
+            var v2:Vertex = new Vertex( 50.0,  50.0, 0.0);
+            var v3:Vertex = new Vertex( 50.0, -50.0, 0.0);
+            var verts:Array = [ v0, v1, v2, v3 ];
+            var faces:Array = [ new Face(v0, v1, v2), new Face(v0, v2, v3) ];
+
+            var vs:PlainVertexShader = new PlainVertexShader();
+            var fs:WireFaceShader = new WireFaceShader();
+            fs.fillColor = 0xaaaacc;
+            fs.lineColor = 0x9999aa;
+
+            var r:Renderer = new Renderer(graphics, attrs);
+            r.emitFaces(verts, vs, faces, fs);
+            r.render();
+        }
+    }
+}</pre>
+<p>シーングラフよりは素朴でしょ. </p>
+<p>実体は papervision 本体や <a data:asin='4894717239' href='http://www.amazon.co.jp/OpenGL%E3%83%97%E3%83%AD%E3%82%B0%E3%83%A9%E3%83%9F%E3%83%B3%E3%82%B0%E3%82%AC%E3%82%A4%E3%83%89-%E5%8E%9F%E8%91%97%E7%AC%AC5%E7%89%88-OpenGL%E7%AD%96%E5%AE%9A%E5%A7%94%E5%93%A1%E4%BC%9A/dp/4894717239%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4894717239'>赤本</a>, 
+<a data:asin='0321334892' href='http://www.amazon.co.jp/OpenGL-Shading-Language-Randi-Rost/dp/0321334892%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321334892'>橙本</a>, <a data:asin='4939007359' href='http://www.amazon.co.jp/%E3%83%AA%E3%82%A2%E3%83%AB%E3%82%BF%E3%82%A4%E3%83%A0-%E3%83%AC%E3%83%B3%E3%83%80%E3%83%AA%E3%83%B3%E3%82%B0-%E7%AC%AC2%E7%89%88-Tomas-Akenine-Moller/dp/4939007359%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D4939007359'>RTR</a> などを
+切り貼りして寄せ集めただけなので, 
+おおよそのアルゴリズムも papervision と大差ないはず. 
+最初は座標変換とソートだけ書いたら Flash で 3D をやる
+最低限の仕組みを説明するつもりだったけれど, 
+絵がでると嬉しくなってちょこちょことコードをいじり, 時間がかかってしまった. </p>
+<p>なんだか 90 年代の 3DCG みたい. ノスタルジーがある. 
+私は学生のころ Web の 3DCG プログラマコミュニティにいて, 
+でも自分でレンダラを書くほどの腕はない落ちこぼれだった. 
+だから書いたコードで環境マップつきティーポットがくるくる回るのは
+ちょっと感無量. まあクリッピングとかラスタライズみたいに
+一番面倒な部分は Flash がやってくれるんだけど...</p>
+<p>詳しい話は次回. (たぶん.) </p>
+<h4>追記.</h4>
+<ul>
+<li>デモの URL を修正...</li>
+</ul>

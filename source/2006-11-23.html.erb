@@ -1,0 +1,138 @@
+---
+title: "Java でアプリケーションを作っている"
+date: 2006-11-23
+---
+<pre></pre>
+<h3>近況</h3>
+<p>Java でアプリケーションを作っている. 
+足回りが動いたのでアプリっぽくしようとデータベースをつなぎだしたが ... かったるい. 
+RDB の出てこないコードを書いていた昨日までは快調だったのに, 
+今日 SQL がでてきた途端に意欲がガタ落ち. 
+このかったるさの原因はなんだろう. 
+思いあたる節はある. まず RDB はなんとなく仕事っぽい. 趣味らしさを損なう. 
+あと, ここしばらく ORM considered harmful 仮説に与して 
+Hibernate なんかを使っていない. (かわりに Spring JDBC Template を利用.) 
+その結果お約束コピペコードが増えて萎える. 
+アンチ ORM 派の主な主張は, 実世界のデータモデルが持つ複雑さを ORM では吸収しきれない 
+(結局普通に RDB を使うのと大差がなくなる) というものだ. 
+でも私が作っているものはそこらのアプリよりだいぶ単純なデータモデルしか持っていない. 
+だから ORM を使ってもよかった気がする. 失敗した...</p>
+<p>ただ ORM にも別のかったるさがあるのは確かだ. 
+やっぱリデータベースは面倒なのかとグズグズ Web をぶらついていたら, 
+O'Reilly の <a href="http://www.oreilly.com/catalog/language1/">"LINQ: The Future of Data Access in C# 3.0"</a> なる PDF 本を発見. 
+そうだ, 
+ぼくらには <a href="http://msdn.microsoft.com/data/ref/linq/">LINQ</a> があるじゃないか. </p>
+<p>ということで現実逃避に読んでみた. 
+60 ページくらいに 短く LINQ の概要がまとめられている. 入門にいい. 
+XLINQ, DLINQ といった個別のサブシステムについては深くふれず, 
+もっぱら共通部分を説明している. (XLINQ 編と DLINQ 編は近日発売予定とのこと.) 
+DLINQ の扱いが軽いのはやや悲しいけれど. サンプルコードが多いのには助かる. </p>
+<p>ひとくちに LINQ といっても 素 LINQ, XLINQ, DLINQ ではそれぞれ実現の仕組みが異る. 
+DLINQ は LINQ の問合せ式を SQL に変換して RDB に投げる. 
+たとえばこんなコードが...:</p>
+<pre>// PDF より抜粋
+Databases.SchedulingDocs db = new Databases.SchedulingDocs(connectionInfo);
+
+var oct2006 = ( // find all doctors scheduled for October 2006:
+    from d in db.Doctors
+    join c in db.Calls
+    on d.Initials equals c.Initials
+    where c.DateOfCall &gt;= new DateTime(2006, 10, 1) &amp;&amp;
+          c.DateOfCall &lt;= new DateTime(2006, 10, 31)
+    orderby d.Initials
+    select d.Initials
+   )
+   .Distinct();</pre>
+<p>こんな SQL を発行する:</p>
+<pre>SELECT DISTINCT [t0].[Initials]
+  FROM [Doctors] AS [t0], [Calls] AS [t1]
+  WHERE ([t1].[DateOfCall] &gt;= @p0) AND
+        ([t1].[DateOfCall] &lt;= @p1) AND
+        ([t0].[Initials] = [t1].[Initials])
+  ORDER BY [t0].[Initials]
+</pre>
+<p>私の妄想だと DLINQ は SQLServer と CLR が癒着して魔法のように動くことになっていた. 
+現実は案外地味なんだね...</p>
+<p>そもそも RDB を使うコードは何がかったるいんだろう. 
+SQL を書くのはそんなに面倒でもない. なんというか, 割にあう感じがする. 
+もっと面倒なのは戻り値オブジェクトのクラスを定義するところと, 
+そのオブジェクトに値を詰めるところだ. こっちはルーチンワークの徒労感がある. 
+ORM は値を詰めてくれるけれど, すくなくともクラスを定義する必要はある. </p>
+<p>DLINQ ではどうするかというと, 
+SQLMetal というツールを使ってデータベースのスキーマからクラスを生成するらしい. </p>
+<pre>C:\...\Bin&gt;sqlmetal /server:. /database:SchedulingDocs \
+                    /language:csharp /code:SchedulingDocs.cs \
+                    /namespace:Databases</pre>
+<p>私の妄想だと DLINQ は前代未聞の型推論とメタプログラミングが適当な無名クラスを生成し
+うまい具合に動くことになっていた. 現実は案外地味なんだね... 
+まあそこそこ DRY だし, 妥当なところなのかもしれない. </p>
+<h4>Java で LINQ 風味 (は厳しそう)</h4>
+<p>結局 LINQ の新に新しいところは</p>
+<pre>    from d in db.Doctors
+    join c in db.Calls
+    on d.Initials equals c.Initials
+    where c.DateOfCall &gt;= new DateTime(2006, 10, 1) &amp;&amp;
+          c.DateOfCall &lt;= new DateTime(2006, 10, 31)
+    orderby d.Initials
+    select d.Initials</pre>
+<p>みたいなコードが C#/VB として書ける点に尽きる気がしてきた. 
+文法の一部なら IDE の支援もあるだろうしね. </p>
+<p>このコードにあらわれる字句のうち, join, where, orderby, select あたりは 
+LINQ 用組込みクラスのメソッド呼び出しにマップされ, ユーザがフックすることもできるらしい. 
+要するに構文糖なわけだが, こればかりは syntax matters だ. 
+なにしろベタな Java に直すとこんな感じになってしまう.</p>
+<pre>ds.from().join(Call.class)
+  .on(new OnCond() {
+        public boolean pred2&lt;Doctor, Call&gt;(Doctor c, Call d) {
+          return c.getInitials().equals(c.getInitials()); } })
+  .where(new WhereCond() {
+           public boolean pred&lt;Call&gt;(Call c) {
+             return c.getDateOfCall().after(new DateTime(2006, 10, 1)) &amp;&amp;
+                    c.getDateOfCall().before(new DateTime(2006, 10, 31)); } })
+  .orderBy(new OrderByCriteria&lt;Doctor, Date&gt; {
+             public boolean Date proj(Doctor d) { return d.getInitial(); } })
+  .select();</pre>
+<p>LINQ の短さまでにはだいぶ距離がある. 
+Java も<a href="http://www.theserverside.com/news/thread.tss?thread_id=42535">そのうち closure が使えるようになれば</a>, もう少し簡潔にはなるだろう. 
+また <a href="http://www.easymock.org/">EasyMock</a> や 
+<a href="http://jbehave.codehaus.org/minimock.html">JBehave</a> は 
+static import や generics, メソッド連鎖を駆使して DSL チックなコードを実現している. </p>
+<pre>  // easymock
+  expect(mock.voteForRemoval("Document"))
+      .andReturn((byte) 42).times(3)
+      .andThrow(new RuntimeException(), 4)
+      .andReturn((byte) -42);</pre>
+<pre>  // jbehave
+  exchangeRateServiceMock.expects("retrieveRate").
+      with(eq(Currency.USD)).
+      will(returnValue(new ExchangeRate(1.85, 0.54)));</pre>
+<p>この路線を突き詰めれば少しは LINQ に近づけるかもしれない. </p>
+<h4>Ruby で LINQ 風味 (はなぜか空しい)</h4>
+<p>そういえば Ruby ならブロック構文がある. 頑張れば LINQ ごっこができそうだ.</p>
+<pre>  ds.from(db.Doctors)
+    .join(db.Calls)
+    .on{ |d, c| d.Initials == c.Initials }
+    .where { |c| c.DateOfCall &gt;= DateTime.new(2006, 10, 1) &amp;&amp;
+                 c.DateOfCall &lt;= DateTime.new(2006, 10, 31) }
+    .orderby { |d| d.Initials }
+    .select { |d| d.Initials }</pre>
+<p>お. それっぽい! </p>
+<p>ふとぐぐってみたところ, <a href="http://jayfields.blogspot.com/2006/09/ruby-dsl-for-generating-sql.html">A Ruby DSL for generating SQL</a> という記事があった. 
+この人は実際に Ruby で SQL を吐く DSL を作り, ActiveRecord と併用しているらしい. 
+でもいざ実物をみると, <a href="http://www.codyfauser.com/articles/2005/11/20/rails-rjs-templates">RJS</a> に通じる空しさを感じてしまうなあ. なんというか, やっぱり素の SQL でいいですという気分になってくる. IDE の支援がないなら大差なさそうだし... 
+SQL が嫌いで ruby が好きな人にはいいかもしれない. 私は ActiveRecord くらいでいいや. </p>
+<p>こうして道の険しさを知り, 現実逃避はおしまい. 
+だるい気分は曇り空のせいかもしれず, いましばらくは Spring JDBC でがんばる気になりました. </p>
+<h4>リンク</h4>
+<ul>
+<li><a href="http://www.oreilly.com/catalog/language1/">"LINQ: The Future of Data Access in C# 3.0"</a></li>
+<li><a href="http://msdn.microsoft.com/data/ref/linq/">The LINQ Project</a><ul>
+<li><a href="http://download.microsoft.com/download/5/8/6/5868081c-68aa-40de-9a45-a3803d8134b8/DLinq_Overview_for_CSharp_Developers.doc">DLinq Overview(.doc)</a></li>
+</ul></li>
+<li><a href="http://weblog.infoworld.com/udell/gems/ju_linqMay06.html">A conversation with Anders Hejlsberg about the May 06 preview of LINQ</a></li>
+<li><a href="http://jayfields.blogspot.com/2006/09/ruby-dsl-for-generating-sql.html">A Ruby DSL for generating SQL</a></li>
+<li><a href="http://sayspy.blogspot.com/2006/02/why-python-doesnt-need-something-like.html">Why Python doesn't need something like the LINQ Project</a></li>
+<li><a href="http://intertwingly.net/blog/2005/09/29/Ruby-1-8-vs-LINQ/">Ruby 1.8 vs LINQ</a><ul>
+<li><a href="http://www.intertwingly.net/slides/2005/imab/education.html">Ruby + Ruby on Rails vs LINQ</a></li>
+</ul></li>
+</ul>

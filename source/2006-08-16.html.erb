@@ -1,0 +1,84 @@
+---
+title: "flino - flight note for your web trip"
+date: 2006-08-16
+---
+<pre></pre>
+<h3>近況</h3>
+<p><img src='https://farm1.staticflickr.com/97/217148498_d6076231e0_o.png'></p>
+<p>春先はヒマがあったので, なんかコードでも書くかと個人用プロキシを作っていた. 
+proxy は前から一度書いてみたかったんだよね. 
+ただ proxy だけあっても使い道がないので, キャッシュの検索機能をつけてみた. 
+"flino" と命名. </p>
+<p>その後仕事が忙しくなったり暑さでダレたりしてフェードアウト中. 
+挫けないうちに公開しておくことにした. 
+それなりにバグありだけれど, dogfood できる程度には動くようにはなっている. 
+試してくれる方がいらっしゃったら寛容な気持でおねがいします....</p>
+<hr>
+<h3>flino - flight note for your web trip</h3>
+<p>flino は localhost で起動して使う個人用のプロキシサーバです. 
+自分の中継したデータを保存し, あとから検索することができます. 
+Java で書かれており, HTTP と POP(+SSL) をサポートします. </p>
+<p><a href="http://www.flickr.com/photos/76579228@N00/tags/flino/">スクリーンショット</a>.</p>
+<h4>ダウンロード, 動作環境</h4>
+<p>動作には J2SE5.0 以降が必要です. 
+<a href="http://java.sun.com/javase/downloads/index.jsp">Sun のサイト</a> から
+ダウンロードしてください. (Mac OS 10.4 には標準インストールのはず.) </p>
+<p>Flino は以下の URL からダウンロードできます.</p>
+<ul>
+<li><a href="http://dodgson.org/omo/flino/flino-0.0.1.zip">http://dodgson.org/omo/flino/flino-0.0.1.zip</a> (windows/linux 用)</li>
+<li><a href="http://dodgson.org/omo/flino/flino-0.0.1.dmg">http://dodgson.org/omo/flino/flino-0.0.1.dmg</a> (Mac 用)</li>
+<li><a href="http://dodgson.org/omo/flino/flino-0.0.1-src.tgz">http://dodgson.org/omo/flino/flino-0.0.1-src.tgz</a> (ソースコード)</li>
+</ul>
+<h4>使い方</h4>
+<h5>Flino の設定</h5>
+<p>設定を変更するために flino.properties を編集します.</p>
+<pre>./flino.properties (windows, linux)
+./Flino.app/Contents/Resources/Java/flino.properties (mac)</pre>
+<p>既に HTTP のプロキシサーバを利用している場合は以下のプロパティを設定します.</p>
+<pre>flino.proxy.http=http://proxy.example.com:8080/</pre>
+<p>POP サーバのプロキシを利用する場合は, 以下のプロパティを設定します. 
+<a href="http://mail.google.com/support/bin/topic.py?topic=1555">gmail の POP アクセス</a> 
+のように SSL を通して POP サーバと接続する場合は 
+flino.pop.ssl に true を指定します. </p>
+<pre>flino.pop.server=pop.example.com
+flino.pop.port=110
+flino.pop.ssl=false</pre>
+<p>その他にも設定項目がありますが, 特に変更する必要はありません. </p>
+<h5>ウェブブラウザの設定</h5>
+<p>ウェブブラウザの HTTP プロキシを <a href="http://localhost:10110/">http://localhost:10110/</a> に設定します. 
+その際 localhost はプロキシ対象から除外します. (大抵はデフォルトで OK.)
+HTTPS はサポートしていません. 元の設定をそのまま使ってください. </p>
+<h5>メーラの設定</h5>
+<p>POP サーバを localhost, ポートを 11110 に設定します. </p>
+<h5>起動</h5>
+<p>Windows ユーザは flinow.exe を, Mac OS ユーザは Flino.app を起動します. 
+スタートアップやドックに登録しておくと便利です. </p>
+<p>ウェブブラウザを起動し, ウェブページが表示できることを確認します. 
+またメーラを起動してメールが受信できることを確認します. </p>
+<h5>検索してみる</h5>
+<p>検索はブラウザから行います. 
+<a href="http://localhost:9000/fui">http://localhost:9000/fui</a> にアクセスします. </p>
+<h5>困った時には...</h5>
+<p>omo at dodgson dot org にメールをくださるか, コメント欄でおしらせください.</p>
+<hr>
+<h3>類似のソフトウェア</h3>
+<p>flino と似たようなアプリケーションはそれなりにある. </p>
+<h5>各種デスクトップサーチ</h5>
+<p>デスクトップサーチは proxy ではないけれど, なぜかブラウザの閲覧結果を検索できる. 
+メールも検索できる. 
+ただなんでもかんでもインデクス化する節操のなさに馴染めない人もいると思う. 
+そういう人は flino のように範囲が限定されていると安心かもしれない. </p>
+<p>あと flino は検索結果を普通の web であるかのように透過的に返すから, 
+HTML を加工して表示するデスクトップサーチと違って
+HTML のレイアウトが崩れない. ちょっと便利. </p>
+<h5>プロキシサーチ</h5>
+<p>プロキシした内容を検索するアプリケーションはけっこうある. 
+ブックマークを物色するとこんなかんじ. (もう少しあった気がする.)</p>
+<ul>
+<li><a href="http://www.yacy.net/yacy/index.html">YaCy</a> : Java. P2P 連携付き.</li>
+<li><a href="http://www.suttree.com/code/pps/">PPS</a> : Python. Python 性はもう一種類くらいあった気がする.</li>
+<li><a href="http://modestraier.sourceforge.net/">mod_estraier</a> : Apache module. HyperEsraier 利用.</li>
+</ul>
+<p>これらはぜんぶ HTTP. 
+探したかんじでは POP を proxy して検索可能にするものは見当たらなかった. </p>
+<p>積もる話は次回. </p>

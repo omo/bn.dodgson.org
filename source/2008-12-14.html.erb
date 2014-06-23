@@ -1,0 +1,399 @@
+---
+title: "最近読んだ VM の本"
+date: 2008-12-14
+---
+<h3>最近読んだ VM の本</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Virtual-Machines-Versatile-Platforms-Architecture/dp/1558609105%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1558609105' class='bookcover'><img data:asin='1558609105' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51WzkhVO3dL.jpg'></span></a></span></p>
+<p>少し前に 
+"<a data:asin='1558609105' href='http://www.amazon.co.jp/Virtual-Machines-Versatile-Platforms-Architecture/dp/1558609105%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1558609105'>Virtual Machines: Versatile Platforms for Systems and Processes</a>" 
+という VM の教科書を読んだ. 
+今年は VM について知ったかぶりをする必要に迫られることが多く, 
+反省して付け焼刃をした次第. 
+言語処理系の VM の話を期待していたら XEN や VMWare 方面の VM の話が主で, 
+意表は突かれたものの面白かった. 
+速度を保ちながら仮想化という抽象を守るために
+コンパイラと OS の間の子が次々に曲芸を披露する健気さには心を打たれる. 
+VM を使ってあげようという気になる一冊. </p>
+<p>折良く Google から <a href="http://code.google.com/p/nativeclient/">Native Client</a> 
+(NaCl) なんていう VM 技術の応用が公開されたことだし, これを肴に教科書の宣伝をするというのが今日の趣旨です. 
+NaCl 自体の詳しい話は <a href="http://nativeclient.googlecode.com/svn/trunk/nacl/googleclient/native_client/documentation/nacl_paper.pdf">whitepaper</a> やそのほかのウェブサイトを参照ください. </p>
+<h4>VM の分類</h4>
+<p>で, 教科書の話. </p>
+<p>導入部の 1 章では VM の分類を行う. 
+まず仮想化を行う単位で分類をする. 
+OS のプロセス単位で仮想化をする <em>Process VM</em> と, 
+OS を含めたシステム全体を仮想化する <em>System VM</em> がある. 
+この二つは仮想化に使うレイヤが異る. 
+Process VM は, <em>ABI</em> 
+(Application Binary Interface; 関数/システムコール呼び出しなど) 
+と <em>ユーザ空間の ISA</em> (Instruction Set Architecture; CPU の仕様) を仮想化する. 
+ユーザランドの ISA というのは普段の特権レベルで動く命令セットってことね. </p>
+<p>対する System VM では, ユーザランド ISA はもちろん,
+Process VM では ABI の下に隠れていた <em>システム ISA</em> も仮想化する必要がある. 
+システム ISA は特権レベルで動く命令セットのこと. 
+System VM では ABI を仮想化する必要がない. ABI は (VM の上で動く) OS が提供している. </p>
+<p>もう一つの切り口は, ホストとゲストの ISA の違い. 
+ホストとゲストの ISA が同じ場合(<em>Same ISA</em>)と
+違う場合(<em>Differencne ISA</em>)で分類している. </p>
+<p><em>Process VM + Same ISA</em> には, たとえば 
+<a href="http://valgrind.org/">Valgrind</a> や
+<a href="http://pdos.csail.mit.edu/~baford/vm/">Vx32</a> がある. 
+<a href="http://www.winehq.org/">WINE</a> も ABI を仮想化するという意味では VM に近い. 
+(VM と呼ばれているのは見たことないけど.) </p>
+<p><em>Process VM + Different ISA</em> の例として, 
+教科書では <a href="http://www.usenix.org/publications/library/proceedings/usenix-nt97/chernoff.html">FX!32</a> を紹介している. DEC 製の VM で, Alpha 用 Windows NT の上で
+x86 用 Windows プログラムを動かせたらしい. DEC すごい. 
+典型的な JVM や CLR も Process VM + Different ISA だと言える. </p>
+<p>今時 VM というと真っ先に連想される VMWare や XEN, 
+VirtualBox の類は <em>System VM + Same ISA</em> である. 
+QEMU は <em>System VM + Different ISA</em>. 
+ゲーム機エミュレータの類も System VM + Different ISA ... かもしれないけれど, 
+OS もユーザモードもない環境相手に上の枠組みを使っても仕方なさそう. </p>
+<p>この分類でいくと, 
+NaCl は (VM かどうかはさておき) Process VM + Same ISA にあてはまるだろう. </p>
+<h4>要素技術いろいろ</h4>
+<p>こんな感じでだらだらと本の紹介をしていこうと思っていたけれど早くも挫けてきたので, 
+NaCl の実装に出てくるトピックを VM 教科書の文脈で説明しておわりにします. </p>
+<p>まず, NaCl の文脈で仮想化技術を使う動機を考えてみる. 
+だいたい以下の二つだと思う:</p>
+<ul>
+<li>サンドボックス: 悪意のあるプログラムがユーザにわるさをできない</li>
+<li>可搬な ABI の提供: Windows でも Posix 的システムコールのサブセットが動く, 実装を選ばずブラウザ機能の API が動く.</li>
+</ul>
+<h4>サンドボックス: 割り込みと先回り</h4>
+<p><em>サンドボックス</em> の実現は教科書全体を通じて論じられる. 
+なにしろサンドボックスを破るのは仮想化を破るとほぼ同義なので, 
+ゲストプログラムを騙しきるのは仮想化の中心的課題だと言える. </p>
+<p>サンドボックスの代表的なアプローチは, 
+ゲストの操作を <em>先回り</em> したり, 操作に <em>割り込んだり</em> してゲストの幻想を保つことだ. 
+たとえば命令の実行方式がインタープリタなら, 
+VM は全ての命令に割り込むことができる. 
+インタプリタのループの中でまずいメモリアクセスや命令をチェックし, 
+偽の結果を捏造すればいい. 
+OS と CPU が提供するメモリ保護や特権レベルの仕組みも, 割り込みの実現に利用できる. 
+OS の割り込みを VM が補足して, ゲスト向けに辻褄あわせをすればいい. 
+ただし, VM を高速化するにはなるべく割り込む回数を減らさなければいけない. 
+割り込み回数の削減に限らず, 
+VM 技術の話で速度は無視できない. 高速化のためにギリギリを攻める話は教科書の随所に現れる. 
+(速度を無視して安全にしたいならインタプリタを作ればおしまいだからね...)</p>
+<p>怪しい箇所を毎回チェックするのは大変なので, 
+先回りして怪しい箇所を含むコードを安全なコードに変換しておくこともできる. 
+変換後のコードをインタプリタで動かすこともできるものの, 
+どうせ生成するなら直接実行できるコードがいい. 
+オリジナルのコードからホスト CPU が直接動かせるコードを生成して実行することを, 
+教科書では <em>binary translation</em> と読んでいる. 要するに JIT. </p>
+<p>binary translation はプログラムの実行中に basic block 単位で行われるのが普通らしい. 
+多くの命令セットには Java Bytecode のようなメタ情報がなく, 
+実際に分岐して実行されるまでメモリ上のどの部分がコード(プログラム)なのかはわからない. 
+だから変換は basic block 単位でしかできない. 
+分岐では一旦インタプリタや VMM (仮想マシンモニタ)にジャンプし, 
+VMM が分岐先を変換してから, その変換後のコードに進む. </p>
+<p>分岐先が決まった分岐は, VMM を経由しないで直接分岐先にジャンプするよう後から書き換えられる.
+高速化のために basic block を複数つなぎあわせることもある. 
+連結された basic block を superblock という. 
+このへんは Tamarin の Tracing Tree とよく似ている. 
+あれは機械語用 VM 由来のテクニックだったのか... </p>
+<p>binary translation は,
+Different ISA の VM だけでなく Same ISA の VM でもサンドボックス目的などで利用する. 
+ただ, Different ISA の VM では別のメモリ領域を確保して命令列を作る必要があるのに対し, 
+Same ISA の VM は元の命令列を部分的に書き換える <em>patching</em> を使えるかもしれない. 
+patching は完全なコード生成と比べメモリ消費が少ないが,  
+常に使えるとは限らない. 書き換え後の命令が元の命令より大きいとダメとかね.</p>
+<h4>続サンドボックス: コード検証</h4>
+<p>話が逸れてしまった. 
+サンドボックスを実現するもう一つのアプローチに <em>コード検証</em> がある. 
+コード検証は実行前にコードをチェックして, まずいコードを拒否する. 
+Java の bytecode verification はコード検証の代表例. 
+教科書では, Java や .NET のような高レベル VM を扱う章の中でコード検証を説明している. </p>
+<p>JVM のような高級 VM と比べ, 多くの ISA はコード検証がやりにくい. 
+まず IA32 など実際の CPU の ISA や実行モデルには, 
+Java のクラスファイルやオブジェクトのようなメタデータがない. 
+メモリイメージのどの部分が何という関数で, どこにラベルがあってどこがゴミなのか. 
+どこが配列でどこかポインタなのか... 安全を保証するためのそんな手がかりに乏しい. 
+また, 実際の CPU は JVM よりずっと自由度が高い. 
+JVM の ISA では表現できないトリッキーなコードを実行することができる. </p>
+<p>...というより, JVM は実際の CPU から安全性の邪魔になる機能を
+注意深く取り除き, 静的な検証をやりやすいよう設計されている. 
+コード検証と VM の ISA には密接な関係がある. 
+仮想化の障害を乗り越える多くの面倒を教科書で散々読んだあとに 
+JVM の ISA とコード検証について説明されると, JVM はよくできてるなと感心する. 
+Sun エライ. </p>
+<p>binary translation を使った実行で特に扱いが難しいのは 
+コードの自己書き換えだ. ロード時にチェックしたプログラム自体に不正がなくても, 
+そのプログラムが動的にまずいコードを生成してはたまらない. 
+binary translation で生成したコードとも辻褄が合わなくなってしまう. 
+Java ほど高レベルでない 実 CPU の ISA を実行する VM では, 
+コードの自己書き換えを防ぐために涙ぐましい努力をしている. 
+しかしあまりがんばると遅くなってしまうため, 難しいトレードオフがある. </p>
+<p>それにしても 
+JIT をする VM 自身が自己書き換えをするプログラムの代表格なのは切ない話だとおもう. 
+<a href="http://valgrind.org/docs/manual/faq.html#faq.java">Valgrind の FAQ</a> には 
+Java VM を動かす際の制限が説明されている. </p>
+<h4>NaCl のサンドボックス</h4>
+<p>NaCl の sandbox は, 上で紹介した手法のうちいくつかを使っている. </p>
+<p>まず割り込み. NaCl は不正なメモリアクセスを防ぐために CPU のメモリ保護を使う. 
+ただし mprotect() のような OS 提供の保護機構ではなく, 
+IA32 固有の <em>セグメントレジスタ</em> で保護する. どちらも似たようなものだけれど, 
+セグメントレジスタは特権モードがなくても変更できるから都合が良い(...のかな. よくわからず). 
+保護の対象は 主に NaCl のランタイム. プログラムからランタイムを書き換えて
+サンドボックスを破ることができないよう保護しているらしい. </p>
+<p><em>コード検証</em> も行う. 
+NaCl は専用のプログラムローダ sel_ldr を持っており, 
+(<a href="http://code.google.com/p/nativeclient/source/browse/trunk/nacl/googleclient/native_client/service_runtime/sel_main.c">sel_main.c</a>) 
+ロード中にコードを検証する. 間接ジャンプ, 特権命令などは検証を通らない. 
+(<a href="http://code.google.com/p/nativeclient/source/browse/trunk/nacl/googleclient/native_client/ncv/ncvalidate.c">ncvalidate.c</a> など. <a href="http://code.google.com/p/nativeclient/source/browse/trunk/nacl/googleclient/native_client/ncv/ncdecode_table.c">ncdecode_table.c</a> をみると禁止されている命令が一覧できる.) </p>
+<p>コード検証と ISA には密接な関係があると先に書いたけれど, 
+これは NaCl にもあてはまる. 
+静的な検証だけでフルセットの IA32 コードの安全性を保証するのは大変だから, 
+NaCl は IA32 のサブセットだけを許している. 
+自己書き換えのような怪しいコードは, IA32 として有効でも NaCl では動かない. </p>
+<p>サブセット化だけではうまい検証ができないため, NaCl は IA32 に独自の命令を追加している. 
+たとえば関数の間接呼び出し (関数ポインタなど) は不正の入口になりやすい部分だ. 
+けれど禁止されるとさすがに厳しい. 
+そこで, NaCl の ISA は安全な(実行時チェック付きの)間接呼び出し命令として 
+<em>naclcall</em> を定義している. このほかには nacljmp と naclret が定義されている. 
+JVM の ISA では自由な分岐を許すかわりに invokevirtual を定義しているけれど, 
+それと似たようなものかもしれない. </p>
+<p>普通のコンパイラは IA32 サブセット + 独自命令を出力できないため, NaCl はパッチのあたった gcc や gas を提供している (<a href="http://code.google.com/p/nativeclient/source/browse/trunk/nacl/googleclient/native_client/tools/patches/gcc-4.2.2.patch">gcc-4.2.2.patch</a> など.) </p>
+<p>実装をみると独自命令が登場するのは gcc が出力するアセンブリだけ. 
+パッチ付きの gas はこれを特定の IA32 命令シーケンスに変換する. 
+ncv もそのシーケンスを知っているので, 
+シーケンスが一致すれば禁止命令であっても例外的にパスする. このへんのトリックは面白い. </p>
+<p>このサブセット化+独自命令+ツールチェインの導入によって, 
+NaCl はフルセットの IA32 命令を安全に実行するための苦労から逃れている. 
+怪しい命令の実行は VM 実装の中でも難しく, 教科書でもページを多く割いているところなので, 
+それを省けるとシステムはとてもシンプルになる. 
+怪しい命令を実行する一番確実な方法である IA32 のインタプリタもいらないし, 
+インタプリタを高速化するための binary translation もいらない. </p>
+<p>他の VM が怪しいコードをがんばって動かそうとするのは, 
+既存のバイナリ資産を実行したいと考えているからだ. 
+NaCl はバイナリ資産の活用をばっさり諦めることで問題を簡単にした. 
+このへんは企業のカラーがでるところだと思う. 
+たとえば Microsoft のようにバイナリ資産を多く持っている企業だと, 
+それを捨てるという判断をするのは難しいだろう. 
+Google が持っているクライアントサイドのバイナリ資産は 
+Microsoft と比べれば小さなものだろうから, こういう判断もアリなんだと思う. 
+ブラウザ上のサンドボックスという制約がある以上, 
+いずれにしてもバイナリ資産の活用は難しそうだしね. </p>
+<p>また話がそれた...サンドボックス最後の砦は<em>プロセスによる分離</em>だ. 
+NaCl のプログラムはホストのウェブブラウザとは独立したプロセスが作られる. 
+ホストのウェブブラウザは OS のプロセスとして保護され, 
+ゲストはプロセス間通信でホストの機能を利用する. 
+プロセスの分離は, 他のサンドボックス機構にバグがあった場合の予備的な保護機構だという. 
+NaCl では, セグメントレジスタやコード検証を用いた保護を inner sandbox, 
+プロセスによる保護を outer sandbox と呼んでいる. 
+この outer sandbox は VM 技術と関係ない. OS を活用しましょうという話.</p>
+<p>結局 NaCl の sandbox はこんなかんじになっていた:</p>
+<ul>
+<li>セグメントレジスタを使ったメモリ保護</li>
+<li>コード検証と拡張命令を使った怪しいコードの除去<ul>
+<li>怪しくないコードを吐くために toolchain をカスタマイズ</li>
+</ul></li>
+<li>プロセスを分離して更に安全.</li>
+</ul>
+<h4>可搬な ABI の提供</h4>
+<p>次の話. Process VM は, 
+ゲストのバイナリが想定している OS の API/ABI を仮想的に提供する. 
+Linux なんかだとシステムコールだろうし, 
+Windows なら user32.dll といった DLL 内の関数だろう. </p>
+<p>これらを仮想化するためのアイデアは単純.
+システムコールなら, 該当する命令 (IA32 なら "int") を
+ランタイム関数の呼び出しに置き換えればよい. 
+DLL ならロードの段階でホストが実装した DLL をゲストに注入する. </p>
+<p>ゲストのコードを実行している間, 
+ホスト用のランタイムメモリは保護されているのを思いだそう. 
+システムコールを代替するランタイム関数は, 
+まずこの保護を外す必要がある. 
+そしてしかるべきコードを実行したあとは, メモリ保護を復帰してからゲストのコードに戻る. </p>
+<p>アイデアが単純でも実装が簡単とは限らない. ホスト OS とゲスト OS が一致しているなら, 
+システムコールは 1:1 に対応する. この場合, ホストはゲストとの ABI の違い
+(引数の積み型やエンディアン) を調整して, ホスト側の同じシステムコールを呼び出せばいい. 
+Alpha 版 Windows の上で IA32 版 Windows を動かした FX!32 はこのアプローチらしい. </p>
+<p>ホスト OS  とゲスト OS が一致しないと問題はずっと難しくなる. 
+ホスト VM はゲスト OS の機能を自分で実装しなおす必要があるからだ. 
+これは要するに <a href="http://www.winehq.org/">WINE</a> や 
+<a href="http://www.freebsd.org/doc/en/books/handbook/linuxemu.html">FreeBSD の Linux Binary Compatibility</a> がやっているようなことなんだろうけれど, いかにも大変そうだよね. </p>
+<h4>NaCl の ABI 仮想化</h4>
+<p>NaCl のバイナリは Linux でも Windows でも動作するわけから, 
+そこには何らかの ABI 仮想化があるはずだ. 
+前に書いたとおり, NaCl はバイナリ資産の活用を完全に諦めている. 
+だから Linux や Windows の ABI をがんばってサポートする動機がない. 
+実際, 既存の OS とは互換性のない, NaCl 独自の ABI を持っている. </p>
+<p>どう独自なのか. ABI を議論する時, ソースコードレベルで提供する <em>API の種類</em> と, 
+そのコードをビルドしたバイナリ内での <em>呼び出し規約</em> はわけて考えた方が良い. </p>
+<p>NaCl SDK が提供する API には, POSIX で定義された関数(システムコール)のサブセットと 
+ブラウザ連携のための独自 API がある. 
+SDK にはこれらの API 呼び出しをラップした関数の静的ライブラリが含まれている. 
+アプリケーションはこれをリンクする. </p>
+<p>それらのラップ関数は, 所定の呼び出し規約に従って API 本体を呼び出す. 
+IA32 の Linux では int 命令を使う部分だけれど, NaCl のコード検証は int を禁止している. 
+かわりに API 呼び出しは <em>Trampolin</em> コードにジャンプする. 
+Trampolin コードは, 
+セグメントレジスタのメモリ保護を解除するなどサンドボックスを無効化し, 
+それからホストのコード用にスレッドを切り替える. そのスレッドで API の実装が動作する. 
+OS のシステムコール呼び出しがやっていることをユーザ空間でやると思えば, 
+だいたい合っているとおもう. </p>
+<p>静的ライブラリには Trampolin へのジャンプだけが含まれている. 
+API の本体はホストのバイナリに含まれている. (OS 毎のホスト実装が OS の違いを吸収する.) 
+その API 本体を呼び出す Trampolin は, ロード中に sel_ldr が生成する. </p>
+<p>例として close() を見てみよう. 
+SDK が提供する静的ライブラリは, 標準 C ライブラリの実装である <a href="http://sourceware.org/newlib/">newlib</a> をベースにしている. newlib は組込み OS なんかでよく使われる実装らしい. 
+ライブラリ関数のうち, OS に依存する部分は newlib の利用者側(=NaCl)で提供する必要がある. </p>
+<p>close() のエントリポイントは <a href="http://code.google.com/p/nativeclient/source/browse/trunk/nacl/googleclient/native_client/tools/libnacl/close.c">close.c</a> にある.</p>
+<pre>
+// tools/libnacl/close.c
+...
+extern int errno;
+
+extern int __nacl_close(int desc);
+
+int close(int desc) {
+  int retval = __nacl_close(desc);
+  if (retval &lt; 0) {
+    errno = -retval;
+    return -1;
+  }
+  return 0;
+}</pre>
+<p>__nacl_close() を呼び, エラーコードの辻褄あわせをしている. </p>
+<p>__nacl_close() は nacl_close.S で定義されている.</p>
+<pre>
+#include "../../service_runtime/include/bits/nacl_syscalls.h"
+#include "../../service_runtime/nacl_config.h"
+
+    .text
+    .globl  __nacl_close
+    .p2align    NACLENTRYALIGN
+__nacl_close:
+.CLOSE_SYSCALL_ADDRESS = NACL_SYSCALL_ADDR(NACL_sys_close)
+    jmp .CLOSE_SYSCALL_ADDRESS</pre>
+<p>ここで Trampolin のアドレスに jmp する. </p>
+<p>jmp 先の Trampolin はローダが生成する. </p>
+<pre>
+
+// sel_ldr.c
+...
+void  NaClPatchOneTrampoline(struct NaClApp *nap,
+                             uintptr_t  target_addr)
+{
+  // Trampolin 用の雛形と relocation 情報を指定して...
+  struct NaClPatchInfo  patch_info;
+  ...
+  patch32[0].target = ((uintptr_t) &amp;NaCl_tramp_cseg_patch) - 6;
+  patch32[0].value = (uintptr_t) NaClSyscallSeg;
+  ...
+  patch_info.abs32 = patch32;
+  patch_info.num_abs32 = sizeof patch32/sizeof patch32[0];
+  ...
+  patch_info.dst = target_addr;
+  patch_info.src = (uintptr_t) &amp;NaCl_trampoline_seg_code;
+  patch_info.nbytes = ((uintptr_t) &amp;NaCl_trampoline_seg_end
+                       - (uintptr_t) &amp;NaCl_trampoline_seg_code);
+  // ゲストのコードにパッチ
+  NaClPatchMemory(&amp;patch_info);
+}
+...
+void  NaClPatchMemory(struct NaClPatchInfo  *patch)
+{
+  ...
+  /* 雛形をゲストのコード領域にコピー */
+  memcpy((void *) patch-&gt;dst, (void *) patch-&gt;src, patch-&gt;nbytes);
+  ...  /* relocation とか... */
+}</pre>
+<p>patch する雛形は <a href="http://code.google.com/p/nativeclient/source/browse/trunk/nacl/googleclient/native_client/service_runtime/tramp.S">tramp.S</a> にある:</p>
+<pre>
+#include "native_client/service_runtime/nacl_config.h"
+
+   .text
+   .globl  IDENTIFIER(NaCl_trampoline_seg_code)
+   .globl  IDENTIFIER(NaCl_tramp_dseg_patch)
+   .globl  IDENTIFIER(NaCl_tramp_cseg_patch)
+   .globl  IDENTIFIER(NaCl_trampoline_seg_end)
+IDENTIFIER(NaCl_trampoline_seg_code):
+    movl    $0xdeadbeef, %eax
+IDENTIFIER(NaCl_tramp_dseg_patch):
+    mov %eax, %ds  /* remove data sandbox */
+    lcall   $0xcafe, IDENTIFIER_IMMED(NaClSyscallSeg)
+    /* Trampoline installer will s/0xcafe/service runtime's CS/ */
+IDENTIFIER(NaCl_tramp_cseg_patch):
+    ret
+IDENTIFIER(NaCl_trampoline_seg_end):
+
+   .globl  IDENTIFIER(NaCl_text_prot)
+   .globl  IDENTIFIER(NaCl_text_prot_end)
+
+IDENTIFIER(NaCl_text_prot):
+    hlt
+IDENTIFIER(NaCl_text_prot_end):</pre>
+<p>C 言語にもラベルをグローバルな識別子にする機能が欲しいなあ...</p>
+<p>それはさておき, このあと NaClSyscallSeg() の先で
+更に各種チェックやコンテクスト切り替えを済ませ, ようやく
+プラットホーム毎の nacl_syscall_impl.c で定義された API(システムコール) の
+実装が呼びだされる. </p>
+<pre>
+/* service_runtime/win/nacl_syscall_impl.c */
+int32_t NaClSysClose(struct NaClAppThread *natp,
+                     int                  d)
+{
+  return NaClCommonSysClose(natp, d);
+}
+
+/* service_runtime/nacl_syscall_common.c */
+int32_t NaClCommonSysClose(struct NaClAppThread *natp,
+                           int                  d)
+{
+  int             retval = -NACL_ABI_EBADF;
+  struct NaClDesc *ndp;
+
+  NaClLog(4, "Entered NaClCommonSysClose(0x%08x, %d)\n",
+          (uintptr_t) natp, d);
+
+  NaClSysCommonThreadSyscallEnter(natp);
+
+  NaClXMutexLock(&amp;natp-&gt;nap-&gt;desc_mu);
+  ndp = NaClGetDescMu(natp-&gt;nap, d);
+  if (NULL != ndp) {
+    NaClSetDescMu(natp-&gt;nap, d, NULL);  /* Unref the desc_tbl */
+  }
+  NaClXMutexUnlock(&amp;natp-&gt;nap-&gt;desc_mu);
+  NaClLog(5, "Invoking Close virtual function of object 0x%08x\n",
+          (uintptr_t) ndp);
+  if (NULL != ndp) {
+    retval = (*ndp-&gt;vtbl-&gt;Close)(ndp, natp-&gt;effp);  /* Unref */
+  }
+
+  NaClSysCommonThreadSyscallLeave(natp);
+  return retval;
+}</pre>
+<p>いやー大変だわ. 実装自体も単純に close() を呼ぶんじゃなくて 
+自前で descriptor table を管理してるし...
+帰り道も同じような苦難の旅が続きそうだけれど割愛させていただきます. </p>
+<p>また話がそれていた. 
+NaCl がどうやってユーザ空間だけで ABI の仮想化を実現しているか
+眺めてみるという話だった:</p>
+<ul>
+<li>int 命令を使わずに済ませるため, 独自の ABI を定義している</li>
+<li>その ABI は Trampoline 経由でホストに移るというもの<ul>
+<li>まずサンドボックスを解除する</li>
+<li>コンテクスト切り替えやら何やらをして実装にを呼び出す</li>
+<li>帰り道は逆をやる</li>
+</ul></li>
+</ul>
+<h4>まとめ</h4>
+<p>教科書の宣伝をするつもりが後半は Google Native Client の宣伝になってしまった. 
+不覚ながらまとめ:</p>
+<ul>
+<li>NaCl は IA32 向け Same ISA の Process VM だと考えることができる<ul>
+<li>ただし使える命令サブセットなので, 厳密には Same じゃない.</li>
+</ul></li>
+<li>サンドボックスはコード検証とメモリ保護, プロセスの分離などでがんばっている</li>
+<li>独自の ABI を定義することでユーザ空間での疑似システムコールを実装し, OS 間で ABI を可搬にしている</li>
+<li>多くの VM と違ってバイナリ資産を生かそうという動機がないため, 比較的単純な構造で高い性能を実現<ul>
+<li>インタプリタもバイナリ変換も DLL のロードも変なシステムコールの実装もない.</li>
+</ul></li>
+<li>というような話がさっくりわかるようになる "<a data:asin='1558609105' href='http://www.amazon.co.jp/Virtual-Machines-Versatile-Platforms-Architecture/dp/1558609105%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1558609105'>Virtual Machines: Versatile Platforms for Systems and Processes</a>" は良い教科書だと思います (←本題)<ul>
+<li>NaCl が肴だった都合で Process VM の話ばかりだったけど, ほんとは System VM の話も VT-x の話も System370 の話も出てくる</li>
+<li>物理的に厚いのは紙が厚いせいでページ数はそんなでもない</li>
+<li>図も多い</li>
+</ul></li>
+</ul>

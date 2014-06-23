@@ -1,0 +1,545 @@
+---
+title: "rake のコードを眺める"
+date: 2006-09-01
+---
+<h3>近況</h3>
+<p>いまの余暇コードは Makefile のかわりに <a href="http://www.scons.org/">SCons</a> を使っている. 
+Scons は python 製の make alternative. (<a href="http://www.radiumsoftware.com/0212.html#021203">概要は Radium Software に記事があった.</a>) 
+"#include" によるヘッダファイルの依存関係を勝手に解決してくれるのがいい. 
+私は何度やっても Makefile の dep ターゲットをうまく書けない. 泣きたくなる. 
+<a href="http://gcc.gnu.org/onlinedocs/gcc-4.1.1/gcc/Preprocessor-Options.html#Preprocessor-Options">gcc -MD</a> で作った .dep ファイルが
+どのタイミングで Makefile に incldue されるのか, 実のところ未だによくわかっていない. 
+少し前にやった仕事でも, 試行錯誤の末になんとなく動いた Makefile をおそるおそる使っていた. 
+(<a href="http://www.gnu.org/software/make/manual/html_node/Automatic-Prerequisites.html#Automatic-Prerequisites">マニュアル</a>をぱくったんだっけ...でも sed なんて使わなかったような...) 一体何がどの順序で評価されるのかさっぱりわからない. こんなのはもう嫌だ. SCons バンザイ. SCons ファイルの評価順もよくわかっていないけれど, そこは気にしないでおく.</p>
+<p>そのほかに, Scons は built-in で gcc や cl (MS-C++) をサポートしている. 
+そのサポートに乗れば実行するコマンドは勝手に選んでくれるからけっこう楽ちん. 
+あとは自分で追加したいオプションを書き足せばいい. </p>
+<p>SCons では Makefile 相当の SConstruct ファイルを python 文法で書く. 
+script as DSL. そういえば ruby にも似たような make 代替品があったのを思いだした. 
+<a href="http://rake.rubyforge.org/">rake</a>. Rails が使っているやつ. 
+rake はよく ruby を使った DSL の例として引き合いに出される. 
+(<a href="http://www.martinfowler.com/articles/rake.html">Martin Fowlerの記事</a>.)</p>
+<p>build-in で色々な機能を持つ SCons と違い, rake は高機能でない. 
+レガシー make の レガシー部分を濾過した, 単純なルールエンジンになっている. 
+だから C/C++ をビルドする目的で使うんだったら支援機能のある SCons の方がいい. 
+ただ rake はとてもコンパクトにまとまっている. 
+DSL のケーススタディーとして眺めてみるにはいいかもしれない. 眺めてみた.</p>
+<h3>rake のコードを眺める</h3>
+<p>まず <a href="http://rubyforge.org/frs/?group_id=50">rake-0.7.1をダウンロード</a>, 
+展開する. 
+行数を数えてみると 6000 行くらいある. 
+ただ半分近い 2300 行がテスト(./test). 実コード(./lib) は 3200 行だ. 小さい. 
+./lib/rake.rb が本体で 1900 行ある. 余りはプラグインみたいな拡張部分. 
+rake.rb だけ眺めればよさそう. </p>
+<h4>クラス一覧</h4>
+<p>rake.rb を見てます. </p>
+<p>まずざっとクラスを眺めてみる. こんなのがある:</p>
+<ul>
+<li>Task<ul>
+<li>FileTask<ul>
+<li>FileCreationTask</li>
+</ul></li>
+<li>MultiTask</li>
+</ul></li>
+<li>FileList</li>
+<li>DefaultLoader</li>
+<li>EarlyTime</li>
+<li>Namespace</li>
+<li>Application</li>
+</ul>
+<p>ふーん. Task は Makefile のターゲットに相当するものらしい. 
+Application はシングルトンのコンテクストオブジェクトだ. 他は脇役かな. </p>
+<h4>bootsrap: Application.run()</h4>
+<p>rake.rb の起動部分はこんなかんじ:</p>
+<pre>if __FILE__ == $0 then
+  Rake::Application.new.run
+end</pre>
+<p>Application.run() が main みたいなものなのね. まずはこいつを追っていこう. </p>
+<pre> class Application
+   include TaskManager
+   ...
+   def run
+     handle_options
+     begin
+       tasks = collect_tasks
+       load_rakefile
+       if (オプションがあったら..)
+         ...
+       else # こっちが本筋...
+         tasks.each { |task_name| Rake::Task[task_name].invoke }
+       end
+     rescue Exception =&gt; ex
+       ....
+       exit(1)
+     end
+   end
+ end</pre>
+<p>ぱっと見たかんじはシンプルだ. 
+(引用したコードは余計なものを削ってある. 興味のある人は本体をあたってください.) </p>
+<p>Application と TaskManager は Object と Kernel の関係に近くて, 
+雑多なものが TaskManager に押し出されている. TaskManager の出番はまだ少し先. </p>
+<p>さて, 処理を眺めよう. 
+collect_tasks() は実行するタスク名のリストをコマンドライン引数から取得する. 
+load_rakefile() は Rakefile の評価. 
+そのあと collect したタスク名から task を検索(Rake::Task[task_name]), 
+実行(invoke)している. </p>
+<p>collect_tasks() はつまらなそうなのでパスして, まずは load_rakefile() を見てみよう. </p>
+<h4>Rakefile の評価: load_rakefile()</h4>
+<pre>   def load_rakefile
+     here = Dir.pwd
+     # 注: have_rakefile() は副作用で みつけた Rakefile のパスを
+     #     @rakefile に保存している
+     while ! have_rakefile
+      ... Rakefile が見付かるまで親ディレクトリをたどる
+     end
+     ...
+     load File.expand_path(@rakefile) if @rakefile != ''
+     ...
+     load_imports
+   end</pre>
+<p>これもそんなに面白くなかった...単に Rakefile をみつけて load しているだけ. 
+標準の挙動が親ディレクトリを探すのはちょっと嬉しい. 
+load_imports() については後述. </p>
+<p>Rakefile の評価は素朴だ. bind でコンテクストをつくって eval, とかではないんだね. 
+となると, Rakefile で利用できるAPI(関数)はグローバルに定義されているはず. 
+<a href="http://docs.rubyrake.org/">ドキュメント</a> によると, 
+"file", "directory", "task", "rule", "import" などの API がある. 
+探してみるとたしかに軒並みトップレベルで定義されている. </p>
+<p>その定義はどうなっているのか, 
+代表的な API である "task", "file", "rule", "import" を順に眺めていく.</p>
+<h4>API: task()</h4>
+<p>まずは親玉格の "task" から. </p>
+<pre>def task(args, &amp;block)
+  Rake::Task.define_task(args, &amp;block)
+end</pre>
+<p>移譲するだけだ. 他の API もだいたい似たようなつくり.
+こいつは更に Rake.application.define_task() に移譲する. 
+結局, 実体は TaskManager にあった. </p>
+<pre> module TaskManager
+   ...
+   # ここでは task_class に "Task" のクラスオブジェクトがやってくる.
+   def define_task(task_class, args, &amp;block)
+     task_name, deps = resolve_args(args)
+     task_name = task_class.scope_name(@scope, task_name)
+     deps = [deps] unless deps.respond_to?(:to_ary)
+     deps = deps.collect {|d| d.to_s }
+     task = intern(task_class, task_name)
+     task.application = self
+     task.add_comment(@last_comment)
+     @last_comment = nil
+     task.enhance(deps, &amp;block)
+     task
+   end</pre>
+<p>task_class の scope_name() は, 
+相対名のタスク("foo")を完全装飾名("baz:bar:foo")にする.
+"www" を "www.example.com" にするたみたいなもんか.</p>
+<pre>   # Rake Module Methods
+   class &lt;&lt; self
+     ...
+     # Apply the scope to the task name according to the rules for
+     # this kind of task.  Generic tasks will accept the scope as
+     # part of the name.
+     def scope_name(scope, task_name)
+       (scope + [task_name]).join(':')
+     end</pre>
+<p>ついでに intern(). これも同じ TaskManager のメソッド.</p>
+<pre>   ...
+   def intern(task_class, task_name)
+     @tasks[task_name.to_s] ||= task_class.new(task_name, self)
+   end</pre>
+<p>要するに, 引数から task の名前(task_name)と依存関係(deps)を切り出し, 
+scope_name() で解決した task_name に対応するオブジェクトを表から検索/なければ作って,  
+("| = =" はそういうイディオムね.) 
+ごにょごにょやって, 依存関係と block で task を enhance() する. </p>
+<p>enhance が何かはさておいて, block の中身を確認しておこう. 
+これは Rakefile で task に渡されるブロックだった. 
+要はそのタスクで実行したい処理. これをブロック文法で簡潔に書けるのは
+rake のいいところだとおもう. Rakefile はこんなかんじ(微妙に人為的なのは御愛嬌): </p>
+<pre>task :my_clean =&gt; [:foo, :bar] do
+   rm CLEAN_FILES
+end</pre>
+<dl>
+<dt>my_clean が task_name, </dt>
+<dd>foo, :bar が deps, 
+</dd>
+</dl>
+<p>中のブロックが block に渡ってくる. "rm" はシェルじゃなくて ruby(rake) のメソッドね. </p>
+<p>本筋に戻って enhance() を. </p>
+<pre> class Task
+   ...
+   def enhance(deps=nil, &amp;block)
+     @prerequisites |= deps if deps
+     @actions &lt;&lt; block if block_given?
+     self
+   end</pre>
+<p>なんてことはなかった... 
+@prerequisites と @action に それぞれ 引数の deps と block を追加する. 
+上書きじゃなくて追加なのがちょっと面白い. 
+rake では同じ名前の task を定義して, 依存関係や挙動を追加できるんだね. 
+つまりこんな Rakfile を動かすと...</p>
+<pre>task :default do
+  print "hello,"
+end
+
+task :default do
+  print "bye\n"
+end</pre>
+<p>こうなる:</p>
+<pre>foobar:~/work/rails/hello/my-temp omo$ rake
+(in /Users/omo/work/rails/hello/my-temp)
+hello,bye</pre>
+<h4>API: file()</h4>
+<p>次は file を見てみよう. これは FileTask.define_task に移譲される.</p>
+<pre>def file(args, &amp;block)
+  Rake::FileTask.define_task(args, &amp;block)
+end</pre>
+<p>...というか, FileTask クラスオブジェクトのインスタンスの 
+define_task() メソッドが呼ばれる.
+(呼ばれるコードは Task.define_task と同じ.)
+だから intern() で作られるオブジェクトが FileTask のインスタンスになる. 
+ちょっとメタっちい. ruby っぽいコードだなあ. </p>
+<h4>API: rule()</h4>
+<p>もう一つの主役級である rule. </p>
+<pre>def rule(args, &amp;block)
+  Rake::Task.create_rule(args, &amp;block)
+end</pre>
+<p>移譲. 結局また TaskManager(Application) が呼ばれる. </p>
+<pre> module TaskManager
+   ...
+   def create_rule(args, &amp;block)
+     pattern, deps = resolve_args(args)
+     pattern = Regexp.new(Regexp.quote(pattern) + '$') if String === pattern
+     @rules &lt;&lt; [pattern, deps, block]
+   end</pre>
+<p>一行目は前と似ている. pattern は文字列だったら正規表現に直す. 
+それから三つ組を @rule 配列に追加. 
+この三つ組の中身を調べるために, 
+まず Rakefile を見よう. rule はこんなかんじで使われる. </p>
+<pre>rule '.o' =&gt; ['.c'] do |t|
+  sh "cc #{t.source} -c -o #{t.name}"
+end</pre>
+<p>少しわかりにくいけど, 一番目の引数が pattern, 二番目が deps, ブロックが block になる. 
+(deps の配列に拡張子を渡している点に注目. 忘れたころに出てくる.)</p>
+<p>上級編:</p>
+<pre>rule( /\.o$/ =&gt; [
+   proc {|task_name| task_name.sub(/\.[^.]+$/, '.c') }
+ ]) do |t|
+   sh "cc #{t.source} -c -o #{t.name}"
+end</pre>
+<p>少しわかりにくいけど, 一番目の引数が正規表現, 二番目が proc. </p>
+<p>結局 @rule には "正規表現か文字列, 依存関係の拡張子や proc, ブロック" 
+という三つ組の配列が追加される. 
+私なら Task と揃えて "Rule" というクラスを作りそうだけれど, 
+そこは配列を使った三つ組で済ませている. LL っぽい. </p>
+<h4>API: import()</h4>
+<p>最後は import. (だんだん飽きてきた...)</p>
+<p>import はもともと依存関係のリストを読み込むためにある. make dep 相当だね. 
+先に Rakefile の例を見ておこう:</p>
+<pre>require 'rake/loaders/makefile' # この require はとりあえず気にしない
+
+file ".depends.mf" =&gt; [SRC_LIST] do |t|
+  sh "makedepend -f- -- #{CFLAGS} -- #{t.prerequisites} &gt; #{t.name}"
+end
+
+import ".depends.mf"</pre>
+<p><a href="http://www.xfree86.org/current/makedepend.1.html">makedepend</a> は 
+gcc -MD みたいなもの. それで作った依存関係リストを import で rake に取り込む. </p>
+<p>コードはこれ:</p>
+<pre>def import(*fns)
+  fns.each do |fn|
+    Rake.application.add_import(fn)
+  end
+end</pre>
+<p>引数は配列を渡すんだったか. 行き先はこちら:</p>
+<pre> class Application
+   ...
+   def add_import(fn)
+     @pending_imports &lt;&lt; fn
+   end</pre>
+<p>配列に追加しておわり. 一番あっけない...</p>
+<h4>API まとめ</h4>
+<p>これで代表的な API はだいたい網羅した, つもり. ちょっとまとめておこう. </p>
+<ul>
+<li>task: Task オブジェクトを作って依存関係や block を詰め, @tasks テーブルに追加</li>
+<li>file: 基本的には task と同じ. Task のかわりにサブクラスの FileTask オブジェクトができる.</li>
+<li>rule: 正規表現, 依存関係, ブロックの三つ組を @rules 配列に追加</li>
+<li>import: 引数を @pending_imports 配列に追加</li>
+</ul>
+<p>どの API も内部のデータ構造を更新するだけ. 
+実際に行動ユーザから見える行動を起こすことはない. 
+実行したい処理自体はブロックのまま保留されている. </p>
+<p>DSL は宣言的な性格を持つことが多い. 
+だから自家製 DSL の文法に ruby のような既存の言語を使う場合, 
+スクリプトの中身が副作用そのものではなく宣言の組立になるよう設計するのは一つのアイデアだ. 
+実際の副作用はそのあと DSL 処理系(ライブラリ)の側で発行すればいい. 
+イメージとしては ruby の 構文木を評価すると DSL の構文木(内部モデル)ができて, 
+DSL エンジンはその内部モデルを評価するかんじ. </p>
+<p>DSL の能力は制限されているのが普通だ. 
+でも rake や SCons のように既存の言語を使った DSL は, 
+その標準機能で表現しきれない部分はホスト言語で拡張することができる. 
+その拡張部分を ruby の block としてインラインに書けるのが rake のいいところだと思う. 
+block を使えば実際の作業を簡潔に書けるから, 
+rake のコアはルールを解釈する機能だけ持てばいい. </p>
+<p>SCons も同様の拡張ができるけれど, まず関数や callable なクラスを定義してから
+それを API で渡す必要がある. ちょっと面倒. ただかわりに組込みの機能は充実しているから, 
+そもそもスクリプト側での拡張はやらずに済むことが多い. 
+実用上はそれで困らない. 便利に使える. </p>
+<p>このように, make という古典的 DSL のモダン焼き直し対決として 
+rake と SCons の違いを眺めると面白い. 
+DSL の設計に落とすホスト言語の影を見ることができる. </p>
+<p>...などとそれらしい能書きを垂れたら気が晴れてきた. 続きます. </p>
+<h4>実際の作業: Task.invoke()</h4>
+<p>Application.run() で load_rakefile() が終わると内部モデルができあがる.
+あとはそれを実行すればいい. Task.invoke() がその実行部分. </p>
+<pre> class Task
+   ...
+   def invoke
+     @lock.synchronize do
+       ...
+       return if @already_invoked
+       @already_invoked = true
+       invoke_prerequisites
+       execute if needed?
+     end
+   end</pre>
+<p>呼ばれてたらスキップ, invoke_prerequire() で依存するタスクを先こなして, 
+それから実体の excute() が実行される, というところだろうか. 
+(lock しているのは紹介していない multitask API のため.)</p>
+<p>まず invoke_prerequire() を見よう.</p>
+<pre>   def invoke_prerequisites
+     @prerequisites.each { |n|
+       application[n, @scope].invoke
+     }
+   end</pre>
+<p>依存をあらわす @prerequisites は文字列なので, それを TaskManager.[] 
+で Task オブジェクトに変換する. </p>
+<pre> module TaskManager
+   ...
+   # Find a matching task for +task_name+.
+   def [](task_name, scopes=nil)
+     task_name = task_name.to_s
+     self.lookup(task_name, scopes) or
+       enhance_with_matching_rule(task_name) or
+       synthesize_file_task(task_name) or
+       fail "Don't know how to build task '#{task_name}'"
+   end</pre>
+<p>うーん. ここはちょっと頑張ってるね. 少し追ってみたけれど先は長そう. 
+lookup(), enhance_with_matching_rule(), synthesize_file_task() は
+保留して先に全体の流れを追おう. </p>
+<h4>Task.exexute()</h4>
+<p>タスクの実際の処理をする execute() はこんなの</p>
+<pre> class Task
+   ...
+   def execute
+     ...
+     application.enhance_with_matching_rule(name) if @actions.empty?
+     @actions.each { |act| result = act.call(self) }
+   end</pre>
+<p>@actions は API に渡されたブロックだった. 
+何かしらブロックがあればそれを実行し, なければ rule で引っ張ってきて 
+(enhance_with_matching_rule()) 実行する. </p>
+<p>はい, これで大筋はおしまい. </p>
+<p>Rakefile を実行して依存関係を構築し, 
+タスクのブロックを関連づけ, 
+それから引数の task を検索して依存関係を解決しながら関連づけられたブロックを実行する. 
+そういう無難なケースは網羅したはず. </p>
+<p>無難なケースとは, 実行するアクション(ブロック)も依存関係も
+すべて明示的に指定されたようなケースのこと. 
+rake 自身はもっと賢くふるまう. たとえば rule もまだ登場していない. 
+action を明示的に指定しなくてもなんとなく動く. 
+そのへんの肝はどうやら横着してスキップした TaskManager.[] の先にあるらしい. </p>
+<p>仕方ない. 続きを追おう.</p>
+<h4>愚直なタスクの検索: TaskManager.lookup()</h4>
+<pre>   # (和訳)
+   # task を探す. そのためにスコープや, タスク名にあるスコープのヒントを使う.
+   # このメソッドは file task の合成やルールは使わず愚直な検索をする.
+   # 特別なスコープ名 (例:'^') は識別される. スコープ引数がないときは今のスコープを使う.
+   # みつからなければ nil を返す.
+   def lookup(task_name, initial_scope=nil)
+     initial_scope ||= @scope
+     task_name = task_name.to_s
+     if task_name =~ /^rake:/
+       scopes = []
+       task_name = task_name.sub(/^rake:/, '')
+     elsif task_name =~ /^(\^+)/
+       scopes = initial_scope[0, initial_scope.size - $1.size]
+       task_name = task_name.sub(/^(\^+)/, '')
+     else
+       scopes = initial_scope
+     end
+     lookup_in_scope(task_name, scopes)
+   end</pre>
+<p>親切なコメントに救われた. まず scopes 配列を作って lookup_in_scope() を呼ぶ.
+"rake:" はグローバルスコープ. "^" はファイルシステムでいう "../" みたいなものらしい. </p>
+<pre>   def lookup_in_scope(name, scope)
+     n = scope.size
+     while n &gt;= 0
+       tn = (scope[0,n] + [name]).join(':')
+       task = @tasks[tn]
+       return task if task
+       n -= 1
+     end
+     nil
+   end</pre>
+<p>依存関係を少しずつ装飾していって task を検索する. 
+(@tasks は完全装飾名をキーに task を保存していたのを思いだそう.) 
+たしかに愚直だ. </p>
+<h4>ルールベースのタスク検索: TaskManager.enhance_with_matching_rule()</h4>
+<p>愚直に探してみつからないと, 今度は rule を使う. </p>
+<pre>   # (和訳)
+   # タスク名にマッチするルールがみつかったら,
+   # そのルールからのアクションと依存関係を使って enhance する.
+   # 適当な source 属性をセットする. enhance したタスクを返すか,
+   # ルールがみつからなかったら nil を返す.
+   def enhance_with_matching_rule(task_name, level=0)
+     fail Rake::RuleRecursionOverflowError,
+     "Rule Recursion Too Deep" if level &gt;= 16
+     @rules.each do |pattern, extensions, block|
+       if md = pattern.match(task_name)
+         task = attempt_rule(task_name, extensions, block, level)
+         return task if task
+       end
+     end
+     nil
+     ...
+   end</pre>
+<p>コメントどおり. rake の作者はいいひとだなあ... 
+"task" API と違い, "rule" の第一引数は正規表現だった. /.o$/ みたいの. </p>
+<p>無限再帰のチェックがあるあたりから, 
+rule の検索はどうも再帰になっているらしいこともわかる. </p>
+<p>肝心の task を作るのは attempt_rule(). </p>
+<pre>   # Attempt to create a rule given the list of prerequisites.
+   def attempt_rule(task_name, extensions, block, level)
+     sources = make_sources(task_name, extensions)
+     prereqs = sources.collect { |source|
+       if File.exist?(source) || Rake::Task.task_defined?(source)
+         source
+       elsif parent = enhance_with_matching_rule(sources.first, level+1)
+         parent.name
+       else
+         return nil
+       end
+     }
+     task = FileTask.define_task({task_name =&gt; prereqs}, &amp;block)
+     task.sources = prereqs
+     task
+   end</pre>
+<p>中カッコと do...end の使いわけにポリシーを感じないね. まあいいや. </p>
+<p>まず enhance_with_matching_rule() が目につく, たしかに再帰している. 
+内容は, まず make_sources() で依存関係の候補を作る.
+次にそれを少しトリッキーな方法でフィルタし, それを元に新しい task を定義している. </p>
+<p>make_sources() に進もう. </p>
+<pre>   # (和訳) ファイル名拡張子のリストから source のリストを作る.
+   # proc だったらそれを変換する.
+   def make_sources(task_name, extensions)
+     extensions.collect { |ext|
+       case ext
+       when String
+        task_name.sub(/\.[^.]*$/, ext)
+       when Proc
+         ext.call(task_name)
+       else
+         fail "Don't know how to handle rule dependent: #{ext.inspect}"
+       end
+     }.flatten
+   end</pre>
+<p>コメントが親切で言うことないよ...</p>
+<p>extension はファイルの拡張子(の配列). "file" API の引数には
+拡張子の文字列が渡っていたのを思いだそう. あれです. 
+上級向けの例に表われた proc もちゃんと使われている. ("ext.call()" の部分.)</p>
+<p>せっかくなのでルールが再帰する例を作ってみた. </p>
+<pre>rule(/.a/ =&gt; [".b"]) {}
+rule(/.b/ =&gt; [".a"]) {}</pre>
+<p>こんなかんじで怒られる.</p>
+<pre>foobar:~/work/rails/hello/my-temp omo$ rake foo.a
+rake aborted!
+stopping only thread
+        note: use sleep to stop forever
+(See full trace by running task with --trace)</pre>
+<p>ちなみに Makefile だと...</p>
+<pre>foo.a: foo.b
+	echo "hello"
+foo.b: foo.a
+	echo "hello"</pre>
+<p>で...</p>
+<pre>contentiss:~/work/rails/hello/my-temp omo$ make
+make: Circular foo.b &lt;- foo.a dependency dropped.
+echo "hello"
+hello</pre>
+<p>おお. ちょっと賢い. </p>
+<h4>ファイルタスク: TaskManager.synthesize_file_task()</h4>
+<p>何をしてたんだっけ...</p>
+<p>ええと, Rakefile で明示的に指定されていない依存関係やタスクが
+どうやって関連づけられているのかを追っていたのだった. 
+で, 明示的な場合と rule を使った場合についてはわかったと. </p>
+<p>残りは synthesize_file_task() なのですが,</p>
+<pre>   def synthesize_file_task(task_name)
+     return nil unless File.exist?(task_name)
+     define_task(Rake::FileTask, task_name)
+   end</pre>
+<p>あっけなかった. 文字列だったのを FileTask にインスタンス化して終わり. </p>
+<h4>make dep 問題にとりくむ : load_imports()</h4>
+<p>これでもう rake はばっちりだ...と思ったけれど何かが抜けている気がする. 読み直してみる...</p>
+<p>あらら, load_rakefile() の最後にある load_imports() を忘れてた. 
+これは import() API で渡したものを処理するだけだから
+import() を使わなければ関係ない. でも一応見ておこう. </p>
+<pre> class Application
+   ...
+   def load_imports
+     while fn = @pending_imports.shift
+       next if @imported.member?(fn)
+       Rake::Task[fn].invoke if Rake::Task.task_defined?(fn)
+       ext = File.extname(fn)
+       loader = @loaders[ext] || @default_loader
+       loader.load(fn)
+       @imported &lt;&lt; fn
+     end
+   end</pre>
+<p>なんで Enumerable.each() じゃなくて shift() を使うんだろう. 
+見えないところで誰かが @pending_imports に副作用を起こすのかもね. </p>
+<p>さて, ループの中を見よう. 
+いきなり task を invoke() しているのを見て面喰らうかもしれない. 
+これは import で読み込みたいファイルが無ければ作るということ. 
+依存関係ファイルの依存関係...というようなやや鶏と卵な気配がある. </p>
+<p>@loaders はファイルの拡張子をキーとしたテーブルらしい. 
+拡張子に応じて import() の振舞いは違うんだね. 
+何もしないとテーブルは空. @default_loader にはこんなオブジェクトが入っている. </p>
+<pre> class DefaultLoader
+   def load(fn)
+     Kernel.load(File.expand_path(fn))
+   end
+ end</pre>
+<p>先の makedepend を使った例を眺める. 
+require している 'rake/loaders/makefile' が怪しい. 
+./lib/rake/loaders/makefile.rb を見ると MakefileLoader なんてのが定義されている. 
+これが .mf ファイルを解釈するわけか. </p>
+<pre>module Rake
+  ....
+  # Install the handler
+  Rake.application.add_loader('mf', MakefileLoader.new)
+
+end</pre>
+<p>rake はこうして "make depend わけわからん問題" (いま命名) を解決しているんだね. 
+なっとく. </p>
+<p>SCons には似たような仕組みとして Scanner というのがある. 
+これも pluggable にファイルを解釈し, 
+Makefile (相当) にあらわれない依存関係を解決するのに使われている. 
+やっぱりみんな困ってたんだな. ちょっと安心した. </p>
+<h4>手頃な ruby 教材としての rake</h4>
+<p>こうしてみると rake はなかなか良くできてるね. 
+ツールとしてはまだそれほどパワフルではないかも知れないけれど, 
+アイデアは整理されているしコードはめちゃめちゃ読みやすい. 
+なので, ruby の入門書を読み終えて少し書き捨てスクリプトを書いたくらいの人が
+暇潰しに読むのとけっこう楽しいんじゃないかと思う. </p>
+<p>コードが読みやすい他にも, 読み物や教材に適している理由はいくつかある. </p>
+<ul>
+<li>規模が小さい: 本体は 2000 行くらい. 使い捨てない汎用ツールとして実用できる最小ラインだと思う. Web を巡回する時間が一日分あれば読める.</li>
+<li>若い: 歴史が浅く下位互換のためなどの醜いコードが少い. 読んでいて怯えずに済む.</li>
+<li>依存関係が少ない: 外部の大きなライブラリに依存していないから, 読み物として完結している.</li>
+<li>ライブラリでなくツール: ruby のライブラリやフレームワークは色々あるけれど, コマンドラインから起動する "ツール" は案外少ない. でも自分では書くのはツールだったりする. ツールのコードを読むと, たとえば "まずは Application クラスを作っておく" といったお約束な手口を学べる.</li>
+<li>堅実: method_missing() や eval() のようにトリッキーな機能を使っていない.</li>
+</ul>
+<p>Java の勉強に JUnit を読めということがある. 
+適度な規模, 適切な設計, 現実に汚れず自己完結で読みやすいコード. 
+ふだん使っているものを理解する楽しさ. 
+rake もそんな教材になりうる. なんてのは手前味噌にも程があります. </p>

@@ -1,0 +1,155 @@
+---
+title: "ベンダーブランチと svn:externals"
+date: 2006-11-04
+---
+<h3>ベンダーブランチと svn:externals</h3>
+<p>svn:externals って何? と訊かれたので説明します. ほぼ私信です. </p>
+<p>subversion を使ってプロジェクトのコードを管理しているとき, 
+他のプロジェクトやサードパーティといった外のコードも一緒に使いたいことがある. 
+そういう時は相手のコードを自分のレポジトリにとりこむといい. 
+そのための機能として, svn には 
+<a href="http://subversion.bluegate.org/doc/ch07s06.html">ベンダーブランチ</a> と 
+<a href="http://svnbook.red-bean.com/en/1.0/ch07s03.html">svn:externals</a>, 
+二つの方法がある. (もっとあるかもしれない.) 
+ベンダーブランチはコピーで, svn:externals がリンクだと思えばいい. </p>
+<h4>ベンダーブランチ</h4>
+<p>ベンダーブランチは自分のツリーに外のコードをチェックインする仕組みのこと. 
+仕組みといってもシステムからの支援は特にない. 流儀と言った方がいいかもしれない. </p>
+<p>まずサードパーティのコードを /vendor 以下にインポートしてバージョンでタグを切り</p>
+<pre># マニュアルから抜粋
+$ svn import /path/to/libcomplex-1.0 \
+             http://svn.example.com/repos/vendor/libcomplex/current \
+             -m 'importing initial 1.0 vendor drop'
+$ svn copy http://svn.example.com/repos/vendor/libcomplex/current  \
+           http://svn.example.com/repos/vendor/libcomplex/1.0      \
+           -m 'tagging libcomplex-1.0'</pre>
+<p>そのタグから trunk にコピーする</p>
+<pre># よくみると trunk じゃない気も...
+$ svn copy http://svn.example.com/repos/vendor/libcomplex/1.0  \
+           http://svn.example.com/repos/calc/libcomplex        \
+           -m 'bringing libcomplex-1.0 into the main branch'</pre>
+<p>端的に言うと, この方法は変更に強いのが利点. 
+trunk にコピーされたコードは, 他への影響なく書き換える(=変更する)ことができる. 
+要するにローカルでパチれる. 
+逆にコピー元のコードがバージョンアップで変更されても関係ない. </p>
+<p>ただしそのバージョンアップを反映しようと思うと少し面倒だ. 
+流儀としては, まずベンダーブランチのバージョンをあげ, 
+それを trunk にマージする. 
+実際にやってみると衝突, 登録もれ, 削除わすれ, API 非互換でビルドできない ... など, 
+けっこう面倒で複雑. 手強い. 
+チェックアウトしてビルドを繰り返し, 
+調整が終わって気がつくと 10 くらいリビジョンを浪費している. </p>
+<p>マニュアルには, この手間を省く 
+<a href="http://svnbook.red-bean.com/en/1.0/ch07s04.html#svn-ch-7-sect-4.2">svn_load_dirs.pl</a> というスクリプトが紹介されている. 私はまだ使ったことがない. </p>
+<h4>svn:externals</h4>
+<p>ファイルをコピーするベンダーブランチに対して, 
+リンクをはるのが svn:externals. これは subversion クライアント組込みの機能で, 
+あるディレクトリの下に自動で別のレポジトリをチェックアウトできる. </p>
+<p>まず, リンクしたいディレクトリに subversion の <a href="http://subversion.bluegate.org/doc/ch07s02.html">プロパティ</a> でリンク先を指定しておく. </p>
+<pre># またマニュアルから抜粋...
+# リビジョンも指定できるのがミソ.
+# calc ディレクトリの svn:externals プロパティに
+# ディレクトリ名と URL の対が登録されている
+$ svn propget svn:externals calc
+third-party/sounds             http://sounds.red-bean.com/repos
+third-party/skins              http://skins.red-bean.com/repositories/skinproj
+third-party/skins/toolkit -r21 http://svn.red-bean.com/repos/skin-maker</pre>
+<p>するとチェックアウトの際, 指定されたレポジトリも連鎖的にチェックアウトされる</p>
+<pre>$ svn checkout http://svn.example.com/repos/calc
+A  calc
+A  calc/Makefile
+A  calc/integer.c
+A  calc/button.c
+Checked out revision 148.
+
+Fetching external item into calc/third-party/sounds
+A  calc/third-party/sounds/ding.ogg
+A  calc/third-party/sounds/dong.ogg
+A  calc/third-party/sounds/clang.ogg
+...
+A  calc/third-party/sounds/bang.ogg
+A  calc/third-party/sounds/twang.ogg
+Checked out revision 14.
+</pre>
+<p>プロパティの使い方はマニュアルをよんでください...</p>
+<p>一見便利な svn:externals にも問題はある. 
+まず, 参照先のコードはうかつに変更できない. 
+リンクはふつう相手の本家レポジトリを参照しているから, 
+その変更は影響範囲が広い. 誰かのビルドを壊してしまうかもしれない. 
+そもそも自分にコミット権のないレポジトリかもしれない. </p>
+<p>変更できるにしても, レポジトリをまたいだコミットはアトミックにならない. 
+(そもそもレポジトリが違うからリビジョンに相関がない.) 
+関連した二つの変更を紐づけて記録できないのは気分が悪い. </p>
+<p>自分の変更が誰かに影響するということは, 誰かの変更が自分に影響するということでもある. 
+つまり他人のチェックインで自分のビルドが壊れうる. 
+これはとても不安だ. 
+その相手が同じチームでない限り, こちらのビルドを気にしてくれるはずもない. 
+継続的統合で検出できると思うかもしれないけれど, あれはあくまで安全弁. 
+相手がこちらのコードをビルドしていない以上, エラーは許容できないほど頻繁に起こる. </p>
+<p>そんなわけで, svn:externals を使えるのはリンク先がコードが stable な場合に限られる. 
+私は断然ベンダーブランチが好みだな. </p>
+<p>個人ユーザの中には, 自分のコードをレポジトリをわけて管理しているけれど
+実際はぜんぶ一緒に面倒を見ていることもあるだろう. 
+そういう場合も svn:externals を使える. 
+でも, それならいっそ全てのコードを一つのレポジトリにまとめてしまえばいい気はする. </p>
+<p>プロジェクト単位でレポジトリをわけるか全部まとめるかの選択については 
+"<a href="http://bradchoate.com/weblog/2006/07/27/oscon-subversion-best-practices">Subversion Best Practices</a>" という記事が参考になるかもしれない. </p>
+<h4>メタプロジェクトとしての svn:externals</h4>
+<p>さて番外編. </p>
+<p>必要悪としての svn:externals というのがある. 
+たとえばレポジトリの容量が限られており, 不要なものをチェックインしたくないことがある. 
+こういう時には svn:externals が有用だろう. 
+仕事ならケチるなといえるけれど, 
+趣味のコードを持ち歩くべく USB メモリにレポジトリを作っている, 
+なんてケースなら妥協していいとおもう. 
+テストデータや素材がやたらにでかいときにも同情の余地はある. </p>
+<p>あとは既にあるレポジトリを相手にする場合. 
+たとえば, 途中参加したプロジェクトのレポジトリが SCM 的にぐだぐだだった...
+というシナリオを考えてみよう. </p>
+<pre>$ svn co http://hoge.example/repos/foo
+A foo.c
+A foo.h
+.....</pre>
+<p>trunk/ も src/ もなしにいきなりコードかよ! </p>
+<p>こうなるとベンダーブランチのつくりようがない. (普通のブランチすら切れない.)
+下手に巨大なコードをチェックインすると, 普段の ci や up が遅くなって困る. 
+まっとうな解決策はレポジトリを作りなおすことだろう. 
+ただ納期が一ヶ月後に迫っていて, 
+しかも同僚はコードをまめにチェックインせず手元にためるタイプだったとする. 
+うかつに引越しするのは混乱を招きそうで気がひける. </p>
+<p>更に, ぐだぐだプロジェクトには当然ワンショットのビルドスクリプトなんてない. 
+依存ライブラリは自分でチェックアウトする必要がある. 
+チェックアウトしてみると案の定ビルドに失敗する. 
+最新バージョンでは互換性が失なわれているらしい. 
+作業コピーのリビジョンを同僚にたずね, 
+それをもってきてビルドすると動いたりする. ふー. </p>
+<p>仕方なく svn:externals の出番となる. </p>
+<p>まず, foo を包含するための meta-foo レポジトリをつくる. </p>
+<pre>...
+$ svnadmin create meta-foo
+...
+$ svn mkdir http://hoge.example/repos/meta-foo/trunk</pre>
+<p>依存するレポジトリ(foo を含む)をまとめるディレクトリをつくり, 
+svn:externals でリンクする. 安全なリビジョンを参照すること. </p>
+<pre>$ svn mkdir http://hoge.example/repos/meta-foo/trunk/proj/
+$ svn co http://hoge.example/repos/meta-foo/trunk/
+...
+$ vi extern.txt
+$ svn propset svn:externals -F extern.txt trunk/proj
+$ svn ci trunk
+...
+$ svn up
+...</pre>
+<p>ビルドスクリプトは meta-foo にチェックインすればいい. </p>
+<pre>$ vi trunk/Makefile
+$ svn add trunk/Makefile
+...
+$ svn ci</pre>
+<p>このほかにメモや便利スクリプトなども meta-foo にチェックインしておく. 
+一ヶ月くらいならこれでしのげるんじゃないかしら...</p>
+<p>実際には別の同僚が依存ライブラリのバージョンを上げてしまうだとか, 
+テストデータがローカルにしかないだとか, release build に失敗するだとか, 
+コンパイラの警告が 100 件くらい出るだとか, 
+バグトラックがないだとか, 単体テストしにくい面倒なつくりだとか, 
+可搬なはずが可搬じゃないだとか, そもそも仕様がよくわかんないだとか, 
+積もる話は色々ありうるけれど, フィクションです. </p>

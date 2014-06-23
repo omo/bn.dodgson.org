@@ -1,0 +1,105 @@
+---
+title: "中年からのメタプロデビュー"
+date: 2006-08-27
+---
+<h3>近況</h3>
+<p>また余暇コードを書きはじめた. 挫けないようゴールは小物をえらぶ. 
+こんどは C++ を使っている. 趣味での C++ はちょっと久々. ほどよくモダンに書きたい. </p>
+<p>作業をすすめると, ある整数値の二進対数を計算したくなった. 
+lg(512) -&gt; 9 みたいなやつ. 端数は切り上げたい. (ex. lg(100) -&gt; 7) 
+想像のつくとおり, ビットシフトでせこく計算を端折ったり, 
+メモリをけちる都合で適当にデータやメモリブロックの大きさを揃えるような目的に使う. 
+だから対数を求めたら逆に 2 の指数も計算したい (ex. pow(2, 7) -&gt; 128) </p>
+<p>モダン界に生きる以上, このサイズ計算はコンパイル時にやる必要がある. こんなかんじ. </p>
+<pre>typename&lt;typename S&gt;
+struct PoormansContainer {
+  enum {
+    block_size  = ... sizeof(S)を使った式 ..., // ここで指数を計算
+    block_power = ... sizeof(S)を使った式 ...  // ここで対数を計算
+  };
+  ...
+};
+
+...
+PoormansContainer&lt;MyData&gt; data_list;</pre>
+<h3>中年からのメタプロデビュー</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/Generative-Programming-Methods-Tools-Applications/dp/0201309777%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0201309777' class='bookcover'><img data:asin='0201309777' class='asin image-right' src='http://ecx.images-amazon.com/images/I/41FCR0R6BDL.jpg'></span></a></span>
+C++ でコンパイル時計算といえば template meta programming. 
+せっかくだからここらでメタプロデビューをしてみようと思い 
+<a href="http://www.boost.org/libs/mpl/doc/">Boost MPL のドキュメント</a> を眺めてみる. 
+が, むずかしい. よくわかんない. 眠い. 挫けた...</p>
+<p>私が最初に テンプレートを使った MP を知ったのは, 
+学生の頃 <a data:asin='0201309777' href='http://www.amazon.co.jp/Generative-Programming-Methods-Tools-Applications/dp/0201309777%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0201309777'>Generative Programming</a> という本を読んだ時のこと. 
+たぶんこのころ瞬間的に boost をウォッチしていて, 
+この本がメーリングリストか何かで紹介されていたのだった気がする. 
+(よっぽどヒマだったんだね...) 
+こいつはすごいとさっそく手元の VC++6.0 で書いてみたらさっぱり動かなかった. 
+ひどくがっかりしたのを覚えている. それ以来 MP には近づいていない. </p>
+<p>その時の記憶が確かなら, テンプレートの MP とはテンプレートの特殊化で分岐を, 
+enum で変数を, 
+再帰的なテンプレートクラスのインスタンス化で関数を表現する手法だった気がする. 
+boost MPL はもっと色々やっていそうだが, 私の知る素朴な MP はそんなものだった. 
+まあ分岐と変数と関数があればなんとかなりそうだ. </p>
+<p>ということで書いてみた:</p>
+<pre>#include &lt;iostream&gt;
+
+/*
+ * conditional
+ */
+template&lt;bool P, size_t X, size_t Y&gt;
+struct select_t { enum { value = 0 }; };
+template&lt;size_t X, size_t Y&gt;
+struct select_t&lt;true,  X, Y&gt; { enum { value = X }; };
+template&lt;size_t X, size_t Y&gt;
+struct select_t&lt;false, X, Y&gt; { enum { value = Y }; };
+
+/*
+ * binary logarithm (with round-up)
+ */
+template&lt;size_t N, size_t M=30u&gt; struct lg_t {
+  enum {
+    X = N &amp;  (1&lt;&lt;M),
+    Y = N &amp; ((1&lt;&lt;M)-1),
+    value = select_t&lt;(0 != X),
+	             (M + select_t&lt;(0 != Y), 1, 0&gt;::value),
+                     lg_t&lt;N, M-1&gt;::value
+	             &gt;::value
+  };
+};
+
+template&lt;size_t N&gt; struct lg_t&lt;N, 0&gt; {
+  enum { value = 0 };
+};
+
+/*
+ * power function
+ */
+template&lt;size_t N, size_t M&gt; struct pow_t {
+  enum {
+    X = M-1,
+    value = select_t&lt;(0 == X),
+                     N,
+                     (N*pow_t&lt;N, M-1&gt;::value)
+	             &gt;::value
+  };
+};
+
+template&lt;size_t N&gt; struct pow_t&lt;N, 0&gt; {
+  enum { value = 1 };
+};
+
+int main() {
+  std::cout &lt;&lt; lg_t&lt;100&gt;::value &lt;&lt; std::endl;
+  std::cout &lt;&lt; pow_t&lt; 2, lg_t&lt;100&gt;::value &gt;::value &lt;&lt; std::endl;
+  return 0;
+}</pre>
+<p>結果:</p>
+<pre>7
+128</pre>
+<p>なんとなく動いてる気がする. 最近のコンパイラ(gcc-4.0)はエライ. </p>
+<p>それにしても, このくらい誰かが既に作っているとおもうんだどなあ. 
+boost MPL の難しさを考えると,  この程度なら MP な人には当たり前すぎる話なんだろうか. 
+<a data:asin='0321227255' href='http://www.amazon.co.jp/Template-Metaprogramming-Concepts-Techniques-In-Depth/dp/0321227255%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0321227255'>本</a> も出ていることだし勉強しておいた方がいいのかもと
+思うも食指の動きは鈍くカート投入には至らず...
+それにこの再帰に満ちた界隈で生きていくには, MP 以前に関数型言語の一つも
+やっておいた方がよさそう. 先は長い. </p>

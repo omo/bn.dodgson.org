@@ -1,0 +1,140 @@
+---
+title: "体調不全で一回休み"
+date: 2008-02-13
+---
+<h3>近況</h3>
+<p>体調不全で一回休み. 週末のんだくれて喉をやられてしまった. 
+酔っぱらいよくない... 禁煙のビール屋があってもいいと思うんだけどなあ.</p>
+<p>そのビール屋で組み込み屋さんの友達と宴会をしているときに, sqlite いいよねという話になった. 
+web での sqlite は rails や php と一緒に人気が出た気がする. 
+組み込み用途でも人気. 
+たとえばゲーム屋さんでは zlib と lua の次くらいに使われてるという風説がある. (真偽不詳.)
+ライセンスが緩いのもいい. 私もなんとなくファンで, 
+たまにウェブサイトの文書を眺めたり
+<a href="http://www.dodgson.org/omo/t/?date=20061001">触ってみたり</a>している. </p>
+<p>今日も wiki を眺めていたら, いつのまにか 
+<a href="http://www.sqlite.org/cvstrac/wiki?p=CompilingFts">FTS のバージョンは 3</a> になり, 
+仮想テーブルに続いて 
+<a href="http://www.sqlite.org/cvstrac/wiki?p=SqliteVfs">仮想ファイルシステム</a> なんてのも
+実装されていた. 
+コード以外の話題では Mozilla と Symbian が 
+<a href="http://www.sqlite.org/index.html">sponsor</a> になった様子. 
+なかなか熱心に開発されているし, 企業が金を出すくらいの実用性がある. 
+sqlite に精通して組み込みデータベースエンジニアになる, なんてのは
+組み込み屋さんとしてはアリじゃないか. このあいだはそんな話をしていた. </p>
+<p>その友達は, 組み込み屋さんとして sqlite に二つの懸念を持っていた. 
+ひとつはストレージの消費容量を入力するデータから計算できるかということ. 
+もう一つは atomic write のための fsync で 刺さるのが困ること. 
+いかにも組込みっぽい懸念ではある. </p>
+<p>ストレージサイズは, 調べればわかる...と思う. 
+ちょっと面倒そうだけど, 予想不可能というかんじはない. 
+fsync での block は, 改造が必要かと思ったら先の VFS で解決するようだ. 
+(VFS というと大袈裟だけど, 要するにファイル周辺の移植層ね.) 
+そのものずばりな <a href="http://www.sqlite.org/cvstrac/fileview?f=sqlite/src/test_async.c&amp;v=1.40">test_async.c</a> なるサンプルがあった. 
+やりくちは単純. ファイル IO の要求をキューイングして遅延する. 
+そういえば sponsor になっている symbian の OS は基本的に API が非同期だと聞く. 
+VFS は sponsoring の成果なのかもしれない. 
+でも, かわりに btree のトラバースが心配になってきた. 
+読み出しは遅延して隠すことができないからブロックせざるを得ない. 困った.
+中断をあわらすエラーもなさそう. symbian ではどうやって解決してるんだろうね. 
+まさか setjmp じゃ... ゲーム機ならスレッド使っておわりなんだけど.
+(test_async.c では解決していない.)</p>
+<h4>Fossil</h4>
+<p>sqlite にはいくつかのブランチがあり, 
+それらのブランチは sqlite 作者謹製の 
+<a href="http://fossil-scm.hwaci.com/">Fossil</a> という SCM で管理されている. 
+分散 SCM らしい. ページの宣伝によれば, 
+ウェブ UI を内蔵し, Trac 風の BTS や Wiki を標準で供えている. CGI でも動く. 
+レポジトリが単一のファイルに収まっており管理しやすい. 
+それに実行ファイルひとつで動くからインストールも簡単...実行ファイル? </p>
+<p>まさかと思いスナップショットをダウンロード. 
+不安は的中した. <em>C言語で書かれている.</em> マジかよ.
+しかもプリプロセッサとして実装されたコード埋め込みのテンプレートエンジンを
+使って HTML などを整形してる. こりゃいじる気にならないなあ...  
+コードベースには 
+<a href="http://www.sqlite.org/cvstrac/wiki?p=TheAmalgamation">Amalgamation</a> 
+された sqlite が含まれる. 
+単一ファイルレポジトリの正体は sqlite のデータベースというわけ. </p>
+<p>コードはこんなかんじ. </p>
+<pre>
+/*
+** WEBPAGE: home    // このコメントも解釈されるっぽい.
+** WEBPAGE: index
+** WEBPAGE: not_found
+*/
+void home_page(void){
+  char *zPageName = db_get("project-name",0);
+  if( zPageName ){
+    login_check_credentials();
+    ...
+    wiki_page();
+    return;
+  }
+  style_header("Home");
+  @ &lt;p&gt;This is a stub home-page for the project.
+  @ To fill in this page, first go to
+  @ &lt;a href="%s(g.zBaseURL)/setup_config"&gt;setup/config&lt;/a&gt;
+  @ and establish a "Project Name".  Then create a
+  @ wiki page with that name.  The content of that wiki page
+  @ will be displayed in place of this message.
+  style_footer();
+}</pre>
+<p>はー...</p>
+<p>せっかくなので動かしてみよう. 
+<a href="http://fossil-scm.hwaci.com/build.html">手順</a> に従い
+スナップショットをダウンロード, 展開, ビルドする. ビルドはただ make するだけ. (要 zlib.)
+fossil というバイナリができるから, 適当に path を通す. </p>
+<p>使ってみる.</p>
+<pre>$ mkdir hello
+$ cd hello
+$ fossil new hello
+$ ls
+hello</pre>
+<p>この hello ファイルがレポジトリ. 
+こんなかんじになっている:</p>
+<pre>$ sqlite3 hello
+SQLite version 3.4.2
+Enter ".help" for instructions
+sqlite&gt; .tables
+blob         event        phantom      reportfmt    tagxref      user
+config       filename     plink        shun         unclustered
+delta        mlink        rcvfrom      tag          unsent</pre>
+<p>コマンド体系は mercurial や svk と同じ路線 のようす.</p>
+<pre>$ fossil help
+Usage: fossil help COMMAND.
+Available COMMANDs:
+add          close        gdiff        new          revert       timeline
+branch       commit       help         open         rm           undo
+cgi          deconstruct  http         pull         server       update
+changes      del          info         push         settings     user
+checkout     descendents  leaves       rebuild      status
+clean        diff         ls           reconstruct  sync
+clone        extra        merge        redo         tag
+This is fossil version [1ce0ac53ef] 2008-02-12 00:31:48</pre>
+<p>...でも, ちょっと面倒. まず open で working copy をつくるらしい.</p>
+<pre>$ fossil open hello
+$ ls
+_FOSSIL_ hello
+$ sqlite3 _FOSSIL_
+SQLite version 3.4.2
+Enter ".help" for instructions
+sqlite&gt; .tables
+vfile   vmerge  vvar</pre>
+<p>追加, チェックインは他と同じようなかんじ.</p>
+<pre>$ echo Hello &gt; hello.txt
+$ fossil add hello.txt
+$ fossil commit # エディタ起動. 色々聞かれるけど yes で乗り切る.</pre>
+<p>HTTP server もついてくる. </p>
+<pre>$ fossil server hello # 8080 で内蔵の httpd が起動する</pre>
+<p><img src='/images/20080213_0.png' class='image'></p>
+<p>ブラウザで wiki などを見るほか, 分散らしく clone もできる. </p>
+<pre>$ fossil clone http://localhost:8080/ foo</pre>
+<p>さっきの hello ファイルが foo という名前でコピーされる. </p>
+<pre>$ ls
+foo hello</pre>
+<p>このへんで飽きた. </p>
+<p>sqlite を使った小さなアプリケーションの例として眺める分には面白いけれど, 
+普通に使うなら mecurial の方がいいや...
+それにしても C 言語でこんなのを書いちゃうとは, 
+sqlite 作者の D. Richard Hipp はタフだなーと尊敬しました. 
+会社休んでる場合じゃないね. </p>

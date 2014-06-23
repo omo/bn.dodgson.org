@@ -1,0 +1,371 @@
+---
+title: "Firefox Developers Conference の LT に混ぜてもらいました"
+date: 2008-11-17
+---
+<h3>近況</h3>
+<p><a href="http://mozilla.jp/events/2008/fxdevcon/">Firefox Developers Conference</a> の LT に混ぜてもらいました. 
+(資料は<a href="http://www.slideshare.net/omododgsonorg/objectshapes-presentation/">これ</a>.) 
+まわりが「何か作ったぜ」という話をしているなか, 私は例のごとく他人のふんどしで相撲を....</p>
+<p>なにか作る話はいいよなあ. 
+買い物の串刺し検索をする <a href="http://plugin.shoppingfinder.jp/">ShoppingFinder</a> や
+YouTube をニコニコ動画化する <a href="http://ghostlogue.com/information_ja.html">Ghostlogue</a> は, 
+サービスもセットになっていて面白かった. 
+ブラウザもシェアが増えるとアドオン市場というものが生まれうるのだなー. 
+あとは配られたビラで <a href="https://addons.mozilla.org/en-US/firefox/addon/3006">Movie Download Helper</a> を知った. 
+よくわからない単体ツールを探しまわった苦労は一体なんだったのかと... </p>
+<p>私の話は "TraceMonkey にも V8 の hidden classs みたいな仕組みがあってプロパティアクセスが速くなるよ" という話. 
+おまえはプロパティアクセス以外にすることがないのかという指摘は甘受いたします. JavaScript はプロパティ志向言語です. </p>
+<p>なお, 紹介した shape-based-polymorphic-cashing は TraceMonkey 以前からあったそうな. 
+インタプリタを見ると, たしかに shape の値がプロパティキャッシュのキーとして使われている. 
+しかも作りの都合でインラインキャッシュよりインタプリタの(ハッシュ表に基づく) 
+プロパティキャッシュの方がヒットしやすい. 
+shape が違ってもそれぞれの shape でヒットするから, JIT なしの結果は差がつかなかったんだな. 
+今頃気がついた...</p>
+<h4>プロパティアクセス以外の話</h4>
+<p>LT 用に調べた話のうちボツになったものから, プロパティアクセス以外のことを少し書いてみる. 
+JIT の話なのでマンネリに変わりはないけれど, 
+プロパティアクセス以外のことを話そうとした証拠を少しは示しておきたい. </p>
+<p>Tracing JIT に優しいコードを書くには, 生成されるコード(=トレース)が, なるべく途切れないようにすると良い. 
+コードが途切れる契機は二つある. ひとつはインライン化の前提条件をチェックする <strong>ガード</strong> の分岐. 
+Tracing Tree の元ネタに出てくる Java の例だと, Animal#bark() を呼びだすコードで</p>
+<pre>
+if (animal.getClass() != Fox.class)
+  goto guard_fail;
+System.println("kon kon!");
+</pre>
+<p>という風に, polymorphic な呼び出しをインライン化する際の型チェックがガードになる. 
+型チェック以外にもガードの種類は色々あるし, チェックする場所もメソッド呼び出しだけではない. 
+生成されるコードのどこにガードが埋め込まれ, どんなコードがガードに弾かれるか. または通り抜けるか. 
+それを調べることで Tracing JIT フレンドリーなコードを書くことができる. 
+(まあそんなのは理屈の上の話で, 普通に書いてもだいたい平気なんだけどね...)</p>
+<p>Trace が途切れるもう一つの契機として, Trace 処理自体が中断されることもある. 
+Tracing Tree の JIT は, ループ単位でコード生成を行う. 
+JIT はループ内の典型的なパスを一続きの Trace に変換できると期待しているが, 
+たまにマイナーなパスを JIT してしまうことがある. たとえばエラーのおこるパスを Trace してしまうとか. 
+そういう場合は JIT は Trace 処理を中断する. 
+Trace を中断したループは次回以降で Trace しなおすことができる. その時は典型的なパスを通ることを期待して良いだろう. </p>
+<p>ガードの埋め込まれる場所を探すには, 
+<a href="http://hg.mozilla.org/tracemonkey/file/tip/js/src/jstracer.cpp">jstracer.cpp</a> 内を
+"guard" で grep すれば良い. nanojit の insGaurd() メソッドや, それに類する箇所を調べ上げることができる. 
+同様に Trace の中断される箇所を探すには, 
+同じファイルで js_AbortRecording() 関数かABORT_TRACE() マクロを検索すると良い. 
+もっとも眺めた範囲では, 行儀の良いコードが Trace を中断するケースにはなかなか出会えなかった. 
+それに一度中断したところで, 次の試行でうまくいけば無事 JIT はできる. 
+JIT 中断が原因で性能が大きく落ちることはそうそう無い気がする. ガード失敗の方が粗探しはやりやすいとおもう. </p>
+<h4>js コマンドの粗探し支援機能</h4>
+<p>jstracer.cpp のコードは SpiderMonkey のバイトコードを相手にするので, 
+ベンチマークや粗探しの際には JavaScript からバイトコードへの変換結果を確認できると都合が良い. 
+SpiderMonkey のツリーをデバッグビルドしてできる "js" コマンドには, 
+関数のコンパイル結果を表示する dis() 関数 が組込まれている. </p>
+<pre>
+function fib(n) {
+  if (n == 0 || n == 1)
+    return n;
+  else
+    return fib(n - 1) + fib(n - 2);
+}
+
+dis(fib);</pre>
+<pre>$ ./bin/js hello.js
+ main:
+00000:  getarg 0
+00003:  zero
+00004:  eq
+00005:  or 13 (8)
+00008:  getarg 0
+00011:  one
+00012:  eq
+00013:  ifeq 23 (10)
+00016:  getarg 0
+00019:  return
+00020:  goto 48 (28)
+00023:  callname "fib"
+00026:  getarg 0
+00029:  one
+00030:  sub
+00031:  call 1
+00034:  callname "fib"
+00037:  getarg 0
+00040:  int8 2
+00042:  sub
+00043:  call 1
+00046:  add
+00047:  return
+00048:  stop
+....</pre>
+<p>命令は可変長なのか...といったことがわかる. </p>
+<p>また tracing を有効にして動かすと実行後に tracing の統計情報が表示される. </p>
+<pre>$ ./bin/js -j hello.js
+recorder: started(3), aborted(0), completed(2), different header(0), trees trashed(0), \
+slot promoted(0), unstable loop variable(1), breaks(0), returns(0), unstableInnerCalls(0)
+monitor: triggered(2), exits(2), type mismatch(0), global mismatch(1)</pre>
+<p>"exits" はガードに弾かれてインタプリタ実行に戻ってきた回数を表している. 
+この値が大きいときは, JIT されたコード同士がうまく繋ぎ合わさって(patch されて)いない可能性がある... 
+なんてのを調べるのに使う. 
+(過渡期の問題だとは思うけれど, 
+意地悪なコードを書くと大量の guard() 失敗を起こすことができる. 
+LT のスライドにある例は, たまたまそんなケースを引きあててしまった.)</p>
+<h4>疎な配列と密な配列</h4>
+<p>SpiderMonkey の配列は, 疎な配列(=ハッシュ) と密な配列(=普通の配列)のハイブリッドである. 
+隙間の多い配列(添字がまばらな配列)は疎な配列とみなされハッシュで実装される. 
+密な配列はインタプリタの中に実際の(C の)配列が確保される. 
+なおハイブリッドな配列は Tamarin でも JavaScriptCore でも使われている. まあまあ業界標準.</p>
+<p>配列アクセスは密な配列相手の方が速い. これまでの SpiderMonkey でも速度差はあったけれど, 
+TraceMonkey は密な配列アスセスが三つのガードに守られてインライン展開される. 
+ランタイム経由でハッシュをひく疎な配列との速度差は一段と大きくなった.</p>
+<pre>
+function make_dense_array(size) { // 密な配列をつくる
+  var ret = [];
+  for (var i=0; i&lt;size; ++i) {
+    ret[i] = i;
+  }
+  return ret;
+}
+
+function make_sparse_array(size) { // 疎な配列をつくる
+  var ret = [];
+  for (var i=0; i&lt;size; ++i) {
+    var j = size-i-1;
+    ret[j] = j;
+  }
+  return ret;
+}
+
+function hello() {
+  var arr = make_dense_array(100000);
+  //var arr = make_sparse_array(100000);
+  for (var i=0; i&lt;1000; ++i) {
+    for (var j=0; j&lt;100000; ++j) {
+      var y = arr[j];
+    }
+  }
+}
+
+hello();</pre>
+<p>実行時間:</p>
+<ul>
+<li>dense+jit: 2.2s</li>
+<li>dense: 7.9s</li>
+<li>sparse+jit: 16.1s</li>
+<li>sparse: 20.0s</li>
+</ul>
+<p>グラフは割愛させていただきます...</p>
+<h4>switch 文</h4>
+<p>とりとめもなく次の話題へ. </p>
+<p>SpiderMonky のバイトコードには, switch 文の種類に応じて "tableswitch", "lookupswitch", "condswitch" と 
+3 種類の switch 命令がある. </p>
+<p>整数だけの switch 文は tableswitch に変換される.</p>
+<pre>
+function switch_int(x) {
+  switch (x) {
+  case 0:
+    break;
+  case 1:
+    break;
+  case 2:
+    break;
+  case 3:
+    break;
+  default:
+    break;
+  }
+}</pre>
+<pre>
+main:
+00000:  getarg 0
+00003:  tableswitch defaultOffset 27 low 0 high 3
+   0: 15
+   1: 18
+   2: 21
+   3: 24
+00018:  goto 33 (15)
+00021:  goto 33 (12)
+00024:  goto 33 (9)
+00027:  goto 33 (6)
+00030:  goto 33 (3)
+00033:  stop</pre>
+<p>文字列だけの switch 文は lookupswitch に変換される.</p>
+<pre>
+function switch_str(x) {
+    switch (x) {
+    case "0":
+        break;
+    case "1":
+        break;
+    case "2":
+        break;
+    case "3":
+        break;
+    default:
+        break;
+    }
+}</pre>
+<pre>
+main:
+00000:  getarg 0
+00003:  lookupswitch offset 33 npairs 4
+    "0": 21
+    "1": 24
+    "2": 27
+    "3": 30
+00024:  goto 39 (15)
+00027:  goto 39 (12)
+00030:  goto 39 (9)
+00033:  goto 39 (6)
+00036:  goto 39 (3)
+00039:  stop</pre>
+<p>オブジェクトや変数を使った switch 文は condswitch になる.</p>
+<pre>
+function switch_obj(x) {
+    switch (x) {
+    case String:
+        break;
+    case RegExp:
+        break;
+    case Object:
+        break;
+    case Function:
+        break;
+    default:
+        break;
+    }
+}</pre>
+<pre>
+main:
+00000:  getarg 0
+00003:  condswitch
+00004:  name "String"
+00007:  case 31 (24)
+00010:  name "RegExp"
+00013:  case 34 (21)
+00016:  name "Object"
+00019:  case 37 (18)
+00022:  name "Function"
+00025:  case 40 (15)
+00028:  default 43 (15)
+00031:  goto 46 (15)
+00034:  goto 46 (12)
+00037:  goto 46 (9)
+00040:  goto 46 (6)
+00043:  goto 46 (3)
+00046:  stop</pre>
+<p>インタプリタの実装は名前から推して知るべしなかんじ.</p>
+<p>こんな感じのコードを各 switch ごとに書いて測ってみる:</p>
+<pre>
+function make_objs() { return [String, RegExp, Object, Function]; }
+
+function hello() {
+   var arr = make_objs();
+   var len = arr.length;
+   for (var i=0; i&lt;100000000; i++) {
+       switch_obj(arr[i%len]);
+   }
+}</pre>
+<p>結果:</p>
+<ul>
+<li>int_switch+jit: 7.3s</li>
+<li>int_switch: 29.7s</li>
+<li>str_switch+jit: 8.0s</li>
+<li>str_switch: 35.9s</li>
+<li>obj_switch+jit: 5.0s</li>
+<li>obj_switch: 45.0s</li>
+</ul>
+<p>tableswitch が楽勝というストーリーのはずだったけど,
+case の数が少ないせいで obj_switch に負けてしまった... 
+tableswitch はテーブルジャンプ, condsswitch は if-else の連鎖に展開される. 
+もっと大量の case があれば話も違うんだろうけどね.</p>
+<p>case が大量にあり, 速度のために tableswitch を使いたいとする. 
+けれど定数をハードコードしたくない. でも var を使うと condswitch になってしまう. 
+そこで SpiderMonkey 拡張の const を使うと tableswitch になる.</p>
+<pre>
+const C0 = 0;
+const C1 = 1;
+const C2 = 2;
+const C3 = 3;
+const C4 = 4;
+
+function switch_const_int(x) {
+    switch (x) {
+    case C0:
+        break;
+    case C1:
+        break;
+    case C2:
+        break;
+    case C3:
+        break;
+    default:
+        break;
+    }
+}</pre>
+<pre>
+main:
+00000:  getarg 0
+00003:  tableswitch defaultOffset 27 low 0 high 3
+   0: 15
+   1: 18
+   2: 21
+   3: 24
+00018:  goto 33 (15)
+00021:  goto 33 (12)
+00024:  goto 33 (9)
+00027:  goto 33 (6)
+00030:  goto 33 (3)
+00033:  stop</pre>
+<p>ためしにこんなコードを書いてみたけれど, さすがにダメだった.</p>
+<pre>
+var i = 0;
+const C0 = i++;
+const C1 = i++;
+const C2 = i++;
+const C3 = i++;
+const C4 = i++;
+
+function switch_const_int(x) {
+    switch (x) {
+    case C0:
+        break;
+    case C1:
+        break;
+    case C2:
+        break;
+    case C3:
+        break;
+    default:
+        break;
+    }
+}</pre>
+<pre>
+main:
+00000:  getarg 0
+00003:  condswitch
+00004:  name "C0"
+00007:  case 31 (24)
+00010:  name "C1"
+00013:  case 34 (21)
+00016:  name "C2"
+00019:  case 37 (18)
+00022:  name "C3"
+00025:  case 40 (15)
+00028:  default 43 (15)
+00031:  goto 46 (15)
+00034:  goto 46 (12)
+00037:  goto 46 (9)
+00040:  goto 46 (6)
+00043:  goto 46 (3)
+00046:  stop</pre>
+<p>コンパイル時には定数値がわからないから仕方ない. </p>
+<p>それじゃこれは...?</p>
+<pre>
+var i = 0;
+const C0 = i++;
+const C1 = i++;
+const C2 = i++;
+const C3 = i++;
+const C4 = i++;
+
+eval("function switch_const_int_eval(x) { " +
+     "switch (x) { case C0: break; case C1: break; case C2: break; case C3: break;" +
+     " default: break; } }; dis(switch_const_int_eval);");</pre>
+<p>ここでドラが鳴り響く...と盛り上がるかも. </p>
+<p>ひまなひとはビルドのうえおためしください. </p>

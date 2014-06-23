@@ -1,0 +1,177 @@
+---
+title: "[断線部] 近況"
+date: 2009-05-31
+---
+<h3>[断線部] 近況</h3>
+<p>連載がはじまってからプレッシャーに弱い自分をみつけた. 
+原稿の締切が気になって余暇も落ち着かない. かといってさっさと原稿を書く身軽さもない. 
+結局なにもせずにぐずぐずと週末を過ごしてしまう. 
+仕方ないので週末のうち一日は物書きデーと決めてノート PC 持参で街にでかけ, 
+コーヒー屋で原稿かき(か, その準備)をすることにした. "副業出勤" と命名. 
+私はワイヤレスな IP を持っていないので, 副業出勤は自動的に断線部となる. 
+今週はまだ二回目. 定着すると良いなあ...</p>
+<p>副業出勤をしてみてわかったことが 3 つある. </p>
+<p><strong>1. お手洗いに行くのが面倒:</strong> 
+席を外れるときに荷物をもっていく必要がある. いつもならサイフだけ持っていくんだけど, 
+副業中はノート PC も手放せない. PC かかえてトイレにいくのは相当マヌケ. 
+同僚が必要だと思った. 世間のスタバ派自営業者はどうしてるんだろう. </p>
+<p><strong>2: 野良電源の確保には厚顔さが必要</strong>: 
+コーヒー屋の机の下に電源を発見したものの間借りしたら怒られそうだと躊躇していたら, 隣席にやってきた人が躊躇なく挿していた. 
+自分には厚かましさが足りない. 会社の同僚は許可を得てから使うことが多いという. チキンな私にはそれも敷居が高い. </p>
+<p><strong>3: バッテリーより集中力が希少</strong>:
+今までのところバッテリーを使い切るほど作業を続けられたことがない. 電源の心配は杞憂かもね... </p>
+<p>コーヒーをすすりながら, 次回に向けて WebKit のコードを読んだ. 
+とりあえず CSS の話でもするかとコードを眺めて下書きをはじめたものの, 
+ふと CSS の前に DOM の話をする必要があるなと考えを改め, 
+けれど DOM なんて単なるツリー構造だから一回分には分量不足だなあ... などと頭を悩ませ, 
+糖分を求めてドーナツをつまむ. </p>
+<p>そして分量稼ぎに JavaScript と DOM の binding を紹介するのはどうかとブリッジ部分のコードを読み, 
+でもインタプリタのランタイムは面倒な割に面白くないし, 
+そもそも DOM の話だけで一回使ってしまったら全 6 話完結はムリそうだと再び頭を悩ませ, 
+ドーナツ追加の誘惑をぐっと堪え, 
+そういえば WebKit は DOM まわりのメモリリークをどう対処してるんだろうと気になり調べてみた. 
+が, 読んだかんじリークするようにしか見えない. もうやだ... バッテリーは 70% くらい残ってるけれど気力が尽き, 
+杞憂に胸を撫でおろし肩を落として帰宅した. </p>
+<h4>WebKit での言語間巡回参照対策(ではない解決)</h4>
+<p>とはいえこの悪名高い問題が放置されているとも思えない. 帰宅後にあんぱんをつまみつつぐぐったところ, 
+今年の 4 月に <a href="http://trac.webkit.org/changeset/42256">r42256</a> で修正されていた. 
+(手元にあるワーキングコピーはちょっと古かった.)
+原稿の進まない現実逃避の番外編として紹介してみたい. </p>
+<p>まず問題を復習しよう. DOM のメモリリークには色々なパターンがあるらしいけれど, 
+今回修正されたのはクロージャをイベントリスナに使うと起こるリークだった. </p>
+<pre>
+var el = document.createElement("div");
+var fn = function() { alert(el.innerHTML); };
+el.addEventListener("whatever", fn, false);
+// このあと el をツリーに append したり remove したりする.</pre>
+<p>このコードは以下のような巡回参照をつくる. </p>
+<p><img src='/images/20090531_0.png' class='diagram'></p>
+<p>参照が JS と C++ をまたいでおり, 問題をややこしくしている. </p>
+<p>JS 上の DOM オブジェクト <strong>el</strong> (JSNode クラス) は, 
+C++ 上の DOM オブジェクエト <strong>node</strong> (Node クラス) への参照 (1) をもっている. 
+(連載で教わったこと: 矢印には番号をつけよう!) 
+el から node に向かうこの参照は, 参照カウント用のスマートポインタである. 
+イベントリスナは DOM ノードとは逆向きの参照 (2) をもつ. </p>
+<p>C++ 上のイベントリスナ <strong>listener</strong> オブジェクト(JSProtectedEventListener クラス) は, 
+JS 上の関数オブジェクト <strong>fn</strong> (JSFunction クラス...だとおもう) への参照を持っている. 
+C++ から JS のオブジェクトを保持するときは, JS のオブジェクトを特別な <strong>protect</strong> 集合に追加する. 
+protect 集合に含まれたオブジェクトは GC の際にいつもマークされる. 
+(そういえば V8 には <a href="http://code.google.com/apis/v8/embed.html#handles">Handle</a> という似たような仕組みがあった.)</p>
+<p>C++ 上の node はイベントリスナへの参照を C++ のオブジェクトである listener を介して持つ (3). 
+(3) は (1) とおなじく参照カウントの参照.</p>
+<p>そして最後に JS の関数 fn は, クロージャ経由で el を参照している (4).</p>
+<p>本来なら JS のオブジェクトはマークスイープの GC で回収されるはずだが, 
+fn は protect されているため回収され損なうう. とばっちりで el も回収されない. 
+更に C++ のオブジェクトである node は参照カウンタが減らず解放されない. listener も同様. 
+めでたくリークがおこる. </p>
+<h4>JSObject::mark() のフックをつかった JS 側 GC とのインテグレーション</h4>
+<p>r42256 の修正は, 概念的には (2) の参照を特別な protect 参照から普通の JS の参照に変更する. (赤丸部分)</p>
+<p><img src='/images/20090531_1.png' class='diagram'></p>
+<p>ただし listener は JS のオブジェクトではないから, GC のマークフェーズは (2) の参照に到達できない. 
+したがって fn はマークされようがない. 
+そこで r42256 では, <strong>el がマークされる際のフック処理</strong> の中で el -&gt; node -&gt; listener と参照をたどり, 
+ガーベジコレクタにかわって fn をマークしている. </p>
+<pre>
+// JSNodeCustom.cpp
+...
+void JSNode::mark() // mark() フェーズで呼ばれるフック
+{
+    ...
+    Node* node = m_impl.get(); // C++ の node オブジェクトをとりだし...
+    ...
+        DOMObject::mark(); // JS オブジェクトとしてのマーク処理をしたあと...
+        markEventListeners(node-&gt;eventListeners()); // node のもつイベントリスナの配列をマークする
+    ...
+}
+...</pre>
+<pre>
+// RegisteredEventListener.h
+...
+   inline void markEventListeners(const RegisteredEventListenerVector&amp; listeners)
+   {
+       for (size_t i = 0; i &lt; listeners.size(); ++i)
+           // markJSFunction() は JS 由来のイベントリスナだけに実装がある仮想関数
+           listeners[i]-&gt;listener()-&gt;markJSFunction();
+   }
+...</pre>
+<pre>
+// JSEventListener.cpp
+void JSEventListener::markJSFunction()
+{
+    // いざマーク!
+    if (m_jsFunction &amp;&amp; !m_jsFunction-&gt;marked())
+        m_jsFunction-&gt;mark(); // ←この m_jsFunction が fn オブジェクト
+    ...
+}</pre>
+<p>el がマークされると, イベントリスナとして登録された fn もマークされることがわかる. 
+(JSProtectedEventListener は JSEventListener に置きかえられている.) 
+仮想関数として JSObject::mark() をフックできる JavaScriptCore の特徴をうまくつかい, 
+わずか 300 行に満たない変更で大きな問題を片付けることができた. 見事なハックだと思う. </p>
+<p>ハックと呼ぶにふさわしい行儀の悪さもある. 
+仮に JS 上で el への参照がなくなると何がおこるだろう? 
+参照のなくなった el が回収されると, fn もマークされず同時に回収されるはずだ. 
+けれど listener 内の m_jsFunction 変数には死んだ fn への参照が残っている. dangling pointer で
+クラッシュすることはないのだろうか. </p>
+<h4>node cache</h4>
+<p>この懸念は "node cache" という別の仕組みで回避されている. 
+node cache は, DOM のノード (上の図だと node オブジェクト) に対応する JS のオブジェクト (図の el) を
+Document オブジェクトに付属した(C++ 内の)連想配列に保存する. </p>
+<p><img src='/images/20090531_2.png' class='diagram'></p>
+<p>document.getElementById() のように C++ の DOM から JS のオブジェクトを取り出す操作では, 
+まずこのキャッシュを検索してヒットすればその結果を返す. 
+node cache のおかげで複数の独立した document.getElementById("foo") 呼び出しが
+同一の JS のオブジェクトを返すことができる. 
+node cache なしで素朴につくると, getElementById() はノードの対応関係を無視して
+毎回新しい JS オブジェクトを返してしまうだろう. それを防ぐのが node cache の役割である. </p>
+<p>node cache は保持している JS オブジェクトの寿命を(これもフックの中で)独自に管理する. </p>
+<pre>
+// JSDOMBinding.cpp
+void markDOMNodesForDocument(Document* doc) // JSDocument::mark() から呼ばれる
+{
+    JSWrapperCache&amp; nodeDict = doc-&gt;wrapperCache();
+    JSWrapperCache::iterator nodeEnd = nodeDict.end();
+    for (JSWrapperCache::iterator nodeIt = nodeDict.begin(); nodeIt != nodeEnd; ++nodeIt) {
+        JSNode* jsNode = nodeIt-&gt;second;
+        if (!jsNode-&gt;marked() &amp;&amp; isObservableThroughDOM(jsNode))
+            jsNode-&gt;mark();
+    }
+}</pre>
+<p>このマーキングによって, 
+キャッシュ内の JS オブジェクトは DOM ノードが <strong>observable</strong> である限り, 
+JS 上から参照されなくなったあとも生き続ける. 
+DOM ノードは Document ツリーに所属している限り observable だが, 
+Node.remeoveChild() などで削除されると observable でなくなる. 
+observable でなくなった node に紐づく JS オブジェクトはマークされず, GC に回収される. 
+node cache をある種の弱参照だと捉えることもできるだろう. </p>
+<p>キャッシュの中身は JS オブジェクトのデストラクタからクリアされる. 
+observable でなくなる -&gt; マークされない -&gt; 回収される -&gt; デストラクタ -&gt; キャッシュクリア という塩梅. </p>
+<pre>
+// JSNode.cpp (自動生成されるコード)
+JSNode::~JSNode()
+{
+    // この中でキャッシュをクリアする
+    forgetDOMNode(m_impl-&gt;document(), m_impl.get());
+}</pre>
+<p>話が脇道にそれたけれど, この node cache のおかげで dangling pointer はおきない. 
+listner を保持する node が Document から削除されるまで,
+listener 経由で fn をマークする el は node cache の中に生き続けるからだ. </p>
+<h4>綱渡りと文脈主義</h4>
+<p>このように, r42256 はいくらか危うい橋を渡っている. 
+DOM ノードや対応する JS オブジェクトは observablity という DOM ツリー固有のアイデアに依存している. 
+今回の変更はこのややこしい仕組みにリスナを追加し, ややこしさに輪をかけた. </p>
+<p>ややこしい上に制限もある. observability が使えないケース, 
+たとえば Worker や XHR オブジェクトのイベントリスナはどうやって寿命を扱えば良いのだろうか. 
+詳しく調べてはいないけれど, そのままの仕組みは使えそうにない. 
+そのほか node 以外が listener を参照していないという前提も, 危ういとまでは言わないまでも自明ではない. 
+WebKit のコードに手を入れる人はこうした点に気を配る必要がある. 骨の折れる仕事だろう. </p>
+<p>トリックが JavaScriptCore 固有なところにも不安がある. V8 はどうすりゃいいの? 
+知らねーよ, という主張が正しい気もするけど, 最近 Chrome を使っている身にはやや悲しい. </p>
+<p>一方で問題を "言語間の巡回参照解決" のような大問題として捉えるのではなく 
+"DOM ノードをクロージャにもつイベントリスナのリーク" と捉え, 文脈を活かして小さく片付ける様は小気味良い. 
+規律と混沌, consistency と context の票読みは続く. </p>
+<p>来週はちゃんとが原稿が書けますように...</p>
+<h4>関連リンク</h4>
+<ul>
+<li><a href="https://bugzilla.mozilla.org/show_bug.cgi?id=241518">Bug 241518 - calling addEventListener with a closure holding a content node leaks the document</a>: Mozilla の同様のバグ(と修正. たぶん.)</li>
+<li><a href="http://www.dodgson.org/omo/t/?date=20060507">A Cycle Collector on Gecko</a> : C++ 内の巡回参照とその解決</li>
+</ul>

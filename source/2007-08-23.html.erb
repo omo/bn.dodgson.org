@@ -1,0 +1,475 @@
+---
+title: "プロファイラのしくみ"
+date: 2007-08-23
+---
+<h3>プロファイラのしくみ</h3>
+<p>UNIX 偏向文書 <a href="http://catb.org/~esr/writings/taoup/">artu</a> の中で 
+"<a href="http://catb.org/~esr/writings/taoup/html/ch12s02.html">Measure Before Optimizing</a>" と説く Raymond は, 同時にプロファイラの計測機構 (instrumentation) がもたらすノイズについて注意を促している. 私のプロファイラ信仰に不安が翳を落とす. </p>
+<h4>gprof</h4>
+<p>ノイズはさておき, そもそもプロファイラはどんな仕組みで速度を測っているんだろう. 
+<a href="http://www.gnu.org/software/binutils/manual/gprof-2.9.1/html_node/gprof_25.html">gprof のマニュアル</a> によると, GNU 一族のプロファイラは次のように実装されている: 
+まず "-pg" オプションつきの gcc でソースをコンパイルする. 
+この指示を受けたコンパイラは各関数の冒頭に "mcount" という名前の関数呼出しを加える. 
+リンクする C のランタイムも専用バージョン (gcrt0.o) に差し替わる. 
+このランタイムは裏で <a href="http://linux.die.net/man/3/profil">profil()</a> 関数を使いタイマを仕掛ける. そのタイマは発火毎に現在のプログラム・カウンタ(PC)のレジスタを記録する. </p>
+<p>プログラム終了時, ランタイムは mcount() と profil() が集めたデータを 
+"gmon.out" ファイルに出力する. 
+肝心な gprof の仕事はこの gmon.out をパースして結果を表示するだけらしい. 
+(横柄なやつだ...)</p>
+<p>とりあえず試してみよう.</p>
+<pre>
+int foo(int n) {
+  int x = 0, i = 0, j = 0;
+  for (i=0; i&lt;n; i++) { for (j=0; j&lt;n; j++) { x += i*j; } }
+  return x;
+}
+
+int main(int argc, char* argv[]) {
+  int i=0;
+  for (i=0; i&lt;1000; ++i) { foo(i); }
+  return 0;
+}
+</pre>
+<p>これをコンパイルすると...</p>
+<pre>$ gcc -pg -S -O0 main.c</pre>
+<pre>
+_hello:
+  ....
+  pushl %ebx
+  subl  $20, %esp
+  call  ___i686.get_pc_thunk.bx
+  call  Lmcount$stub
+  ....
+  call  L_puts$stub
+  ....
+  ret
+.globl _main
+_main:
+  ....
+  call Lmcount$stub
+  ....
+  call  _hello
+  ....
+  ret
+....
+Lmcount$stub:
+  .indirect_symbol mcount
+  ....
+</pre>
+<p>たしかに mcount() が呼ばれている. (gcrt0.o の確認はパス.) 
+こいつは何をしているんだろうか. あちこち探すと glibc に実装があった. (<a href="http://cvs.savannah.gnu.org/viewvc/libc/gmon/mcount.c?revision=1.13&amp;root=libc&amp;view=markup">gmon/mcount.c</a>) </p>
+<p>mcount() の引数はレジスタの値がふたつ. 
+呼出元のプログラムカウンタ frompc と, 現在の selfpc をとる.  
+この値をグローバル変数 _gmonparam のデータ構造に保存している. 
+mcount() に渡る PC 対を gprof では "arc" と呼ぶ. 
+"呼び出しグラフ" の辺 (arc) というわけ. 
+_gmonparam には, 各 arc の通過回数が記録されている. </p>
+<p>さっきのコードを動かしてみよう.</p>
+<pre>
+$ gcc -pg -O0 main.c
+$ ./a.out
+$ gprof a.out gmon.out</pre>
+<p>結果はこんなかんじ:</p>
+<pre>...
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+100.0       0.10     0.10     1000     0.10     0.10  _foo [1]
+  0.0       0.10     0.00        1     0.00   100.00  _main [2]
+...</pre>
+<p>"calls" エントリが呼出回数. 1000 回, ちゃんと記録されているのがわかる. 
+mcount() を埋めこんだ甲斐があった. </p>
+<p>さて, mcount() は関数の入口で arc を記録するだけだ. 
+実行時間は別に測る必要がある. そこで先に紹介した profile() の出番になる. 
+マニュアルから profil() はシステムコールであるかの印象を受けたけれど, 
+これも glibc で実装されている. (<a href="http://cvs.savannah.gnu.org/viewvc/libc/sysdeps/posix/profil.c?revision=1.14&amp;root=libc&amp;view=markup">sysdeps/posix/profile.c</a>) 呼び出しも glibc に含まれるプロファイル用ランタイムが行う. ユーザの出番はない. </p>
+<p>profil() の仕事は profil_counter() 関数をタイマに登録するだけ. 
+UNIX には ITIMER_PROF というプロファイラ専用のタイマが用意されており, 
+発火すると SIGPROF シグナルが発行される. 
+ユーザ空間で実装されるとはいえカーネルよりの仕組みなのがわかる. </p>
+<p>SIGPROF ハンドラの (<a href="http://cvs.savannah.gnu.org/viewvc/libc/sysdeps/unix/sysv/linux/i386/profil-counter.h?revision=1.9&amp;root=libc&amp;view=markup">profil_counter()</a> は PC レジスタの値を引数に profil_count() を呼ぶ. これが本体. 先に profil() から渡しておいた sample 配列に PC を記録する. sample 配列は PC を添字にとる整数配列で, 
+以下のように PC の呼出回数を覚えておく:</p>
+<pre>
+sample[PC/N]++;</pre>
+<p>配列の大きさや N の値をどう決めるかは悩ましいが, 
+プロファイル用ランタイムはよろしくやってくれる. </p>
+<h4>gprof の量子化誤差</h4>
+<p>細かい間隔のタイマで動く profil_counter() は各瞬間の PC を数える. 
+これが実行時間の根拠になる. PC の記録回数が多い関数ほど長く実行されたとみなすわけ. 
+arc を記録する mcount() と違い, profil() は現在の PC だけを記録する. 
+どこから呼ばれたかは無視. 
+だから profile() の結果から直接わかるのは, 
+自分自身の実行時間 (gprof の出力にある "self" のエントリ) だけだ. 
+これは子の呼び出しを含まない. 
+子を含む "total" の時間は mcount() の arc 情報と組合せて計算している. 
+具体的には, 
+total = self + (({子関数 i の実行時間} x {i の呼び出し回数})の総和) 
+となる. </p>
+<p>gprof は "子関数 i の実行時間" に平均値を用いている. 
+しかし関数の中には入力によって実行時間の大きく変わるものがある. 
+そうした関数を含む計測に平均という前提をもちこむとトラブルになる. </p>
+<p>たとえば 先のサンプルにあった foo() は入力に対し O(N^2) の計算量をもつ. 
+foo() を使った以下のようなプログラムを動かしてみる. </p>
+<pre>
+int bar() {
+  int x = 0, i = 0;
+  for (i=0; i&lt;10; i++) { x += foo(10000); }
+  return x;
+}
+
+int baz() {
+  int x = 0, i = 0;
+  for (i=0; i&lt;10000; i++) { x += foo(10); }
+  return x;
+}
+
+int main(int argc, char* argv[]) {
+  bar();
+  baz();
+  return 0;
+}</pre>
+<p>プロファイル結果:</p>
+<pre>  %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+100.0       0.38     0.38    10010     0.04     0.04  _foo [1]
+  0.0       0.38     0.00        1     0.00     0.38  _bar [5]
+  0.0       0.38     0.00        1     0.00   379.62  _baz [4]
+  0.0       0.38     0.00        1     0.00   380.00  _main [2]</pre>
+<p>baz() の実行時間が bar() の 1000 倍になっている. 
+おかしい. ベタにタイマーで測ってみよう. </p>
+<pre>
+int main(int argc, char* argv[]) {
+  clock_t start = 0, bar_end = 0, baz_end = 0;
+  start = clock();
+  bar();
+  bar_end = clock();
+  baz();
+  baz_end = clock();
+  printf("bar:%d, baz:%d\n", bar_end-start, baz_end-bar_end);
+  return 0;
+}</pre>
+<p>結果:</p>
+<pre>bar:478, baz:1</pre>
+<p>この問題は <a href="http://linux.die.net/man/1/gprof">gprof の man</a> 
+にも BUG として言及されている. 
+プロファイル結果は直感に反するなんてよく言うけれど, 事実に反するのは困るなあ... 
+プロファイラだけでなく, 様々な計測を組み合わせるべきなんだろうね. </p>
+<h4>gprof の限界</h4>
+<p>gprof は手軽に使えるけれど, 先の誤差をはじめ制限は多い. 
+たとえばプロセスをまたぐ測定はできない. 
+プロセス単位で仕事を分担する UNIX にとってこれは都合が悪い. 
+グローバル変数が多くマルチスレッド対応も弱い. 
+動作はするが意味のある数字は期待できない. 
+IO などカーネルが遅いのもわからない. </p>
+<p>これら問題の多くはプロセス内で動くよう設計された gprof の限界だと言える. 
+20 年以上前のツールだから仕方ない. 
+計測業界(?)自体は 20 年かけてそれなりに進歩しており, 
+その成果には庶民が使えるものもある. 有名どころを少し眺めてみたい. </p>
+<h4><a href="http://oprofile.sourceforge.net/">OProfile</a></h4>
+<p><a href="http://oprofile.sourceforge.net/about/">OProfile</a> は 
+linux 用の "system-wide" プロファイラ. 
+カーネルのドライバ(+デーモン)として実装されており, 
+プロセスをまたいだシステム全体のの計測ができる. 
+カーネル内の速度もわかるし, マルチスレッドも OK. 
+OProfile はもともと <a href="http://www.tru64unix.compaq.com/dcpi/">DCPI</a> 
+(Digital Continuous Profiling Infrastructure) という旧 DEC 製の
+プロファイラからアイデアを得て作られた. 
+だから意図を知るには <a href="http://h30097.www3.hp.com/dcpi/src-tn-1997-016a.html">DCPI の解説記事</a> が役にたつ. (OProfile のページからもリンクされている.) </p>
+<p>DCPI は実運用されているシステムを計測するために作られた. 
+運用中のシステムを測る以上, オーバーヘッドは極力小さくしたい. 
+またある程度長い時間かけて測りたいから, 集めた大量の計測データもうまく管理する必要がある. 
+Alpha CPU の威信もあって SMP 環境できっちり動かないといけない. 目標は高い. 
+OProfile もこれに倣ってけっこう野心的な作りになっている. </p>
+<p>OProfile の基本的な仕組みは profil() に近い. 
+割り込みを使って PC レジスタを記録し, 各コード/モジュールの実行時間を測る. 
+OS のタイマーを使う profil() に対し, 
+OProfile は CPU の "パフォーマンスカウンタ" を直接使う. 
+パフォーマンスカウンタは CPU 備え付けの計測機構. 
+各種 "イベント" の回数を数え, 所定の回数になったら割り込みを起こす. 
+イベントは, たとえば速度を測りたいなら命令の実行回数を数えることができる. 
+(イベントの名前や機能は CPU によってまちまち.) 
+パフォーマンスカウンタの割り込みを直接使うこの仕組みは, 
+スケジューラの絡む OS のタイマーより軽い. 
+ハードウェアのドライバがデバイスからの割り込みを直接拾うように, 
+OProfile もある種のドライバとして実装されている. (だからカーネル空間で動く.) </p>
+<p>OPorifle ドライバのコードは linux カーネルのツリーに入っている:</p>
+<ul>
+<li><a href="http://lxr.linux.no/source/arch/i386/oprofile/">arch/i386/oprofile/</a></li>
+<li><a href="http://lxr.linux.no/source/drivers/oprofile/">drivers/oprofile/</a></li>
+</ul>
+<p>ドライバはカーネル空間に溜めこんだデータを定期的にユーザ空間へ掃きだす. 
+ユーザ空間ではデータを受けとるデーモンプロセス oprofiled が待ち構えている. 
+データの受け渡しは専用のファイルシステム oprofilefs を経由して行う. 
+(<a href="http://lxr.linux.no/source/drivers/oprofile/oprofilefs.c">oprofilefs.c</a>, 
+<a href="http://lxr.linux.no/source/drivers/oprofile/event_buffer.c">event_buffer.c</a> など.) 
+oprofiled は仮想ファイルからデータを読みだし, 今度は本当のファイルに保存する. </p>
+<p>こうして計測データはカーネルから届き, 解析されるのを待つ. 
+解析は oreport コマンドを使う. 
+ユーザは oreport でそのファイルを後処理し, 眺めることができる. 
+こんなかんじ (手元に linux マシンがないので<a href="http://oprofile.sourceforge.net/examples/">ウェブ</a>からコピペ) :</p>
+<pre>$ opreport
+CPU: PIII, speed 863.195 MHz (estimated)
+Counted CPU_CLK_UNHALTED events (clocks processor is not halted) ...
+   506605 54.0125 cc1plus
+	   450385 88.9026  cc1plus
+	    28201  5.5667  libc-2.3.2.so
+	    27194  5.3679  vmlinux
+	      677  0.1336  uhci_hcd
+               ...
+   163209 17.4008 lyx
+	    60213 36.8932  lyx
+	    23881 14.6322  libc-2.3.2.so
+	    21968 13.4600  libstdc++.so.5.0.1
+	    13676  8.3794  libpthread-0.10.so
+	    12988  7.9579  libfreetype.so.6.3.1
+	    10375  6.3569  vmlinux
+	     8599  5.2687  libqt-mt.so.3.0.5
+               ...
+    58962  6.2863 kdeinit
+	    16971 28.7829  libqt-mt.so.3.0.5
+	    11533 19.5601  libkonsolepart.so
+               ...
+...</pre>
+<p>すげー! linux マシンほしいなあ. </p>
+<h4>OProfile そのほかの見所</h4>
+<p>さすがに今時のコードだけあって, OProfile は見所が多い. ちょっと紹介. </p>
+<p>まず SMP 対策. 
+前に書いたとおり, OProfile の本体はパフォーマンスカウンタの割り込みハンドラにある. 
+割り込みハンドラは当然 CPU 毎に並列で動いてほしい. 
+一方で各 CPU から集めたデータはまとめて oprofiled に渡す必要がある. 
+そこで OProfile では CPU 毎にバッファを用意し, 割り込みハンドラはそこにデータを書き込む. 
+バッファの中味はあふれる前にカーネルのワーカスレッドが回収する. </p>
+<p>バッファへの書込みはさぞかしハイテクなのかと思いきや...</p>
+<pre>
+void oprofile_add_ext_sample(unsigned long pc, struct pt_regs * const regs,
+        unsigned long event, int is_kernel)
+{
+  struct oprofile_cpu_buffer * cpu_buf = &amp;cpu_buffer[smp_processor_id()];
+
+  if (!backtrace_depth) {
+    log_sample(cpu_buf, pc, is_kernel, event);
+    return;
+  }
+  ....
+}</pre>
+<p>CPUID で配列アクセスかよ! 単純だなー. 
+マルチスレッドのプログラミングは案外カーネルの方が楽なんじゃないかしら... 
+今日もスレッドのバグで半日つぶした私は訝しみたくなる. まあいいです. 
+CPU 毎にバッファを確保するこのアプローチは DCPI から引き継いでいる. </p>
+<p>つぎはカーネル内のフック. 
+プロセスをまたぐ以上, PC レジスタだけでは情報が足りない. 
+今うごいているプロセスが何か, 
+またそのプロセスはどんなライブラリをロードしているのかを知る必要がある. 
+DCPI ではローダを改造してたが, OProfile は既存のコードを置き換えない. 
+かわりに linux カーネルに用意されたプロファイラ用のフックを使う. 
+(<a href="http://lxr.linux.no/source/drivers/oprofile/buffer_sync.c">buffer_sync.h</a>,
+<a href="http://lxr.linux.no/source/include/linux/profile.h">linux/profile.h</a>, 
+<a href="http://lxr.linux.no/source/kernel/profile.c">kernel/profile.c</a>) 
+こんな便利な API があるとは... 比較的最近 (2004 年くらい) に入ったものらしい. 
+古い OProfile のコードを見るとシステムコールの関数ポインタを上書きしていてびびる. 
+たしかにフックが欲しい. </p>
+<p>PC レジスタの記録だけでは呼び出しグラフを作ることができない. 
+OProfile は 0.8 からスタックトレースを記録するようになった. (<a href="http://lxr.linux.no/source/arch/i386/oprofile/backtrace.c">backtrace.c</a>) 
+おかげで<a href="http://oprofile.sourceforge.net/doc/opreport.html#opreport-callgraph">呼び出しグラフの統計もとれる</a>. 
+記録をするタイミングは PC レジスタの保存と同時. 負荷が気になるけれど便利そう. </p>
+<p>カーネル内のがんばりだけでなく, 統計ツール側の工夫もある. 
+OProfile は多くの CPU アーキテクチャをサポートしており, 
+一方でプロファイルカウンタの仕様は CPU 毎に大きく異なっている. 
+しかし Oprofile ドライバの大部分やデーモンはこの違いを意識しない. 
+プロファイルカウンタからの情報は arch/ 以下の実装に隠蔽され, 
+バイト列としてファイルまで持ち越される. 
+そのバイト列を解釈するのは oreport など後処理ツールの仕事になる. 
+その後処理ツールも CPU の差異をうまいことデータとしてコード外に追い出せている. 
+(<a href="http://oprofile.cvs.sourceforge.net/oprofile/oprofile/events/">oprofile/events/</a>) 感心. (詳しい仕組みはよくからないけど...) </p>
+<p>そんなわけで OProfile のしくみを眺めた. 
+カーネルに住み, パフォーマンスカウンタの割り込みで動く profil() の進化形. 
+移植性は高くツールも充実している. gprof は遠くなりにけり...</p>
+<h4>DTrace</h4>
+<p>じゃ次に進みます. </p>
+<p>DTrace は Solaris 付属のトレースツール. 
+あるプロセスのシステムコール呼び出しを追跡する <a href="http://linux.die.net/man/1/strace">strace</a> に対し, DTrace はシステム全体の様々なイベント (システムコール含む) を監視できる. 
+技術的な概要は <a href="http://www.usenix.org/event/usenix04/tech/general/cantrill.html">USENIX の記事</a> にまとまっている. 登場したのは 2004 年らしい. ぐぐると Sun の blog もその周辺で盛り上っていた. (私はだいぶあとに <a href="http://www.acmqueue.org/modules.php?name=Content&amp;pa=showpage&amp;pid=361&amp;page=1">ACMQ の記事</a>を読んで知った.)</p>
+<p>OProfile が profil() の延長だったのに対し, DTrace は mcount() と gcc -pg に近い. 
+もっぱらコードを書き換えて監視のフックを仕込み, 記録をとる. 
+このフックを DTrace では provider と読んでいる. 
+provider のフックは色々だ. デバッガがやるようにメモリ上のバイナリを
+書き換えて記録をとるものもあるし, プログラマがソースコードの中に書き込んでおくこともできる. </p>
+<p>mcount() 相当の関数フックは, 動的なコード書き換えを行う (<a href="http://docs.sun.com/app/docs/doc/817-6223/6mlkidljt?a=view">Function Boundary Provider</a>) で実現する. 
+また provider はフレームワークとして拡張可能になっており, 
+新しい provdier を自由に定義, 追加できるらしい. この拡張性は DTrace のもつ特徴のひとつ. 
+マニュアルにも<a href="http://docs.sun.com/app/docs/doc/817-6223">山ほど provider が載っている</a>. Solaris は多くの provider をカーネル組込みで用意している. たとえばシステムコールのや IO などを監視できる. </p>
+<p>DTrace が持つもう一つの特徴は, "D" という awk/C 風 DSL で
+集計用のフィルタを記述できるところ. こんなかんじ (<a href="http://www.usenix.org/event/usenix04/tech/general/full_papers/cantrill/cantrill_html/index.html">記事</a>からコピペ):</p>
+<pre>
+syscall::read:entry
+{
+        self-&gt;t = timestamp;
+}
+
+syscall::read:return
+/self-&gt;t/
+{
+        printf("%d/%d spent %d nsecs in read\n",
+            pid, tid, timestamp - self-&gt;t);
+}</pre>
+<p>関数名のところがトレースするフックのパターン, カッコの中がフィルタ/集計のロジックらしい. </p>
+<p>DSL を用意した理由の一つとして, 先の記事では実行時の安全性を挙げている. 
+D 言語は dtrace コマンドでバイトコードにコンパイルされ, 
+そのバイトコードがカーネル内の VM で動く. 
+VM は意図的に仕様を制約しており, アクセス違反や無限ループはおこらない. 
+だからフックの度に動かしても安全というわけ. 
+やりすぎ感に溢れていて楽しい. 
+コアとおぼしき (<a href="http://cvs.opensolaris.org/source/xref/onnv/onnv-gate/usr/src/uts/common/dtrace/dtrace.c">dtrace.c</a>)  なんて半分くらい VM だもんなあ... 
+<a href="http://catb.org/~esr/writings/taoup/html/minilanguageschapter.html">raymond も喜んでくれる</a>よ, たぶん.</p>
+<p>拡張性を誇示するかのように, <a href="http://www.opensolaris.org/os/community/dtrace/">DTrace のページ</a> には様々な provider が紹介されている. 
+<a href="http://www.opensolaris.org/os/community/dtrace/shells/">sh</a>, <a href="http://www.solarisinternals.com/wiki/index.php/DTrace_Topics_Java">java</a>, <a href="http://www.solarisinternals.com/wiki/index.php/DTrace_Topics_Databases#PostgreSQL">PostgreSQL</a>, <a href="http://www.opensolaris.org/os/project/mozilla-dtrace/">JavaScript, Mozilla</a>, <a href="http://prefetch.net/projects/apache_modtrace/">Apache</a> ... 
+これらの大半は <a href="http://www.solarisinternals.com/wiki/index.php/DTrace_Topics_USDT">USDT</a> (Userland Statically Defined Tracing) という provider を使う. 
+プログラムは dtrace が提供する USDT のフック関数をソースコードに埋め込む. (<a href="http://cvs.opensolaris.org/source/xref/onnv/onnv-gate/usr/src/uts/common/sys/sdt.h">sys/sdt.h</a>) "dtrace enhanced" なプログラムというのは, 
+要するに DTrace 用のフックをパチったもののこと.</p>
+<p>関数を追跡する FBP(Function Boundary Provider) があるのに
+わざわざ手動のフックを用意しているのは, 関数をまたく高次のトレースを行うためだ. 
+たとえばトランザクションの開始から終了まで, VM 内の call 命令から ret 命令まで, 
+データの受信開始から完了までといった処理のなかには, 
+一つの関数呼び出しで完結しない制御フローを持つものがある. 
+こうした手続きを関数ベースのトレースで追いかけるのは難しい. 
+USDT を使えば, 
+transaction_start や transaction_end といったトレース対を
+自分で定義して埋め込めむことができる. 
+プログラマがアドホックに作るトレースに比べ, 
+USDT は DTrace のインフラを使いまわせるぶん楽ができる. </p>
+<p>また USDT のフックにはユーザの定義した引数を渡すことができる. 
+たとえば Java VM のメソッド呼び出し命令を処理する関数で Java のメソッド名を引数にとれる. 
+ふつうのプロファイラにこれは難しいだろう. 
+そのほか readXX() 関数に渡すバイト数を記録するといった使い方もできる. 便利. </p>
+<p>具体例は bugzilla にある <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=370906">Gecko 用のパッチ群 #370906</a> がわかりやすい. 
+(<a href="https://bugzilla.mozilla.org/attachment.cgi?id=277393&amp;action=diff">dtrace ファイルを定義する #277393</a>, <a href="https://bugzilla.mozilla.org/attachment.cgi?id=277395&amp;action=diff">それを使う #277395</a>, <a href="https://bugzilla.mozilla.org/attachment.cgi?id=271004&amp;action=diff">SpiderMonkey 用 #271004</a>) </p>
+<p>Sun の人々はがんばってパッチを作っているけれど, 
+できるなら汎用的なフック機構を作り, そこに DTrace のトレースを挿す方がクリーンだと思う. 
+Apache の <a href="http://prefetch.net/projects/apache_modtrace/">mod_dtrace</a> は
+module として dtrace を組み込んでいる. 
+PostgreSQL も "Generic Monitoring Framework" と銘打ち
+間接マクロを挟んでいる. (<a href="http://developer.postgresql.org/cvsweb.cgi/pgsql/src/include/pg_trace.h?rev=1.2">pg_trace.h</a>: 単なるマクロにしては名前がごつすぎる気も...) </p>
+<p>それにしても DTrace を使うのはけっこう敷居が高そうだ. 
+単純なプロファイラならリストを上から順に潰せばいいけれど, 
+こちらはまず監視するトレースにあたりをつけないといけない. 
+逆にいうと素朴な計測ではみつけにくい問題を調べるための道具だと言える. 
+USENIX の記事も ACMQ の記事も, 発見の難しいプロセスをまたいた性能バグを
+いかに退治したかのケーススタディが載っている. とても面白い. 
+<a href="http://www.sun.com/bigadmin/content/dtrace/">Sun のページ</a> 
+にはサンプルやチュートリアルが充実している. 最近では <a href="http://developers.sun.com/solaris/articles/dtrace_ajax.html">Ajax/Java アプリを DTrace で計測</a> なんて記事もある. あっけにとられた. 
+Solaris 好きなら DTrace プログラミングという特殊技能を身につけるとかっこいいかも. </p>
+<p>DTrace は言ってみれば OS 版アスペクト指向プログラミングだ. 
+ログ取りにしか使えないと揶揄された AOP だけれど, DTrace は最初からその目的に特化している. 
+様々なフックを用意し, 時にはコードを書き換え, 
+あつめたデータを DSL で集計して性能バグを追いつめていく. 
+DTrace はここで紹介した以外にも色々な機能やアイデアが盛り込まれている. 
+テクノロジーとして見所が多い. 満足. </p>
+<h4><a href="http://ruby-prof.rubyforge.org/">ruby-prof</a></h4>
+<p>そろそろ OS の話には疲れてきた. 
+最後に少し毛色の違うプロファイラを眺めてみよう, ということで ruby-prof に進みます. 
+ruby-prof は ruby 用のプロファイラ. C 言語による拡張として実装されている. </p>
+<p>OProfile も DTrace も動かせなかったけれど, これならマカーにも使えそう. 
+まず gprof 用に書いた C のサンプルを ruby に移植しよう. </p>
+<pre>
+def foo n
+  (0 ... n).inject(0) do |a,i|
+    a + (0 .. n).inject(0) { |b,j| b + i*j }
+  end
+end
+
+def bar
+  (0 ... 10).inject(0) { |a,i| a + foo(1000) }
+end
+
+def baz
+  (0 ... 1000).inject(0) { |a,i| a + foo(10) }
+end
+
+bar
+baz</pre>
+<p>動かす:</p>
+<pre>$ ruby-prof hello.rb</pre>
+<p>結果:</p>
+<pre>Thread ID: 202500
+Total: 181.38
+
+ %self     total     self     wait    child    calls  name
+ 63.09    180.45   114.43     0.00    66.02    22022  Range#each-2
+ 18.70     33.91    33.91     0.00     0.00 11155882  Fixnum#+
+ 17.73     32.16    32.16     0.00     0.00 11143132  Fixnum#*
+  0.26    181.32     0.47     0.00   180.85     1012  Range#each-1
+  0.11    180.65     0.20     0.00   180.45    22022  Enumerable#inject-2
+  0.04      0.08     0.08     0.00     0.00    23036  &lt;Class::Object&gt;#allocate
+  0.04      0.07     0.07     0.00     0.00    10285  Bignum#+
+  0.02    181.37     0.04     0.00   181.33     1012  Object#foo
+ ....</pre>
+<p>ruby-prof は C で書かれた計測部分と ruby で書かれた集計表示部分からなる. 
+C のコード (<a href="http://viewvc.rubyforge.mmmultiworks.com/cgi/viewvc.cgi/ext/ruby_prof.c?revision=212&amp;root=ruby-prof&amp;view=markup">ruby-prof.c</a>) は約 1600 行.
+今回眺めたコードの中では抜群に小さい. 
+これでちゃんとプロファイルがとれるんだから面白いよね. </p>
+<p>ruby-prof は計測のためにフックを使う. フックは ruby コアが用意しており, 
+rb_add_event_hook() (<a href="http://svn.ruby-lang.org/cgi-bin/viewvc.cgi/trunk/thread.c?revision=13116&amp;view=markup">thread.c</a>) から登録する. 
+こんな都合のいい API があるとは... なんとなく ruby の ChangeLog を確認.</p>
+<pre>Wed Mar 16 22:03:15 2005  Shugo Maeda  &lt;shugo@ruby-lang.org&gt;
+
+  * eval.c (rb_add_event_hook): new function to add a hook function for
+    interpreter events.</pre>
+<p>Shugo Maeda さんは ruby-prof の開発者でもある... </p>
+<p>コアが汎用的なフックを用意し, 計測機構はプラグインとしてつくる. これは正しい姿だとおもう. 
+ruby-prof 以外にも, たとえば <a href="http://eigenclass.org/hiki.rb?rcov">rcov</a> がこのフックを使っている. ruby dtrace も同じ路線で書けそうだ. (さがしてみると <a href="http://joyeur.com/2007/05/07/dtrace-for-ruby-is-available">dtrace for ruby</a> というのが見つかった. でも容赦なく eval.c をパチっている. 悲しい...)</p>
+<p>さて, gprof の量子化誤差を思いだそう. 
+ruby-prof に同じ問題は見られない. 正しく測れているかんじ. </p>
+<pre> %self     total     self     wait    child    calls  name
+  ...
+  0.02    181.37     0.04     0.00   181.33     1012  Object#foo
+  ...
+  0.00    178.98     0.00     0.00   178.98        1  Object#bar
+  ...
+  0.00    181.38     0.00     0.00   181.38        0  Global#[No method]
+  0.00      2.40     0.00     0.00     2.40        1  Object#baz</pre>
+<p>実装をみればすぐ理由がわかる. ruby-prof は関数の出入口にあるフックで時間を測る. 
+だから関数全体の実行時間がわかる. 推測による誤差は入らない. </p>
+<p>ruby-prof の C コードはプロファイラのアルゴリズムを理解するのにちょうどいい. 
+ruby 固有の部分は面倒だけれど, プロファイルのロジックは素直に書かれている. 
+データ構造を ruby 側に公開し, 整形は ruby で書くあたりもそれらしくて楽しめた. </p>
+<h4>まとめなど</h4>
+<p>そんなわけで gprof, OProfile, DTrace, ruby-prof と 4 種類のプロファイラを眺め, 
+いいかげん飽きました. (ほんとは valgrind も見たかったけど挫折...)</p>
+<p>まとめ:</p>
+<ul>
+<li>プロファイルの仕組みにはタイマーで実行中のプログラムを観察するサンプル方式と, 何らかの方法でフックを用意するトレース方式がある.<ul>
+<li>gprof は両方</li>
+<li>OProfile はサンプル方式中心</li>
+<li>DTrace と ruby-prof はトレース方式中心</li>
+</ul></li>
+<li>OProfile や DTrace はシステム全体の負荷を測るため OS のカーネルに組込まれている<ul>
+<li>データ加工のタイミング色々: DTrace はカーネル内, OProfile はカーネル外</li>
+<li>負荷を減らす工夫色々: パフォーマンスカウンタ, CPU 単位のバッファ, 投機的計測</li>
+<li>拡張の工夫いろいろ: トレース機構のプラグイン, DSL</li>
+</ul></li>
+<li>アプリケーションにも計測用のフックをつけると便利かも</li>
+</ul>
+<h4>参考リンク</h4>
+<ul>
+<li><a href="http://catb.org/~esr/writings/taoup/">The Art Of Unix Programming</a></li>
+<li><a href="http://www.gnu.org/software/binutils/manual/gprof-2.9.1/html_node/gprof_toc.html">GNU gprof</a> : gprof のマニュアル</li>
+<li><a href="http://oprofile.sourceforge.net/news/">OProfile - A System Profiler for Linux</a><ul>
+<li><a href="http://oprofile.sourceforge.net/links/">参考資料リンク</a></li>
+<li><a href="http://people.redhat.com/wcohen/Oprofile.pdf">Tuning Programs with OProfile</a> : 入門的な解説記事</li>
+<li><a href="http://h30097.www3.hp.com/dcpi/src-tn-1997-016a.html">Continuous Profiling: Where Have All the Cycles Gone?</a> : Oprofile の元ネタである DPCI の記事</li>
+<li><a href="http://www.ibm.com/developerworks/linux/library/l-oprof.html">Smashing performance with OProfile</a> : developerWorks の記事</li>
+</ul></li>
+<li><a href="http://movementarian.org/docs/linux-profiling/">Profiling in Linux HOWTO</a> : linux 向けプロファイラのまとめ (書きかけ)</li>
+<li><a href="http://www.opensolaris.org/os/community/dtrace/">DTrace at OpenSolaris.org</a> : DTrace のコミュニティポータル<ul>
+<li><a href="http://www.usenix.org/event/usenix04/tech/general/cantrill.html">Dynamic Instrumentation of Production Systems</a> : USENIX の DTrace 記事</li>
+<li><a href="http://www.acmqueue.org/modules.php?name=Content&amp;pa=showpage&amp;pid=361&amp;page=1">ACM Queue - Hidden in Plain Sight: Improvements in the observability of software can help you diagnose your most crippling performance problems</a> : ACM Queue の Dtrace 記事</li>
+<li><a href="http://www.solarisinternals.com/wiki/index.php/DTrace_Topics_Internals">DTrace Topics Internals</a> : DTrace のソースコード概要 (書きかけ)</li>
+<li><a href="http://www.sun.com/bigadmin/content/dtrace/">BigAdmin: DTrace</a> : 管理者向けサイト BigAdmin の DTrace ポータル</li>
+</ul></li>
+<li><a href="http://rubyforge.org/projects/ruby-prof/">RubyForge: ruby-prof: Project Info</a> : RubyForge 内の ruby-prof のページ</li>
+<li><a href="http://eigenclass.org/hiki.rb?rcov">eigenclass - rcov: code coverage for Ruby</a> : rb_add_event_hook() の別の応用</li>
+<li><a href="http://domino.research.ibm.com/comm/research_projects.nsf/pages/k42.index.html">The K42 Project</a> : IBM Research 製の OS. 排他制御のコストなどを含む包括的なトレース機能を備える. (<a href="http://www.research.ibm.com/K42/papers/sc03.pdf">Efficient, Unified, and Scalable Performance Monitoring for Multiprocessor Operating Systems(PDF)</a>)</li>
+<li><a href="http://sourceware.org/systemtap/">SystemTap</a> : Linux カーネル用のトレーサ. DTrace 同様, トレース用の DSL を備える. ユーザ空間のトレース機能はない.<ul>
+<li><a href="http://www.redhat.com/magazine/005mar05/features/kprobes/">Kprobes and the Linux kernel</a> : SystemTap の基盤である kprobe の紹介.</li>
+<li><a href="http://relayfs.sourceforge.net/">relay(formerly relayfs)</a> : OProfle の oprofilefs に相当する カーネル空間とユーザ空間のデータ渡し用ファイルシステム. SystemTap が利用.</li>
+</ul></li>
+</ul>

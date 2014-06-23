@@ -1,0 +1,950 @@
+---
+title: "Project Tamarin"
+date: 2006-11-11
+---
+<pre></pre>
+<h3>Project Tamarin</h3>
+<p><a href="http://www.hecker.org/mozilla/adobe-mozilla-and-tamarin">Adobe が ActionScript3 の VM "AVM2" をオープンソース化し, Mozilla に寄贈した.</a> 
+今後 Mozilla2 に向けて本体の JavaScript 実装 (<a href="http://www.mozilla.org/js/spidermonkey/">SpiderMonkey</a>) と統合していくという. 
+寄贈されたのは VM だけ. コンパイラはない. 
+そこは SpiderMonkey のパーサを使ってがんばるらしい. 
+SpiderMonkey の実装は bytecode 指向だから, 頑張ればなんとかなるのかな。 
+(すくなくとも構文木ベースの <a href="http://webkit.org/">WebKit</a> JavaScriptCore 
+に繋ぐよりは楽そうだ.) </p>
+<p>この Opensourced AVM2 は名前が 
+<a href="http://www.mozilla.org/projects/tamarin/">"Tamarin"</a>. 
+響きがかわいい. たまりん... </p>
+<p>Mozilla のエースが早速
+<a href="http://weblogs.mozillazine.org/roadmap/">コードをチェックインしている</a>. 
+せっかくなのでチェックアウトしてみた. </p>
+<pre>cvs -d :pserver:anonymous:anonymous@cvs-mirror.mozilla.org:/cvsroot \
+    co mozilla/js/tamarin</pre>
+<p>コードは C++ で, 13.5 万行. かわいいってかんじじゃない. 
+うち 3.6 万行が pcre (正規表現ライブラリ), のこりが本体. 8-9 万行くらいかな. 
+他に テストコード (.as) が 30 万行くらいついてくる. </p>
+<pre># 本体
+    15437 /tamarin/codegen
+    62938 /tamarin/core
+    10137 /tamarin/esc
+     2312 /tamarin/extensions
+    12380 /tamarin/MMgc
+     2711 /tamarin/platform
+     7374 /tamarin/shell
+     2607 /tamarin/utils
+# 正規表現
+    36377 /tamarin/pcre
+# テスト
+   296689 /tamarin/test
+# 合計
+   448962 /tamarin</pre>
+<p>"core" が VM 実装の中心. 一見サイズは大きいけれど, 
+VM 以外に標準オブジェクト (Array とか) の実装も入っている. VM は一部. 
+"MMgc" は ガベコレのライブラリ. (<a href="http://www.hpl.hp.com/personal/Hans_Boehm/gc/">Boehm GC</a> みたいなもんね.)
+"codegen" が JIT のためのネイティブコード生成モジュールで, 
+"shell" はコマンドラインのプログラム. その他, というかんじの構成になっている. </p>
+<p>それぞれざっと中味を眺めていこう.</p>
+<h3>MMgc : Macromedia garbage collector.</h3>
+<p>GC です. conservative GC. あんまし興味ないのでちょっとだけ. 
+とりあえず GC.h が親玉らしいので, こいつを眺めるとよさそう. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/MMgc/GC.h">MMgc|GC.h</a></p>
+<pre> /**
+  * This is a general-purpose garbage collector used by the Flash Player.
+  * Application code must implement the GCRoot interface to mark all
+  * reachable data.  Unreachable data is automatically destroyed.
+  * Objects may optionally be finalized by subclassing the GCObject
+  * interface.
+  *
+  * ...
+  */</pre>
+<p>ふーん. 
+VM のコンテクストオブジェクトをみると, たしかに GCRoot を継承している. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/AvmCore.cpp">core/avmcore.h</a>:</p>
+<pre> class AvmCore : public MMgc::GCRoot
+ { ....</pre>
+<p>GCObject もみてみよう. 
+スクリプトから使われるオブジェクトはたしかにこれを継承...</p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/ArrayObject.h">core/ArrayObject.h</a>:</p>
+<pre> class ArrayObject : public ScriptObject
+ { ...
+ };</pre>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/ScriptObject.h">core/ScriptObject.h</a>:</p>
+<pre> class ScriptObject : public AvmPlusScriptableObject
+ ...</pre>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/AvmPlusScriptableObject.h">core/AvmPlusScriptableObject.h</a>:</p>
+<pre> class AvmPlusScriptableObject : public MMgc::RCFinalizedObject
+...</pre>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/MMgc/GCObject.h">MMgc/GCObject.h</a>:</p>
+<pre> class RCFinalizedObject : public RCObject{};
+ class RCObject : public GCFinalizedObject
+ ....</pre>
+<p>...してないじゃん!</p>
+<pre> class GCFinalizedObject
+ //: public GCObject can't do this, get weird compile errors in AVM plus, \
+     I think it has to do with
+ // the most base class (GCObject) not having any virtual methods)
+ { ...</pre>
+<p>なにか辛いことがあったんだね...</p>
+<p>RCObject は ref-counted object のことらしい. 
+なぜ mark-and-sweep gc で refcount が必要なのかはわからない. 
+どうもコンパイルオプション MMGC_DRC で <a href="http://www.memorymanagement.org/glossary/d.html#deferred.reference.counting">deferred reference counting</a> という仕組みが有効になり, そのための仕組みらしい. こんなきわどい部分が configurable なのはどうかと思う...</p>
+<p>GC.h, GCObject.h で MMGC_DRC を検索すると色々やっているのがわかる. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/MMgc/GCObject.h">GCObject.h</a>::</p>
+<pre>#ifdef MMGC_DRC
+   class RCObject : public GCFinalizedObject
+  {
+    ... // 色々やる
+#ifdef MMGC_DRC // この ifdef は要らない気が...
+    int32 composite;
+#ifdef _DEBUG
+    GCStack&lt;int,4&gt; history;
+    int padto32bytes;
+#endif
+#endif
+    ...
+  };
+#else // !MMGC_DRC
+  ...
+  class RCObject : public GCObject {};
+  ...
+#endif</pre>
+<p>ifdef の嵐に早くも嫌気がさして来た. MMgc はこのへんで切り上げよう. 
+基本的には GC.cpp に gc アルゴリズムの実装が, GCHeap.cpp にアロケータが, 
+GCObject.h に GC 可能オブジェクトのインターフェイスがあるようす. 
+そのほかプラットホーム依存のコードやデバッグ用のユーティリティなど, 
+細々としたものが色々入っていた. </p>
+<pre>     2603 /MMgc/GC.cpp
+     1030 /MMgc/GC.h
+      673 /MMgc/GCAlloc.cpp
+      395 /MMgc/GCAlloc.h
+     1167 /MMgc/GCHeap.cpp
+      391 /MMgc/GCHeap.h
+       78 /MMgc/GCObject.cpp
+      391 /MMgc/GCObject.h
+     ... # 細々と数千行
+    12380 /MMgc</pre>
+<h3>codegen : JIT の実装</h3>
+<p>さて, こっちが本題です. </p>
+<p>たまりんは JIT つきの VM なので, ネイティブコード生成器を持っている. 
+codegen ディレクトリがその実装. </p>
+<pre>     1170 /codegen/ArmAssembler.cpp
+      224 /codegen/ArmAssembler.h
+    10084 /codegen/CodegenMIR.cpp
+     1526 /codegen/CodegenMIR.h
+     1135 /codegen/Ia32Assembler.cpp
+     1298 /codegen/PpcAssembler.cpp
+    15437 /codegen</pre>
+<p>本体は CodegenMIR.h と CodegenMIR.cpp にある. CodegenMIR クラスはとても大きい. 
+コード生成用の API emitXX() などをひととおり揃えている. 
+AVM のバイトコードは一旦 CodegenMIR の内部形式 MIR に変換され, 
+(ぐぐったところによると MIR は 
+"Macromedia Intermediate Representation" の略らしい.) 
+それが更に各プラットホームの機械語に変換される. 2-pass なんだね. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/codegen/CodegenMIR.h">CodegenMIR.h</a>:</p>
+<pre> /**
+  * The CodegenMIR class is a dynamic code generator which translates
+  * AVM+ bytecodes into an architecture neutral intermediate representation
+  * suitable for common subexpression elimination, inlining, and register
+  * allocation.
+  */
+ class CodegenMIR
+ ....</pre>
+<p>ふーん.</p>
+<h4>CodegenMIR::emit() : MIR の構築</h4>
+<p>さっそくコードを眺めて雰囲気を掴もう. 
+まずは MIR を生成する CodegenMIR::emit() API から. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/codegen/CodegenMIR.cpp">CodegenMIR.cpp</a>:</p>
+<pre> void CodegenMIR::emit(FrameState* state, AbcOpcode opcode, int op1, int op2, Traits* result)
+ {
+   ...
+   switch (opcode)
+   {
+     case OP_jump:
+     {
+       // spill everything first
+       int targetpc = op1;
+
+       saveState();
+
+
+       // relative branch
+       OP* p = Ins(MIR_jmp); // will be patched
+
+       mirPatch(p, targetpc);
+       break;
+     }
+   ...
+     case OP_not:
+     {
+       AvmAssert(state-&gt;value(op1).traits == BOOLEAN_TYPE);</pre>
+<pre>       OP* value = localGet(op1);
+       OP* i3 = binaryIns(MIR_xor, value, InsConst(1));
+       localSet(op1, i3);
+       break;
+     }
+   ...  case OP_xxx: が続く..
+   }
+
+ ...
+ } // emit()</pre>
+<p>OP_xxx は ABC (ActionScript Byte Code) の命令名. 
+<a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/opcodes.h">core/opcodes.h</a> で定義されている. 
+CodegenMIR はこの OP_xxx を一旦 MIR の命令 MIR_xxx に変換して 
+OP 構造体にセット, 内部のリストに追記していく. 
+(MIR_xxx の定義は CodegenMIR.h にある.) </p>
+<p>上の例にはでてこないけれど ins() がわかりやすい. </p>
+<pre> OP* CodegenMIR::Ins(MirOpcode code, OP* a1, OP* a2)
+ {
+   OP* ip = this-&gt;ip;
+   ....
+   OP* o = 0;
+   ....
+   if (o == 0)
+   {
+     ip-&gt;code = code;
+     ip-&gt;lastUse = 0;
+     ip-&gt;oprnd1 = a1;
+     ip-&gt;oprnd2 = a2;
+     ip-&gt;liveAcrossCall = 0;
+     ip-&gt;reg = Unknown;
+     ...
+     o = ip++;
+     ip-&gt;prevcse = 0;
+     this-&gt;ip = ip;
+     ...
+   }
+   return o;
+ }</pre>
+<p>OP の配列の現在位置を指す CodegenMIR::ip を書き進めている. 
+(メンバ変数の名前に "ip" はどうなのよ...)</p>
+<h4>CodegenMIR::emitMD() : 機械語の生成</h4>
+<p>emit() でためこまれた OP のリストは 
+emitMD()  API によって実際の機械語に変換される. 
+(MD は Machine Dependent ?)</p>
+<pre> void CodegenMIR::emitMD()
+ {
+   ....
+   generatePrologue();
+   generate();
+   generateEpilogue();
+   ....
+ }</pre>
+<p>generate() が本体らしい. </p>
+<pre> void CodegenMIR::generate()
+ {
+   ...
+   while(ip &lt; ipEnd)
+   {
+     SAMPLE_CHECK();
+     MirOpcode mircode = ip-&gt;code;
+     ....
+     switch(mircode)
+     {
+     case ....:
+     ....
+     }
+     ....
+     ip++;
+   }
+ }</pre>
+<p>もっともらしいコードではある.</p>
+<p>ただ switch ブロックの中はえらいことになっている. 
+私は早々に挫けたけれど, 興味のあるバイナリ愛好家は覗いてみてください. 
+比較的しんどくないやつをひとつもってきた. シフト命令の発行部分. 
+順に見ていこう. </p>
+<pre>       case MIR_lsh:
+       case MIR_rsh:
+       case MIR_ush:
+       {
+         OP* lhs = ip-&gt;oprnd1; // lhs
+         OP* rhs = ip-&gt;oprnd2; // rhs
+
+         ....
+
+         #ifdef AVMPLUS_PPC</pre>
+<p>さっそく ifdef. 
+個々の case: の中は大抵こんなかんじでアーキテクチャ毎に切り分けられている. </p>
+<pre>         // 即値用の命令が使えるか?
+         if (canImmFold(ip, rhs))
+         {
+           Register rLhs = Unknown;
+           InsRegisterPrepA(ip, gpregs, lhs, rLhs);
+           Register r = InsPrepResult(gpregs, ip);
+
+           int shift = rhs-&gt;imm&amp;0x1F;
+           if (shift)
+           {
+             if (mircode == MIR_lsh)
+               SLWI(r, rLhs, rhs-&gt;imm&amp;0x1F);
+             else if (mircode == MIR_rsh)
+               SRAWI(r, rLhs, rhs-&gt;imm&amp;0x1F);
+             else // MIR_ush
+               SRWI(r, rLhs, rhs-&gt;imm&amp;0x1F);
+           }
+           else
+           {
+             MR(r, rLhs);
+           }
+         }
+         else
+         {
+         ...
+         }
+
+         #endif</pre>
+<p>とまあこんなかんじ. アセンブリ風の大文字 API はアーキテクチャ毎に用意されており, 
+XxAssembler.cpp で定義されている. 
+たとえば上の SRWI は PpcAsembler.cpp にある. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/codegen/PpcAssembler.cpp">codegen/PpcAssemblder.cpp</a>:</p>
+<pre> void CodegenMIR::SRWI(Register dst, Register src, int shift)
+ {
+   RLWINM(dst, src, 32-shift, shift, 31);
+ }</pre>
+<p>ちょっと深追い.</p>
+<pre> void CodegenMIR::RLWINM(Register dst, Register src, int shift, int begin, int end)
+ {
+   incInstructionCount();
+   l...
+    *mip++ = 0x54000000 | (src&lt;&lt;21) | (dst&lt;&lt;16) | (shift&lt;&lt;11) | (begin&lt;&lt;6) | \
+               (end&lt;&lt;1);
+ }</pre>
+<p>mip は機械語の配列内を指すポインタ. 
+CodegenMIR はこの大文字 API 路線でひたすら各種アークテクチャの命令セットを
+網羅している. 力技だなあ...</p>
+<p>本筋に戻るり読み進めると, 
+PPC の他に ARM, IA32 などもそれぞれ実装されている. 
+似たようで少しずつ違うコードが並んでいるだけ. (面倒なので省略.)</p>
+<pre>         // codegen/PpcAssemblder.cpp
+         #ifdef AVMPLUS_ARM
+         Register r = Unknown;
+         if (canImmFold(ip, rhs))
+         {
+           .....
+         }
+         else
+         {
+           .....
+         }
+         ...
+         #endif
+
+         #ifdef AVMPLUS_IA32
+         ...
+         #endif
+         break;
+       }</pre>
+<p>こういうのがバイトコードの命令毎にある. もっと複雑なものも多い. 難儀だ...</p>
+<h4>CodgenMIR::bindMethod() : 生成したコードの引き渡し</h4>
+<p>さて, がんばって作った機械語はどこに行くんだろう. 
+generate() の次に呼ばれる generateEpilogue() を見てみよう. 
+長いメソッドなので, 当面の目的に沿った部分だけ抜粋.</p>
+<pre>  void CodegenMIR::generateEpilogue()
+  {
+    .... // 関数呼び出しから戻るコードを生成...
+    bindMethod(info);
+    ...
+  }</pre>
+<p>この bindMethod() が生成された機械語と VM のオブジェクトをつないでいる. </p>
+<pre>  void CodegenMIR::bindMethod(AbstractFunction* f)
+  {
+     ...
+#if defined(_MAC) &amp;&amp; !TARGET_RT_MAC_MACHO
+     f-&gt;impl32 = (int (*)(MethodEnv*, int, va_list)) (mip-2);
+#else
+     f-&gt;impl32 = (int (*)(MethodEnv*, int, va_list)) mipStart;
+#endif
+     ...
+  }</pre>
+<p>初登場の AbstractFunction オブジェクトは core モジュールで定義されている. 
+関数ポインタホルダだと思っておいてください. 詳しくはあとで. </p>
+<p>かくして CodegenMIR が生成したコードの(関数)ポインタを 
+AbstractFunction::impl32 は渡され, 無事バイトコードのコンパイルはおしまい. 
+セットされた impl32 は誰がどう呼び出すのか. 
+そもそも CodegenMIR によるコンパイルはいつ, どこから行なわれるのか. 
+つづいてそのへんを見ていきます. </p>
+<p>それにしてもコード生成ってしんどいね. 自分じゃあまりやりたくない...</p>
+<h3>core : AVM の本体</h3>
+<p>VM の本体は core ディレクトリにまとめられている. これを core モジュールと呼んでおこう. </p>
+<p>core モジュールのコードはぜんぶで 6 万行強. 
+既に書いたとおり, 大半は Array や String, XMLObject といった標準ライブラリの
+実装に費やされている. 本体はさほど大きくない. </p>
+<p>ファイルをざっとにながめよう.</p>
+<p>AbcXxx はバイトコード操作に関係するオブジェクト. 
+もっぱら AbcParser にお世話になる. </p>
+<pre>       38 /core/AbcData.cpp
+       58 /core/AbcEnv.cpp
+       84 /core/AbcGen.cpp
+     1986 /core/AbcParser.cpp
+     1596 /core/opcodes.cpp
+      202 /core/opcodes.h</pre>
+<p>さっき登場した AbstractFunction もここに.</p>
+<pre>      433 /core/AbstractFunction.cpp
+      296 /core/AbstractFunction.h
+      ....</pre>
+<p>core モジュールの親玉はその名も AvmCore. 巨大なクラスで, 
+VM のコンテクストを保持している. VM 本体だと思ってさしつかえない. </p>
+<pre>     3877 /core/AvmCore.cpp
+     1389 /core/AvmCore.h</pre>
+<p>JIT といいつつ一応インタプリタもある. けっこう小さい. </p>
+<pre>     1555 /tamarin/core/Interpreter.cpp
+       85 /tamarin/core/Interpreter.h</pre>
+<p>標準ライブラリの実装はこんなかんじ. (他にもいろいろある.)</p>
+<pre>      636 /core/BigInteger.cpp
+       55 /core/BooleanClass.cpp
+      193 /core/ClassClosure.cpp
+      135 /core/RegExpClass.cpp
+      763 /core/RegExpObject.cpp
+      449 /core/DateClass.cpp
+      225 /core/ObjectClass.cpp
+          ...</pre>
+<p>E4X 関係もちゃんと入っているらしい. (でもパーサ抜きだとあまり嬉しくない気もする.) </p>
+<pre>      988 /core/E4XNode.cpp
+      356 /core/E4XNode.h
+      421 /core/XMLClass.cpp
+     3025 /core/XMLObject.cpp
+      504 /core/XMLParser16.cpp</pre>
+<p>これらは先で登場する重要オブジェクト. 名前だけ気にとめておいて下さい. </p>
+<pre>     3304 /core/Verifier.cpp
+     1645 /core/MethodEnv.cpp
+      330 /core/MethodInfo.cpp</pre>
+<p>その他色々なユーティリティなどをあわせた規模がこれくらい. </p>
+<pre>    62938 /tamarin/core</pre>
+<p>大きいけれど, 肝になる部分は 1-2 万行くらいというのが読んだ時の印象.</p>
+<h4>おおまかな処理の流れ</h4>
+<p>さて, VM はどこから動きはじめるのだろう. 
+途方に暮れながらコードを漁ると, うまい具合にコマンドライン実行用のシェルが入っていた. 
+avmshell.cpp がそれ. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/shell/avmshell.cpp">shell/avmshell.cpp</a>:</p>
+<pre> int _main(int argc, char *argv[])
+ {
+   ..
+   int exitCode = 0;
+   {
+     MMgc::GC gc(heap);
+     avmshell::shell = new avmshell::Shell(&amp;gc);
+     exitCode = avmshell::shell-&gt;main(argc, argv);
+     delete avmshell::shell;
+   }
+   ..
+ }</pre>
+<p>Shell というオブジェクトがあるらしい. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/shell/avmshell.h">shell/avmshell.h</a>:</p>
+<pre> /**
+  * A command-line shell around the avmplus core.  This can be
+  * used to execute and debug .abc files from the command line.
+  */
+ class Shell : public AvmCore
+ {
+   ...
+ };</pre>
+<p>いまどき実装継承はどうよという苦情はさておき, Shell は AvmCore を使っている. 
+これを追いかければ VM の挙動を調べることができそうだ. </p>
+<pre> int Shell::main(int argc, char *argv[])
+ {
+   ...
+   ...// 山盛りの初期化と設定
+   ...
+   FileInputStream f(filename);
+   bool isValid = f.valid();
+   if (isValid)
+   {
+     ScriptBuffer code = newScriptBuffer(f.available());
+     f.read(code.getBuffer(), f.available());
+     handleActionBlock(code, 0, domainEnv, toplevel,
+                       NULL, NULL, NULL, codeContext);
+   }
+   ...
+ }</pre>
+<p>AvmCore::handleActionBlock() のが実質上のエントリポイントらしい. 
+ファイルからデータを読んで, 読み込んだものを handleActionBlock() に渡している. 
+(なお, コードを読んだ限り Action なんとかと名のつくメソッドには
+特に Action 的な意味はない. ActionScript の Action らしい.)</p>
+<p>AvmCore に進もう. 
+<a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/AvmCore.cpp">AvmCore.cpp</a>:</p>
+<pre> Atom AvmCore::handleActionBlock(ScriptBuffer code,
+                  int start,
+                    DomainEnv* domainEnv,
+                    Toplevel* &amp;toplevel,
+                    AbstractFunction *nativeMethods[],
+                    NativeClassInfo *nativeClasses[],
+                    NativeScriptInfo *nativeScripts[],
+                    CodeContext *codeContext)
+ {
+   ....
+   // parse constants and attributes.
+   pool = parseActionBlock(code,
+                           start,
+                           toplevel,
+                           domain,
+                           nativeMethods,
+                           nativeClasses,
+                           nativeScripts);
+   if (pool != NULL)
+   {
+     resources-&gt;put(start+1, pool);
+   }
+
+   return handleActionPool(pool, domainEnv, toplevel, codeContext);
+ }</pre>
+<p>なにかをパースして (parseActionBlock()), 
+その戻り値 pool を処理する. (handleActionPool()) </p>
+<h4>AvmCore::parseActionBlock(): ABC のパース</h4>
+<p>パースするものなんてバイトコードくらいしかないような...</p>
+<pre> PoolObject* AvmCore::parseActionBlock(ScriptBuffer code,
+                                       int /*start*/,
+                                       Toplevel* toplevel,
+                                       Domain* domain,
+                                       AbstractFunction *nativeMethods[],
+                                       NativeClassInfo *nativeClasses[],
+                                       NativeScriptInfo *nativeScripts[])
+ {
+   // parse constants and attributes.
+   PoolObject* pool = AbcParser::decodeAbc(this,
+                                           code,
+                                           toplevel,
+                                           domain,
+                                           nativeMethods,
+                                           nativeClasses,
+                                           nativeScripts);
+ }
+</pre>
+<p>というわけで, 無事 AbcParser の呼び出しまで辿りついた. 
+でも先は長いので AbcParser の中には立ち入らないでおく. </p>
+<p>コメントにある通り, AbcParser は定数やクラスの一覧といった
+メタデータっぽい部分だけを解析する. バイトコードそのものは解釈しない. 
+スクリプト処理系のパーサとは違い, バイトコンパイルはもう済んでいる. 
+そしてバイトコードの解釈はインタプリタや JIT コンパイラが行う. 
+だから AbcParser の仕事は案外すくない. </p>
+<p>ABC ファイルのフォーマットについては 
+<a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/abcFormat.txt">core/abcFormat.txt</a> にメモがある. 
+AbcParser の仕事は, このメモにあるようなデータを読み込んで返すことだ. 
+帰ってくるデータは PoolObject にまとまっている. </p>
+<pre> class PoolObject : public MMgc::GCFinalizedObject
+ {
+ public:
+   AvmCore *core;
+
+   /** constants */
+   List&lt;int, LIST_NonGCObjects&gt; cpool_int;
+   List&lt;uint32, LIST_NonGCObjects&gt; cpool_uint;
+   List&lt;double*, LIST_GCObjects&gt; cpool_double;
+   List&lt;Stringp, LIST_RCObjects&gt; cpool_string;
+   List&lt;Namespace*, LIST_RCObjects&gt; cpool_ns;
+   List&lt;NamespaceSet*, LIST_GCObjects&gt; cpool_ns_set;
+
+   // LIST_NonGCObjects b/c these aren't really atoms, they are offsets
+   List&lt;Atom,LIST_NonGCObjects&gt; cpool_mn;
+
+   /** all methods */
+   List&lt;AbstractFunction*, LIST_GCObjects&gt; methods;
+
+   /** metadata */
+   List&lt;const byte*,LIST_NonGCObjects&gt; metadata_infos;
+
+   /** domain */
+   DWB(Domain*) domain;
+
+   /** constructors for class objects, for op_newclass */
+   List&lt;AbstractFunction*, LIST_GCObjects&gt; cinits;
+   List&lt;AbstractFunction*, LIST_GCObjects&gt; scripts;
+   ...
+ private:
+   DWB(MultinameHashtable*) namedTraits;
+   MultinameHashtable privateNamedScripts;
+   DWB(ScriptBufferImpl*) m_code;
+   const byte * const abcStart;
+ };</pre>
+<p>各種定数, メソッド情報, Traits(クラスみたいなものらしい), スクリプト...
+たしかにバイトコードっぽい. </p>
+<p>ABC では各クラス(Traits)情報がメソッド情報へのインデクスをもっている. 
+クラスのチャンクががメソッドを包含するようなフォーマットにはなっていない. 
+PoolObject もそれを反映した構造になっている. </p>
+<h4>AvmCore::handleActionPool()</h4>
+<p>つづく handleActionPool() は 
+parseActionBlock() によって作られた PoolObject を解釈する. 
+いよいよ佳境に入ってきたかも. </p>
+<pre> Atom AvmCore::handleActionPool(PoolObject* pool,
+                                DomainEnv* domainEnv,
+                                Toplevel* &amp;toplevel,
+                                CodeContext* codeContext)
+ {
+   ...
+   ScriptEnv* main = prepareActionPool(pool, domainEnv, toplevel, codeContext);
+   ...
+   Atom argv[1] = { main-&gt;global-&gt;atom() };
+   Atom result = 0;
+   ...
+   result = main-&gt;coerceEnter(0, argv);
+   ...
+   return result;
+ }</pre>
+<p>prepareActionPool() で環境 main を作って, 
+そいつを coerceEnter() とキックするわけか. </p>
+<p>ScriptEnv はこんなかんじ:</p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/MethodEnv.h">core/MethodEnv.h</a>:</p>
+<pre> class ScriptEnv : public MethodEnv
+ {
+ public:
+   DRCWB(ScriptObject*) global; // initially null, set after initialization
+   ScriptEnv(AbstractFunction* method, VTable *vtable)
+     : MethodEnv(method, vtable)
+   {
+   }
+   ...
+ };
+
+ ...
+
+ class MethodEnv : public MMgc::GCObject
+ {
+   /** the vtable for the scope where this env was declared */
+   VTable* const vtable;
+
+   /** runtime independent type info for this method */
+   AbstractFunction* const method;
+   ...
+ };</pre>
+<p>ここでいうスクリプトは要するにグローバルな名前空間で動くメソッドだから, 
+上のコードもなんとなく納得がいく. 親クラスの MethodInfo が持つ
+AbstractFunction オブジェクトがコード本体だろうか. 
+(このオブジェクトが CodegenMIR に登場したのを思いだそう.) </p>
+<p>prepareActionPool() は最初に動かす ScriptInfo を探してきて返すのだろう.  </p>
+<pre> ScriptEnv* AvmCore::prepareActionPool(PoolObject* pool,
+                                       DomainEnv* domainEnv,
+                                       Toplevel*&amp; toplevel,
+                                       CodeContext* codeContext)
+ {
+   ...
+   // entry point is the last script in the file
+   VTable* mainVTable = newVTable(mainTraits, object_vtable,
+                                  emptyScope, abcEnv, toplevel);
+   Traits* mainTraits = pool-&gt;scripts[pool-&gt;scriptCount-1]-&gt;declaringTraits;
+   ...
+   ScriptEnv* main = new (GetGC()) ScriptEnv(mainTraits-&gt;init, mainVTable);
+   ...
+   return main;
+ }</pre>
+<p>パーサで作った pool からとりだしていた. (VTable オブジェクトはスルーしておいてください.)</p>
+<p>それにしても MMgc のオブジェクト確保には replacement new を使うのか. 
+スーパークラスで operator new() を定義するのが定石だと思っていたけれど, 
+こういう方法もアリだね. </p>
+<h4>MethodEnv::coerceEnter()</h4>
+<p>さて, 次は上で作った bootstrap の ScriptEnv オブジェクトを coerceEnter() で実行する. 
+ここでの coerce は, メソッドを呼び出して戻り値の型に変換する, 
+くらいの意味だと思えばよさそう. coerceEnter() でコード内を検索すると, 
+他にもメソッド呼び出しの実体らしい部分で呼び出されている. </p>
+<p>実体は MethodEnv:coerceEnter() にある. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/MethodEnv.cpp">core/MethodEnv.cpp</a>:</p>
+<pre> Atom MethodEnv::coerceEnter(int argc, Atom* atomv)
+ {
+   ...
+   AbstractFunction* method = this-&gt;method;
+   ...
+
+   AvmCore* core = this-&gt;core();
+   if (returnType == NUMBER_TYPE)
+   {
+     AvmAssert(method-&gt;implN != NULL);
+     double d = method-&gt;implN(this, argc, ap);
+     return core-&gt;doubleToAtom(d);
+   }
+   else
+   {
+     AvmAssert(method-&gt;impl32 != NULL);
+     int i = method-&gt;impl32(this, argc, ap);
+     ...
+   }
+ }</pre>
+<p>CodegenMIR で生き別れた麗しの impl32 とようやく再会! 長い道程だった. 
+(implN は と impl32 大差なさそうなので放っておく.) </p>
+<h4>MethodInfo::verifyEnter() : JIT コンパイルの呼び出し</h4>
+<p>...と喜ぶのも束の間のこと. impl32 は一体いつセットされたんだろう. 
+ここまでに CodegenMIR を呼び出している部分はなかった. 見落したんだろうか? </p>
+<p>実は, ここで呼ぶ impl32 の先は CodgenMIR の作ったコードではない. 
+ここで impl32 を持つ AbstractFunction の実体は MethodInfo オブジェクトだ. 
+コンストラクタを見てみよう. </p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/MethodInfo.h">core/MethodInfo.cpp</a></p>
+<pre> MethodInfo::MethodInfo()
+   : AbstractFunction()
+ {
+   ...
+   this-&gt;impl32 = verifyEnter;
+ }</pre>
+<p>MethodInfo::verifyEnter() が正体らしい. </p>
+<pre> /*
+  * static method である点に注意
+  */
+ int MethodInfo::verifyEnter(MethodEnv* env, int argc, va_list ap)
+ {
+   MethodInfo* f = (MethodInfo*) env-&gt;method;
+
+   f-&gt;verify(env-&gt;vtable-&gt;toplevel);
+
+   ...
+   env-&gt;impl32 = f-&gt;impl32;
+   return f-&gt;impl32(env, argc, ap);
+ }</pre>
+<p>うーん. impl32 の実体として呼ばれる verifyEnter() で, また impl32 を呼んでいる. 
+再帰だろうか. どうも verify() が怪しい. (わざとらしくてすみません.)</p>
+<pre> void MethodInfo::verify(Toplevel* toplevel)
+ {
+   ...
+   Verifier verifier(this, toplevel);
+
+   AvmCore* core = this-&gt;core();
+   if (core-&gt;turbo &amp;&amp; !isFlagSet(AbstractFunction::SUGGEST_INTERP))
+   {
+     CodegenMIR mir(this);
+     verifier.verify(&amp;mir);  // pass 2 - data flow
+     ...
+     if (!mir.overflow)
+       mir.emitMD(); // pass 3 - generate code
+     // mark it as interpreted and try to limp along
+     if (mir.overflow)
+     {
+       #ifdef AVMPLUS_INTERP
+       AvmCore* core = this-&gt;core();
+       if (returnTraits() == NUMBER_TYPE)
+         implN = Interpreter::interpN;
+       else
+         impl32 = Interpreter::interp32;
+       #else
+       toplevel()-&gt;throwError(kOutOfMemoryError);
+       #endif //AVMPLUS_INTERP
+     }
+   }
+   else
+   {
+     ...
+   }
+   ...
+ }</pre>
+<p>CodegenMIR::emitMD() を呼び出している! </p>
+<p>つまり, MethodInfo::impl32 には最初 verifyEnter() がセットされており, 
+この初回呼び出しでネイティブコードをコンパイルして
+自身を差し替えていたわけ. こいつはたしかに "Just In Time" だなあ. ちょっと感動. </p>
+<p>何かの都合で コンパイルに失敗した時は Interpreter::interp32 に
+falldown しているのが面白い. こういう風にネイティブコードと逐次実行が混在するんだね. </p>
+<h4>Verifier::verify() : 検証とコード生成</h4>
+<p>emitMD() は発行された MIR を機械語に変換するメソッドだった. 
+では MIR を発行するのは誰か? コードを見る限り Verifier がそれらしい. </p>
+<pre> void Verifier::verify(CodegenMIR *mir)
+ {
+   ...
+   this-&gt;mir = mir;
+   ...
+   if (mir)
+   {
+     if( !mir-&gt;prologue(state) )  // まずここで prologue を生成
+     ...
+   }
+   ...
+   int size;
+   for (const byte* pc = code_pos, *code_end=code_pos+code_length;
+        pc &lt; code_end; pc += size)
+   {
+     ...
+     AbcOpcode opcode = (AbcOpcode) *pc;
+     ...
+     switch (opcode)
+     {
+       ...
+       case OP_jump:
+       {
+         // 各 OP_xx 毎に emit(() を呼び, MIR を生成
+         if (mir) mir-&gt;emit(state, opcode, state-&gt;pc+size+imm24);
+         checkTarget(nextpc+imm24);  // target block;
+         blockEnd = true;
+         break;
+       }
+       ...// 延々 と OP_xxx の case 節が続く
+     default:
+       AvmAssert(false);
+     }
+     ...
+     if (!mir || mir-&gt;overflow)
+     {
+       // 都合の悪い時はインタプリタで代替
+       if (info-&gt;returnTraits() == NUMBER_TYPE)
+         info-&gt;implN = Interpreter::interpN;
+       else
+         info-&gt;impl32 = Interpreter::interp32;
+     }
+     else
+     #endif //AVMPLUS_INTERP
+     {
+       // 最後に prologue をつくる
+       mir-&gt;epilogue(state);
+     }
+     ...
+   }</pre>
+<p>やっぱり emit() でコードを生成している. verify() の仕事は検証だけじゃないんだね...
+(上のコードでは省略しているけれど, ちゃんと検証のコードもあります.) </p>
+<p>さてと. これでようやく VM (AvmCore) と JIT (CodgenMIR) が繋がった. 
+VM はメソッド呼び出しのエントリポイント impl32 を 
+バイトコード検証と JIT 呼び出しのコード MethodInfo::verifyEnter() で初期化しておき, 
+エントリポイントが呼がれたタイミグでそれを JIT したコード, または
+インタプリタの呼び出し (Interpreter::interp32()) に書き換えていた.</p>
+<h4>メソッドの呼び出し</h4>
+<p>さて, 上では最初のスクリプトが呼ばれる手順を追った. 
+あとは VM の中でバイトコードなり生成された機械語なりが順に解釈されてプログラムが動く. 
+そのプログラムからメソッドが呼ばれた時もちゃんと JIT はおこるんだろうか. 
+念のため確かめておこう. </p>
+<p>メソッドは JIT で作られたコードとインタプリタのどちらからも呼ばれる. 
+まずは日和ってインタプリタを眺めてみよう.</p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/Interpreter.cpp">core/Interpreter.cpp</a>:</p>
+<pre> int Interpreter::interp32(MethodEnv* env, int argc, va_list ap)
+ {
+   Atom a = interp(env, argc, ap);
+   ....
+ }
+
+ ...
+
+ /**
+  * Interpret the AVM+ instruction set.
+  * @return
+  */
+ Atom Interpreter::interp(MethodEnv *env, int argc, va_list ap)
+ {
+   MethodInfo* info = (MethodInfo*)(AbstractFunction*) env-&gt;method;
+   AvmCore *core = info-&gt;core();
+   ....
+   for (;;)
+   {
+     ...
+     expc = pc-code_start;
+     AbcOpcode opcode = (AbcOpcode) *pc++;
+     switch (opcode)
+     {
+       ...
+     case OP_callmethod:
+     {
+       // stack in: receiver, arg1..N
+       // stack out: result
+       uint32 disp_id = readU30(pc)-1;
+       argc = readU30(pc);
+       ...
+       Atom* atomv = sp-argc;
+       VTable* vtable = toplevel-&gt;toVTable(atomv[0]); // includes null check
+       ...
+       MethodEnv *f = vtable-&gt;methods[disp_id];
+       // ISSUE if arg types were checked in verifier, this coerces again.
+       tempAtom = f-&gt;coerceEnter(argc, atomv);
+       ....
+     }
+       continue;
+       ....
+     }
+   }
+   ...
+ }</pre>
+<p>色々前準備はあるけれど, coerceEnter() はちゃんとが呼ばれている. OK.</p>
+<p>JIT はどうだろう.</p>
+<pre> void CodegenMIR::emitCall(FrameState *state, AbcOpcode opcode,
+                           int method_id, int argc, Traits* result)
+ {
+   ...
+   switch (opcode)
+   case OP_callmethod:
+   {
+     // stack in:  obj arg1..N
+     // stack out: result
+     // sp[-argc] = callmethod(disp_id, argc, ...);
+     // method_id is disp_id of virtual method
+     OP* vtable = loadVTable(objDisp);
+     method = loadIns(MIR_ldop, offsetof(VTable, methods)+4*method_id, vtable);
+     break;
+   }
+   ...
+   OP* target = leaIns(offsetof(MethodEnv, impl32), method);
+   OP* apAddr = leaIns(0, ap);
+   OP* out = callIndirect(result==NUMBER_TYPE ? MIR_fci : MIR_ci, target, 4,
+     method, InsConst(argc), apAddr, iid);
+   ...
+ }</pre>
+<p>さっぱりわかんねー</p>
+<p>Vtable は MethoEnv テーブルなので, まずそれをスタックに積むか何かするんだろう. 
+(loadVTable()) 
+つぎにその VTable から該当する MethodEnv をもってきて (loadIns()), 
+それから callIndirect() で関数ポインタの呼び出しをするのかな. うーん...</p>
+<h4>ネイティブメソッドの呼び出し</h4>
+<p>あとちょっとです.</p>
+<p>これまではバイトコードを呼び出す話だった. 
+ネイティブコードを呼び出す仕組みも大枠は変わらない. </p>
+<p>ネイティブコードをあらわす NativeMethod オブジェクトは, 
+バイトコードのメソッドをあらわす MethodInfo オブジェクトと同じ 
+AbstractFunction クラスを継承している.
+VM からバイトコードもネイティブコードもこのクラスのインスタンスとして扱われる. </p>
+<p>違うのは JIT を呼び出す verify() の実装.</p>
+<p><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/core/NativeFunction.cpp">core/NativeFunction.cpp</a></p>
+<pre> void NativeMethod::verify(Toplevel *toplevel)
+ {
+   ...
+   CodegenMIR cgen(this);
+   cgen.emitNativeThunk(this);
+   ...
+ }</pre>
+<p>こんな感じでネイティブコードを呼ぶ命令を作る. 
+CodegenMIR::emitNativeThunk() の実装はアーキテクチャ毎に異る. 
+しんどいのでコードは省略. 
+NativeMethod::m_handler_addr を呼び出すようなコードを吐くらしい. </p>
+<p>NativeMethod のオブジェクトは 
+AvmCore の初期化時に作られ (AvmCore::initNativeTables()), 
+AbcParser はそれを受け取ってバイトコードからの参照を解決する.  </p>
+<h3>まとめ, 読んでいないもの</h3>
+<p>はい. 一通りコードを眺めおわりました. </p>
+<p>たまりん VM と JIT の大枠はだいたいわかった気がする. まんぞく. 
+Adobe のコードというから <a href="http://opensource.adobe.com/">ASL</a> みたいな 
+boost 風いまどきチューンドな C++ かと思いきや, 
+割と勢い余ったかんじのコードで意表をつかれた. 
+まあ現場最前線というのはこういう感じなのかもしれない. </p>
+<p>たまりん VM/JIT の特徴を読んだ範囲でまとめてみた:</p>
+<ul>
+<li>コード生成 は ABC -&gt; MIR -&gt; 機械語と 2-pass の変換をする</li>
+<li>JIT がおこるタイミングは最初にそのメソッドがよばれた時 (オプションでかわる)</li>
+<li>インタプリタも積んでいて, JIT しない/できない場合はそっちを使う</li>
+<li>GC は Macromedia 内製の汎用ライブラリを使う</li>
+</ul>
+<p>こう書いてみると普通っぽい. 特徴をとらえられてない気もする. 
+単につくりが普通なのかもしれないけれど...</p>
+<p>なお, 読んでいない部分も多い. 
+まずオブジェクトモデルはまったく読んでいない. これは GC とセットで読むといいと思う. 
+(GC の詳細も見ていないからね.) 
+命令セットの内容も精査していない. これは opcodes.h を眺めるのが最初の一歩かな. 
+機械語の生成は detail matter だろうから, きっと色々複雑なところはあると思う. 
+レジスタ割り当てとか. きっちりした最適化のフレームワークはなさそうだけど, 
+ぼちぼちと色々やっている. 
+そのほか, 周辺として SpiderMonkey への組込み動向をウォッチしておくのも 
+Mozilla 愛好家にとっては面白いかもしれない. </p>
+<p>コードを眺めながらつくった呼び出し履歴のメモを載せておきます. 参考まで. </p>
+<pre>Shell::main()
+  AvmCore::handleActionBlock()
+    AvmCore::parseActionBlock()
+      pool = AbcParser::decodeAbc() : static
+        AbcParser::new()
+        AbcParser::parse()
+          AbcParser::parseMethodInfos()
+            MethodInfo.new()
+          AbcParser::parseMethodBodies()
+    AvmCore::handleActionPool(pool)
+      AvmCore::prepareActionPool()
+        ScriptEnv.new() : mainTraits = PoolObject の最後の script を引数に
+      ScriptEnv::coerceEnter() (MethodInfo::coerceEnter())
+        this-&gt;method-&gt;impl32
+          MethodInfo::verifyEnter()
+            MethodInfo::verify() (subclasss?)
+              Verifier::new(this)
+                mir = CodegenMIR::new(this)
+                Verifier::verify(mir)
+                  CodegenMIR::emit()
+                CodegenMIR::emitMD()
+                  f-&gt;impl32 = 生成したコード
+            env-&gt;method-&gt;impl32()</pre>
+<h4>参考 URL</h4>
+<ul>
+<li><a href="http://www.mozilla.org/projects/tamarin/">Tamarin Project</a> : プロジェクトのページ</li>
+<li><a href="http://weblogs.mozillazine.org/roadmap/archives/2006/11/project_tamarin.html#comments">Brendan's Roadmap Updates: Project Tamarin</a> : Mozilla のエースによるチェックインのアナウンス</li>
+<li><a href="http://www.hecker.org/mozilla/adobe-mozilla-and-tamarin">Frank Hecker, Mozilla : Adobe, Mozilla, and Tamarin</a> : Mozilla のボスによる解説</li>
+<li><a href="http://lxr.mozilla.org/mozilla/source/js/tamarin/">mozilla/js/tamarin/</a> : ツリーの該当ディレクトリ (LXR)</li>
+<li><a href="http://www.adobe.com/communities/developerweek/2006_devweek_as3.pdf">ActionScript 3.0 for Flash and RIA Developers</a> : Adobe による ActionScript3 の説明スライド</li>
+</ul>

@@ -1,0 +1,54 @@
+---
+title: "Consitent Hashing"
+date: 2007-12-01
+---
+<h3><a href="http://www.hyuki.com/yukiwiki/wiki.cgi?ConsistentHashing">Consitent Hashing</a></h3>
+<p>訳したのを <a href="http://www.hyuki.com/yukiwiki/wiki.cgi?ConsistentHashing">Yukiwiki に公開</a>しました. </p>
+<p><a href="http://www.atmarkit.co.jp/news/200711/26/rakuten.html">楽天テクノロジーカンファレンスの記事</a> で 
+amazon の Dynamo というのが紹介されていた. そんなのがあるのかとぐぐってみつけた 
+<a href="http://www.allthingsdistributed.com/2007/10/amazons_Dynamo.html">Dynamo の話</a>を読む. 
+その中で consistent hashing が使われており. 
+シンプルでよくできたアルゴリズムだと感心, 紹介しようと思った次第. 
+WWW8 に出た<a href="http://www8.org/w8-papers/2a-webserver/caching/paper2.html">オリジナルの記事</a>も読んでみたけれど, 
+もともと単純なアイデアなので大した詳細はない. 
+Chord や Dynamo の記事に含まれる紹介で十分ことたりている. 
+でも Chord が consitent hashing だというのは件の記事を読むまで気付かなかったなあ. 
+わっかの上をぐるぐる周るやつ, くらいの記憶しかなかった... </p>
+<h4>Dynamo</h4>
+<p><span class='image'><a href='http://www.amazon.co.jp/Distributed-Systems-Principles-Andrew-Tanenbaum/dp/0132392275%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0132392275' class='bookcover'><img data:asin='0132392275' class='asin image-right' src='http://ecx.images-amazon.com/images/I/518hGvqORpL.jpg'></span></a></span></p>
+<p>consistent hashing にはじまり, Dynamo は分散アルゴリズムがてんこもり. 
+vector clock, gossip-based protocol, 
+merkle tree (使いどころがわからん), eventual consistency (これは技法じゃないか) ...
+様々な技法を一つのシステムに集約しているのはすごい. 
+個人的には <a data:asin='0132392275' href='http://www.amazon.co.jp/Distributed-Systems-Principles-Andrew-Tanenbaum/dp/0132392275%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0132392275'>タネン本</a> の知識が役に立って嬉しかったけれど, 
+現実にこんなシステムがあるとは思わなかった. 複雑さに眩暈がする. 
+しかし複雑さにも関わらず service level agreement に関する議論も絵空事になっていない. 
+毎秒 500 要求の負荷の下で 300ms の反応速度を 99.9% のクライアントに保証するという
+目標を達成しているという. </p>
+<p>個人的に面白いと思ったのは, 分散ストレージの抱えるバージョン付けの問題に対するアプローチ. 
+Dynamo は partitioning と replication の両方を行っており, かつ ACID の C にいくらか妥協をしている.
+(eventually consistent ... 一時的に矛盾はあるけど, そのうち矛盾はなおるはずというモデル.)
+この妥協のおかげで性能を保てるかわりに異なるバージョンのデータが混在することがある. </p>
+<p>普通のデータベースは書込みのタイミングで一貫性を保証しようとし, 
+衝突があった場合はその書込み要求を拒否する. 
+一方の Dynamo は "always writable" という目標を持っており, 書き込みの失敗は許されない. 
+だから衝突のあるデータも一度ストレージに保存する. </p>
+<p>衝突を解決するのは, そのデータを読み出したクライアントの仕事になる. 
+クライアントが衝突のあるキーを読み出すと, 一つの値が返ってくるかわりに
+衝突を解決すべき値のリストが返ってくる. 
+クライアントはアプリケーションに応じた方法でその二つをマージし, 
+解決済みデータとしてキーに書き込む. こうしてようやく (eventually) 一貫性が回復する. 
+write の面倒を read に転嫁するわけね. </p>
+<p>イメージとしては subversion なんかでブランチをしていて, 
+そのブランチをトランクに戻す際に自力でマージをする感じだろうか. 
+普通の SCM は行レベルで diff/patch 式マージをしてくれるけれど, 
+Dynamo のデータは opaque なバイト列. マージはアプリケーションの責任になる. </p>
+<p>ACID でかっちり固めたデータベースに慣れていると, こうしたルーズなモデルは新鮮に見える. 
+でも Mercurial や git はある種の分散データベースだと言える. 
+そう考えると eventual consistency は案外身近な物に思えてくる. 
+誰がいつマージするかは悩ましいけれど...</p>
+<p>Amazon は AWS やら S3 やらとウェブのプラットホーム化をがんばっている. 
+ただ Google ほど社内のあれこれをアピールしないので, 野次馬的には食い足りない. 
+去年の ACMQ に載っていた  
+<a href="http://www.acmqueue.com/modules.php?name=Content&amp;pa=showpage&amp;pid=388">Werner Vogels CTO のインタビュー</a> は Amazon の内情をいくらか伝えている. 
+Dynamo のホワイトペーパーも, こうした inside amazon 話のひとつとして読むことができる. </p>

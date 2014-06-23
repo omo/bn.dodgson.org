@@ -1,0 +1,230 @@
+---
+title: "MongoDB の BSON"
+date: 2011-10-31
+---
+<h3>MongoDB の BSON</h3>
+<p><span class='image'><a href='http://www.amazon.co.jp/MongoDB-Definitive-Guide-Kristina-Chodorow/dp/1449381561%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1449381561' class='bookcover'><img data:asin='1449381561' class='asin image-right' src='http://ecx.images-amazon.com/images/I/51RucbMZqDL.jpg'></span></a></span></p>
+<p>ペーパードライバーにはヒマなエリアへ出張中. 
+各種中毒メディア群も数周して飽きたため, 
+前から読みたかった <a href="https://github.com/mongodb/mongo">MongoDB</a> でも調べよう...としたけれど, 
+思ったよりコードサイズがあるなあ. ちょっとだけ眺めて気を済まそう...</p>
+<p>ウェブっ子でない同士諸兄に説明しておくと, MongoDB は JSON のようなオブジェクトに
+適当な ID を割り振り, その ID をキーに JSON (のようなもの)を検索できるようにした
+データベースのこと. ID 以外の JSON のフィールドにもインデクスをつけて
+検索できるぶん便利な子だとされている. (<a data:asin='1449381561' href='http://www.amazon.co.jp/MongoDB-Definitive-Guide-Kristina-Chodorow/dp/1449381561%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D1449381561'>教科書情報</a>.)
+今日は手始めに MongoDB 内の JSON 表現たる "BSON" を眺めた.</p>
+<p>MongoDB は, 自身が内部で使っている JSON 相当のデータ表現を BSON (Binary JSON) と呼び, 
+あわよくば広く使ってもらおうと <a href="http://bsonspec.org/">bsonspec.org</a> でフォーマットを文書化している. 
+広く使われているのかは知らない. 
+個人的には<a href="http://blog.8-p.info/2011/05/17/bson.html">BSON のデザインはいまいちだ</a>という主張におおむね同意しつつ, 
+一方で実装には多少の頑張りも見られたので紹介したい. 
+なお BSON のコードは <a href="https://github.com/mongodb/mongo/tree/master/bson">MongoDB のツリーに入っている</a>.</p>
+<h4>Traversability</h4>
+<p>BSON はデータ表現がもつ特徴のひとつに traversability を挙げている. 
+traversability というのは, 要するに JSON のオブジェクトツリー内にある特定の要素を
+特定する式...たとえば <em>foo.bar[5].baz</em> なんてのを与えたとき, 
+baz の値をずばっと取り出せることだと思えばいい. </p>
+<p>JSON のパーサやその類似品を書いたことがあるひとにとって, 
+これは当たり前のことに思えるかもしれない: 
+JS のオブジェクトリテラルを表現できるオブジェクトモデルを用意し, 
+パースの結果としてそのモデルに基づいたツリーを作る...そんな実装なら, 
+できあがったツリーが traversale でないはずがないよね. </p>
+<p>ただ典型的な実装と違い, MongoDB の BSON パーサは明示的なツリー構造をもたない. 
+もっといえば, この BSON 実装にはパーサがない. 
+明示的なツリー構造がないのに traversability はある. これが BSON の主な見所です.</p>
+<h4>BSONObj, BSONObjIterator, BSONElement</h4>
+<p>MongoDB の BSON はパースすべきメモリブロックのポインタを持つだけの
+オブジェクトとして表現されている. (<a href="https://github.com/mongodb/mongo/blob/master/bson/bsonobj.h">bsonobj.h</a>)</p>
+<pre>
+   class BSONObj {
+   public:
+       ...
+       explicit BSONObj(const char *msgdata) {
+           init(msgdata);
+       }
+       ...
+   private:
+       void init(const char *data) {
+           _objdata = data;
+           ...
+       }
+       ...
+       const char *_objdata;
+       boost::intrusive_ptr&lt; Holder &gt; _holder;
+       ...
+   };</pre>
+<p>"_objdata" が BSON データの先頭を指している. "_holder" はヒープの寿命をトラックしているが, とりあえず無視していい. 
+こんな素朴なつくりながら, <em>BSONObj</em> は BSON ツリーのルート要素を表している.  
+<a href="http://bsonspec.org/#/specification">仕様の言葉</a> でいうと document,
+JSON でいう object, 要するに文字列をキーとした連想配列ですね.</p>
+<p>仕様の "e_list" にあるとおり, document の中にはキーの文字列とその値の対である "element" が並んでいる.</p>
+<pre>// from http://bsonspec.org/#/specification
+document ::=     int32 e_list "\x00"     BSON Document
+e_list   ::=     element e_list
+           |     ""
+element  ::=     "\x01" e_name double    Floating point
+...</pre>
+<p>この element のリストをたどるには <em>BSONObjIterator</em> を使う. 
+(<a href="https://github.com/mongodb/mongo/blob/master/bson/bsonobjiterator.h">bsoniterator.h</a>)</p>
+<pre>
+   class BSONObjIterator {
+   public:
+       BSONObjIterator(const BSONObj&amp; jso) {
+           int sz = jso.objsize();
+           ...
+           _pos = jso.objdata() + 4;
+           _theend = jso.objdata() + sz - 1;
+       }
+       ...
+   };</pre>
+<p>要素をたどる next() メソッドはこんなかんじ.</p>
+<pre>
+       BSONElement next() {
+           assert( _pos &lt;= _theend );
+           BSONElement e(_pos);
+           _pos += e.size();
+           return e;
+       }</pre>
+<p>名前と値の対をあらわす <em>BSONElement</em> をつくり, 
+その(バイナリ上の)サイズを読みながらカーソルを進めている. </p>
+<p>BSONElement はこんな定義をもつ:  (<a href="https://github.com/mongodb/mongo/blob/master/bson/bsonelement.h">bsonelement.h</a>)</p>
+<pre>
+   class BSONElement {
+   public:
+       ...
+       explicit BSONElement(const char *d) : data(d) {
+           fieldNameSize_ = -1;
+           totalSize = -1;
+           ...
+       }
+
+       const char *data;
+       mutable int fieldNameSize_; // cached value
+       mutable int totalSize; /* caches the computed size */
+   };</pre>
+<p>メンバ変数につけるアンダースコアの有無ははっきりしてほしいというかいつもつけてほしいけれどそれはさておき, 
+コメントも // と /* */ を混ぜないでほしいけれどそれもさておき, 
+BSONElement も事実上バイト列へのポインタだけを持つクラスなのがわかる. BSONObj と似たつくり.</p>
+<p>バイト列上に占める BSONElement の大きさは, データの中を調べればわかる. 
+(<a href="https://github.com/mongodb/mongo/blob/master/bson/bson-inl.h">bson-inl.h</a>)</p>
+<pre>
+   inline int BSONElement::size() const {
+       if ( totalSize &gt;= 0 ) // 計算済ならそれを返す
+           return totalSize;
+
+       int x = 0;
+       switch ( type() ) { // type tag によって大きさがかわる
+           ...
+       case NumberInt:
+           x = 4; // int なら 4 byte だとか.
+           break;
+           ...
+       }
+       totalSize =  x + fieldNameSize() + 1; // BSONType
+
+       return totalSize;
+   }
+</pre>
+<p>仕様によると型タグである type() は element バイト列のの先頭に入っているはず...</p>
+<pre>
+       BSONType type() const { return (BSONType) *data; }</pre>
+<p>たしかにフィールドの先頭を調べていた.
+同じく仕様によればフィールド名は cstring 型だから当然...</p>
+<pre>
+       int fieldNameSize() const {
+           if ( fieldNameSize_ == -1 )
+               fieldNameSize_ = (int)strlen( fieldName() ) + 1;
+           return fieldNameSize_;
+       }
+
+       const char * fieldName() const {
+           if ( eoo() ) return ""; // no fieldname for it.
+           return data + 1; // +1 して type tag を読みとばす.
+       }</pre>
+<p>strlen() で長さが測れる. 便利ですね. </p>
+<p>こんな風に, BSONObj や BSONObjIterator は JSON ツリー構造のノードに相当する
+BSONElement を必要に応じて作ってはかえしている. 
+この BSONElement はスタックに確保される. BSONObj も BSONElement も外側から与えられたバイト列のポインタを持っているだけ. 
+どれも動的なメモリ確保が必要ない軽量なオブジェクトだとわかる. </p>
+<p>BSONElement は自分自身のサイズや型をバイト列の中から読み取る. 
+そういう意味で BSONElement を BSON のパーサと考えてもいい. 
+でもデータ全体を先頭から読まず, 自分に渡された部分的なバイト列の先頭付近だけ必要なときに調べる怠惰なつくり. 
+パーサと呼ぶのはちょっと気がひける.</p>
+<p>さて BSONObjIterator::next() を使い,
+自分のたどりたい document 内の element を探しだして BSONElement を取り出すことができた.
+今度はこの BSONElement の値からネストした document をとりだすところをみてみよう.</p>
+<pre>
+   inline BSONObj BSONElement::Obj() const { return embeddedObjectUserCheck(); }
+
+   inline BSONObj BSONElement::embeddedObjectUserCheck() const {
+       if ( MONGO_likely(isABSONObj()) )
+           return BSONObj(value());
+       ....
+   }</pre>
+<p>value() は...</p>
+<pre>
+   class BSONElement {
+   public:
+       ...
+       const char * value() const {
+           return (data + fieldNameSize() + 1);
+       }
+       ...
+   };</pre>
+<p>バイト列の中で値をあらわす位置のポインタを求め, BSONObj を作っていた. 
+数値のようなプリミティブな型もだいたい似たような仕組みでとりだしている:</p>
+<pre>
+       /** Return double value for this field. MUST be NumberDouble type. */
+       double _numberDouble() const {return *reinterpret_cast&lt; const double* &gt;( value() ); }
+       /** Return double value for this field. MUST be NumberInt type. */
+       int _numberInt() const {return *reinterpret_cast&lt; const int* &gt;( value() ); }
+       /** Return double value for this field. MUST be NumberLong type. */
+       long long _numberLong() const {return *reinterpret_cast&lt; const long long* &gt;( value() ); }</pre>
+<p>こんな風に BSONObj -&gt; BSONObjIterator -&gt; BSONElement -&gt; (BSONObj やプリミティブ) などと
+BSON のツリーをたどり, 必要な値をとりだせばよいようす. </p>
+<h4>遅延評価</h4>
+<p>上でみたとおり, MongoDB の BSON 実装は構造をルートからトラバースしながら
+必要に応じてデータをパースする,  ある種の遅延評価になっていることがわかった.
+これなら事前にデータ構造を作らなくてすむ. 余計なデータのコピーもおきないし, 
+データ構造のために動的なメモリ確保をすることもない. 効率はよさそうだ.</p>
+<p>ただオブジェクトグラフをつくらない制限はある. 
+たとえば BSONElement を包含する親の BSONObj を辿ることはできない. 
+BSONObjIterator を逆順に辿ることもできない. 
+それでも不要なフィールドをスキップしつつ子に向かってトラバースはできるから, 
+たとえば foo.bar[5].baz であらわされた値をとりだすくらいなら問題ない. 
+MongoDB の中で使う分にはこれでいいのだろう.</p>
+<h4>Baked Data と Mapped IO</h4>
+<p>プログラムの中で直列化表現をそのまま使いまわすテクニックは, 
+計算資源にとぼしいジャンルでよく使われる. 
+"<a href="http://www.gamasutra.com/view/feature/3984/delicious_data_baking.php">Data Baking</a>" なんて呼ぶこともあるらしい.
+MongoDB は BSON に限らず baked data をうまく使っている. 
+たとえば BTree はより積極的に直列化表現を使いまわしている. (気がむいたらそのへんの話も書きます.) </p>
+<p>こうした baked data の多用は MongoDB のストレージ実装と関係が深い. 
+MongoDB はストレージのキャッシュを自分でもたず仮想記憶にぜんぶ任せている. 
+(<a href="http://www.mongodb.org/display/DOCS/Caching">Wiki による</a>.) 
+要するに mmap() したファイルを直接読み書きすることでストレージ操作をしている. 
+BSONObj なら, この mapped I/O をそのままトラバースできる. </p>
+<p>MongoDB の売りの一つである in-place replacement も 
+mapped IO と baked data の恩恵を受けているのだろう. 
+サイズが同じデータ同士なら, 
+BSONObj があらわすメモリブロックに新しい BSONObj をコピーするだけでいい. 
+BSONObj は自身のサイズも該当メモリアドレスも知っている. 
+加えて, BSON/JSON なら大きな document ツリーの部分木も自然に表現できるから, 
+たとえばカウンタをふやすような小さいサイズの操作はその部分木だけ書き換えれば済む. </p>
+<p>MongoDB はこの in-place replacement を性能上の優位の一つとして押し出している. 
+CouchDB みたいな追記主体のアプローチとどちらが良いのかは用途次第だろうけれど, 
+デザインに一貫性はあるとおもった. 
+もともと私は MongoDB みたいなデータベースなんて Berkeley DB に
+直列化した JSON を出し入れすればできあがり, なんてタカをくくっていた. 
+でもレコードのデータ表現だけですら工夫の余地があるのを見て襟を正した.</p>
+<p>逆に MongoDB のストレージエンジンをとりかえようとしたら
+けっこう苦労しそう. Wiki を読むと現行の実装はあくまで
+ストレージエンジンの一つと言いたげな気配が伝わってくるけれど, 
+ほんとに新しい実装が増える日は来るのかな?</p>
+<h4>まとめ</h4>
+<ul>
+<li>MongoDB の BSON は遅延評価を頼りに部分バイト列を参照するだけのオブジェクトを使っていた.</li>
+<li>パースの遅延評価はヒープ上のオーバーヘッドがすくなく, 同時にまあまあ traversable という特徴がある.</li>
+<li>メモリブロックを直接参照するデザインは mapped IO を中心にした MongoDB のストレージとも相性がよい気がする.</li>
+<li>MongoDB っていってみたかった.</li>
+</ul>

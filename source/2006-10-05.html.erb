@@ -1,0 +1,54 @@
+---
+title: "AdCode"
+date: 2006-10-05
+---
+<h3>AdCode</h3>
+<p><a href="http://www.google.com/codesearch">Google Code Search</a> はなかなか良さそうだ. 
+まだ syntax coloring も相互参照もないけど時間の問題だろう. 
+gonzui の中の人も Google にいた気がするし. 
+そういえば Eclipse の人もいる. IDE に Google box が搭載される日も近い. 
+<a href="http://www.koders.com/">koders</a> は気の毒に... </p>
+<p>一方で, そのうちコードに広告を載せる日が来るのではないかと心配してしまう. 
+まずはコメントから. </p>
+<pre>/*
+ * Looking for code to copy ? Tired to afraid GPL ?
+ * Try our foobar components suite!
+ * the world's most popular bug-free code repository.
+ * get and try : http://foobar.example.com/suite
+ */</pre>
+<p>こんなコメントを入れて OSS でも広告収入ゲット. 
+自分で広告を差しこむ必要はない. AdCode Bot にレポジトリのコミット権を差し出せば, 
+Google が勝手に広告コメントを挿入してくれる. </p>
+<p>コードそのものものが広告でもいい. </p>
+<pre>package FoobarSuite;
+
+public class FoobarEncyptor {
+  ...
+  public FoobarEncyriptor(String src, int salt) {
+     ...
+  }
+
+  public String encode() {
+    return click[HERE].to_get(the_free_evaluation_version);
+  }
+
+};</pre>
+<p>これじゃあまりにスパムっぽいな. Do not be evil.  
+もっとも Google がやるまでもなくスパムコードは登場しそう. </p>
+<p>もう少し健全な使い方はないものか... 
+仮に API が提供されたことにして, サードパーティに作れるものを考えてみる. 
+たとえば "fixme.net" なんてどうかしら. (ドメインとられてた...) 
+<a href="http://www.google.com/codesearch?q=FIXME">FIXME</a>, 
+<a href="http://www.google.com/codesearch?q=TODO">TODO</a>, 
+<a href="http://www.google.com/codesearch?q=XXX">XXX</a> の検索結果と
+そのプロジェクトの複雑さなどから "直せそうなバグ" を教えてくれる, 
+オープンソースの hired gun 向けサービス. 
+直したバグ(マイバグ)の数が表示される SNS と連動して目立ちたがりのプログラマを支援する. 
+(そういえば昔, "このバグを直した人はこのバグも直せるはずです" と推薦してくれる 
+bugazon.com を構想というか妄想したこともあったけれど, 同僚たちには極めて不評だった.)</p>
+<p>Eclipse とくっつくなら Code Suggest をやってもいい.</p>
+<pre>Hoge h = new ここで Ctrl+Space</pre>
+<p>とやるだけで世の中のすべての Hoge サブクラスが列挙される. 邪魔なだけかもしらん. </p>
+<pre>(new StringBuilder()).ここで Ctrl+Space
+  [[もしかして: StringBuffer ?]]</pre>
+<p>ほっといてよ...</p>

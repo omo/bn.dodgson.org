@@ -1,0 +1,409 @@
+---
+title: "ChangeLog の作法"
+date: 2005-10-13
+---
+<h3>ChangeLog の作法</h3>
+<p>ソースコードなどの変更履歴を ChangeLog と呼ぶ. オープンソースのソフトウェアで変更履歴を "ChangeLog" というファイルに書いたのが ChangeLog のおこりだと思う. 最近は Subversion などに登録された変更履歴も change log, あるいは commit log などと呼ぶ. 以下ではそれらを ChangeLog と総称する.</p>
+<p>最近わけあってこの ChangeLog をどう書いたものかと考えている. コーディング規約には山ほど資料がある. コメントの書き方もよく議論される. しかし ChangeLog についての読み物は少い. <a href="http://www.sra.co.jp/wingnut/standards-j_toc.html#Change%20Logs">GNU コーディング規約</a> は数少ないそうした文書である. この説明はよくかけている: ChangeLog は将来のメンテナがバグの原因を探るのに使うものだ. コメントに書くべきものはコメントに書け. 関数名を並べろ... そうした主張は的を得ている.</p>
+<p>とはいえものごとのやりかたに執着するプログラマが誰しもこの規約に従っているはずはない. 実際のところ, 人々はどんな ChangeLog を書いているのか. いくつか実物を眺めてみた. </p>
+<p>以下に並べた実物の断片はごく小さなサブセットであり, プロジェクトの中でもチェックインする個人によって書式が大きくことなる場合が多い点に注意する必要はある. しかしこれだけのサブセットでもいくつかの様式があることがわかるだろう.
+CVS や subversion の普及により, 最近のプロジェクトで ChangeLog ファイルを使っているプロジェクトは少数派だ. 大抵はバージョン管理システムのデータとして ChangeLog を記録している. (これを "SCM ChangeLog" と呼ぼう.) 歴史の長いプロジェクトはファイルに ChangeLog を書く傾向にある. (これを "FS ChangeLog" と呼ぼう.) スタイルについても, GNU の規約に従っているプロジェクトもあれば, 一行のコメントだけからなる ChangeLog もある. 独自のルールをもつもののある.</p>
+<h4><a href="http://www.gnu.org/software/emacs/">Emacs</a></h4>
+<p>まず GNU の象徴(私にとって)である Emacs から.
+媒体は FS ChangeLog. 各モジュール(トップレベルのディレクトリに対応する)ごとに ChangeLog ファイルが用意されている. SCM の ChangeLog には, 該当する FS ChangeLog の差分(新しく書き加えたテキスト)を登録している. SCM ChangeLog に FS ChangeLog の差分を登録する流儀は, FS ChangeLog を採用しているプロジェクトで一般的に用いられている.</p>
+<p>(関係ないけど Stallman てばりばり現役なんだね...)</p>
+<p><a href="http://savannah.gnu.org/cgi-bin/viewcvs/emacs/emacs/lisp/ChangeLog?rev=1.8327&amp;content-type=text/vnd.viewcvs-markup">emacs/lisp/ChangeLog</a> より.</p>
+<pre>
+2005-10-11  Juanma Barranquero  &lt;lekktu@gmail.com&gt;
+
+	* emacs-lisp/autoload.el (update-directory-autoloads): Doc fix.
+	(autoload-print-form-outbuf): Add docstring.
+
+2005-10-11  Juri Linkov  &lt;juri@jurta.org&gt;
+
+	* info.el (Info-mode-menu): Delete menu item "Edit".
+	(Info-mode): Delete description of Info-edit from docstring,
+	and rearrange descriptions of Info commands in the order
+	they are documented in the Info manual.
+
+2005-10-11  Stefan Monnier  &lt;monnier@iro.umontreal.ca&gt;
+
+	* calendar/appt.el (appt-check): Use diary-selective-display var.
+2005-10-10  Richard M. Stallman  &lt;rms@gnu.org&gt;
+
+	* net/newsticker.el (newsticker-start, newsticker-show-news):
+	Add autoload cookies.
+</pre>
+<p>さすがに GNU の代表的ソフトウェアだけあって, 標準どおりに書かれている. 標準があるので個体差は少ない. </p>
+<h4><a href="http://gcc.gnu.org/">GCC</a></h4>
+<p>GNU のもう一つの顔, GCC も同様に GNU 路線を堅持している.</p>
+<p><a href="http://gcc.gnu.org/cgi-bin/cvsweb.cgi/gcc/gcc/treelang/ChangeLog?rev=1.132&amp;content-type=text/x-cvsweb-markup">gcc/treelang/ChangeLog</a> より.</p>
+<pre>2005-06-15  James A. Morrison  &lt;phython@gcc.gnu.org&gt;
+
+        * parse.y (function_invocation): Reverse parameter list.
+        * treetree.c (tree_code_get_expression): Don't reverse parameter list.
+
+2005-06-12  Rafael ?v
+
+        * treetree.c (tree_code_get_expression): Call build_function_call_expr
+        to build function calls.
+
+2005-05-31  Kaveh R. Ghazi  &lt;ghazi@caip.rutgers.edu&gt;
+
+        * treelang/lex.l, treelang/parse.y: Don't include errors.h and
+        include toplev.h.
+        * treelang/Make-lang.in: Updates dependencies.
+
+2005-05-02  Andrew Pinski  &lt;pinskia@physics.uc.edu&gt;
+
+        PR treelang/21345
+        * parse.y (parameters_opt): Add semicolon at the end.
+</pre>
+<h4>[[Mozilla|]</h4>
+<p>非 GNU の大規模プロジェクトである Mozilla の ChangeLog. GNU とは違った流儀で書かれている. CVS を使っていて, 媒体は SCM ChangeLog.</p>
+<p><a href="http://bonsai.mozilla.org/cvslog.cgi?file=mozilla/layout/generic/nsFrameFrame.cpp">mozilla/layout/generic/nsFrameFrame.cpp</a> より.</p>
+<pre>3.287	dougt%meer.net	2005-09-15 19:25
+	This fixes the NS_PRINTING configure option which got broken at some point.
+	b=308629 r/sr=jst@mozilla.org
+
+3.286	bzbarsky%mit.edu	2005-09-07 09:49
+	Remove the pointless nsIContent arg of nsIFrame::AttributeChanged.
+	Bug 281390, patch by Vidar Braut Haarr &lt;vhaarr+bmo@gmail.com&gt;,
+	r+sr=bzbarsky
+
+
+3.285	timeless%mozdev.org	2005-06-30 21:15
+	Bug 262917 r:\mozilla\layout\html\document\src\nsframeframe.cpp(632) :
+	 warning C4715: 'ConvertOverflow' : not all control paths return a value
+
+	r=dbaron sr=dbaron a=bsmedberg
+
+
+3.284	jst%mozilla.jstenback.com	2005-06-21 18:25
+	Fixing bug 284245. Make midas work in an iframe across re-framing
+	of the iframe.
+	r+sr=dbaron@mozilla.org, a=asa@mozilla.org
+
+
+3.283	roc+%cs.cmu.edu	2005-04-06 21:04
+	Bug 288873. Don't let nsSubDocumentFrame tear down a presentation it didn't build.
+
+	r+sr=bzbarsky,a=asa.
+
+
+3.282	aaronleventhal%moonset.net	2005-03-15 07:24
+	Bug 274600. Fix erratic rendering of applets in iframes. r+sr=roc
+
+
+3.281	bmlk%gmx.de	2005-03-08 21:40
+	the failure to load a uri is not a failure to create a docshell bug 283147
+	r/sr=bzbarsky
+</pre>
+<p>上の断片では可読性をたかめるために勝手に改行しているが, 実物は一行コメント. Emacs などと比べて随分あっさりしている. 一方で, GNU とは違う独自のルールを見てとることができる.</p>
+<p>まず, Bugzilla の バグ識別番号が埋めこまれている. Mozilla は機能の追加項目も Bugzilla で管理しているので, 詳細はそっちを見てねというわけ. ソースコードのクロスリファレンス LXR <a href="http://lxr.mozilla.org/mozilla/source/">LXR</a> で ChangeLog を表示すると, 番号部分が Bugzilla へのリンクになる. 素の <a href="http://www.freebsd.org/projects/cvsweb.html">CVSWeb</a> よりはいくらか便利そうだ. 
+そのほか "r" とか "sr" というキーワードがある. これはレビューとスーパー・レビューの担当者名. (Mozilla のレビューについては "<a href="http://www.mozilla.org/hacking/reviewers.html">Mozilla "super-review"</a>" を参照のこと.)</p>
+<h4><a href="http://ant.apache.org/">Ant</a></h4>
+<p>最近のソフトウェアはどうだろう. <a href="http://jakarta.apache.org/">Apache Ant Project</a> を見てみる. Subversion を使っており, 媒体は SCM ChangeLog. </p>
+<p><a href="http://svn.apache.org/viewcvs.cgi/ant/core/trunk/src">ant/core/trunk/src</a> より. ( "svn log -v" のダンプ結果を用いた. 改行もちょっと追加.)</p>
+<pre>------------------------------------------------------------------------
+r312750 | stevel | 2005-10-11 06:17:56 +0900 (Tue, 11 Oct 2005) | 2 lines
+Changed paths:
+   M /ant/core/trunk/src/main/org/apache/tools/ant/taskdefs/EchoXML.java
+   M /ant/core/trunk/src/main/org/apache/tools/ant/util/DOMElementWriter.java
+   M /ant/core/trunk/src/main/org/apache/tools/ant/util/XMLFragment.java
+
+echoXML does property expansion, does not print the XML header when appending.
+ There is some defect here wherein some tailing spaces get into every printed
+ node, so &lt;e&gt;value&lt;/e&gt; goes to &lt;e&gt;value   &lt;/e&gt;
+; I havent tracked it down yet.
+------------------------------------------------------------------------
+r307120 | mbenson | 2005-10-07 22:31:12 +0900 (Fri, 07 Oct 2005) | 2 lines
+Changed paths:
+   M /ant/core/trunk/src/main/org/apache/tools/ant/types/AntFilterReader.java
+
+misspelled class name + merge 2 lines
+
+------------------------------------------------------------------------
+r307118 | mbenson | 2005-10-07 22:26:28 +0900 (Fri, 07 Oct 2005) | 2 lines
+Changed paths:
+   M /ant/core/trunk/src/main/org/apache/tools/ant/types/Mapper.java
+
+s/CODE/code/g
+
+------------------------------------------------------------------------
+r306851 | mbenson | 2005-10-07 04:14:49 +0900 (Fri, 07 Oct 2005) | 2 lines
+Changed paths:
+   A /ant/core/trunk/src/main/org/apache/tools/ant/input/GreedyInputHandler.java
+
+greedy input handler; will consume stdin completely for unattended builds.
+</pre>
+<p>GNU 基準とは違い一行コメントを採用している. 書式のばらつきは大きい (stevel と mbenson では記述量がだいぶ違う.) ぱっと見たところ, Mozilla のような独自ルールはなさそう.</p>
+<p>それにしても Apache の人達は全てのプロジェクトを一つのレポジトリで管理しているのか. リビジョンの数がやたら大きい...</p>
+<h4><a href="http://eclipse.org/">Eclipse</a></h4>
+<p>開発プロセスの厳しそうな Eclipse はどうだろう. Eclipse では SCM に CVS を採用している. 媒体は SCM ChangeLog. Subversion と違い, CVS は工夫しないと(モジュール単位ではなく)ファイル単位でしかログを閲覧できない. 諦めて適当なファイルをピックアップしてみた. CVS レポジトリ URI がわからないため ViewCVS からコピペ.</p>
+<p><a href="http://dev.eclipse.org/viewcvs/index.cgi/org.eclipse.search/search/org/eclipse/search/internal/core/text/TextSearchVisitor.java">org.eclipse.search/search/org/eclipse/search/internal/core/text/TextSearchVisitor.java</a> より.</p>
+<pre>Revision 1.42 / (view) - annotate - [select for diffs] , Thu Apr 14 09:35:11 2005 UTC (5 months, 4 weeks ago) by maeschli
+Branch: MAIN
+Changes since 1.41: +7 -6 lines
+Diff to previous 1.41
+
+converting to new nls story
+------------------------------------------------------------------------
+Revision 1.41 / (view) - annotate - [select for diffs] , Wed Apr 13 08:09:49 2005 UTC (5 months, 4 weeks ago) by maeschli
+Branch: MAIN
+Changes since 1.40: +20 -35 lines
+Diff to previous 1.40
+
+90393 3.1 M6: File Global Search and Replace cannot write file
+------------------------------------------------------------------------
+Revision 1.40 / (view) - annotate - [select for diffs] , Fri Apr 8 13:09:59 2005 UTC (6 months ago) by maeschli
+Branch: MAIN
+CVS Tags: v20050412-0800
+Changes since 1.39: +26 -32 lines
+Diff to previous 1.39
+
+searchscope polish: simplified hierarchy, avoided test of all files in workspace
+------------------------------------------------------------------------
+Revision 1.39 / (view) - annotate - [select for diffs] , Tue Apr 5 07:41:59 2005 UTC (6 months ago) by maeschli
+Branch: MAIN
+CVS Tags: v20050405-0800
+Changes since 1.38: +4 -0 lines
+Diff to previous 1.38
+
+89881 File search should not fail because resource is out of date.
+</pre>
+<p>思ったより素気ない. 大半のエントリは一行. ただし bugzilla の id をあらわす数字が書き込まれており, その点が Ant とは異る. (Ant の ChangeLog も探せば番号つきのものがあるのかもしれないが.)</p>
+<p>同じく Eclipse から <a href="http://dev.eclipse.org/viewcvs/index.cgi/org.eclipse.swt/Eclipse%20SWT/win32/org/eclipse/swt/graphics/GC.java">org.eclipse.swt/Eclipse SWT/win32/org/eclipse/swt/graphics/GC.java</a> より. </p>
+<pre>Revision 1.174 / (view) - annotate - [select for diffs] , Thu Sep 29 19:28:52 2005 UTC (11 days, 19 hours ago) by silenio
+Branch: MAIN
+CVS Tags: v3209, v3208, HEAD
+Changes since 1.173: +7 -5 lines
+Diff to previous 1.173
+
+110949
+------------------------------------------------------------------------
+Revision 1.166.2.2 / (view) - annotate - [select for diffs] , Fri Sep 9 19:24:13 2005 UTC (4 weeks, 3 days ago) by bbiggs
+Branch: R3_1_maintenance
+CVS Tags: v3139, R3_1_1
+Changes since 1.166.2.1: +4 -0 lines
+Diff to previous 1.166.2.1 to branch point 1.166 to next main 1.167
+
+102952
+------------------------------------------------------------------------
+Revision 1.173 / (view) - annotate - [select for diffs] , Thu Sep 1 18:52:58 2005 UTC (5 weeks, 4 days ago) by silenio
+Branch: MAIN
+CVS Tags: v3207, v3206d, v3206c, v3206b, v3206a, v3206, v3205
+Changes since 1.172: +24 -12 lines
+Diff to previous 1.172
+
+107684 &amp; 108315
+------------------------------------------------------------------------</pre>
+<p>さきほどの ChangeLog よりさらに素気ない. 数字だけってあんまりだ... Eclipse 内にある ChangeLog の個体差を見ることができる.</p>
+<h4><a href="http://www.ruby-lang.org/ja/">Ruby</a></h4>
+<p>国内のものも見てみよう. ruby の ChangeLog.
+CVS を利用していて, FS ChangeLog. CSM ChangeLog には差分が登録されている.</p>
+<p><a href="http://www.ruby-lang.org/cgi-bin/cvsweb.cgi/ruby/ChangeLog">ruby/ChangeLog</a> より.</p>
+<pre>Wed Oct 12 12:51:56 2005  GOTOU Yuuzou  &lt;gotoyuzo@notwork.org&gt;
+
+	* ext/openssl/ossl.c (Init_openssl): should call
+	  OpenSSL_add_ssl_algorithms().
+
+Wed Oct 12 11:08:54 2005  WATANABE Hirofumi  &lt;eban@ruby-lang.org&gt;
+
+	* file.c (rb_f_test): typo in RDoc comments.
+
+Tue Oct 11 21:41:58 2005  Nobuyoshi Nakada  &lt;nobu@ruby-lang.org&gt;
+
+	* configure.in (RUBY_FUNC_ATTRIBUTE): check prefixed attribute form
+	  first.  [ruby-dev:27398]
+
+	* array.c, enum.c, eval.c, util.c: safer function pointer usage.
+	  fixed: [ruby-core:06143]
+
+	* util.h (qsort): removed the definition incompatible to ANSI.
+	  fixed: [ruby-core:06147]
+
+	* eval.c (rb_obj_respond_to): check if obj responds to the given
+	  method with the given visibility.  [ruby-dev:27408]
+
+	* eval.c (rb_respond_to): conform to Object#respond_to?.  [ruby-dev:27411]
+
+Sat Oct  8 19:49:42 2005  Nobuyoshi Nakada  &lt;nobu@ruby-lang.org&gt;
+
+	* eval.c (Init_Binding): add Binding#dup method.  [yarv-dev:666]
+
+	* io.c (rb_io_init_copy): clear PREP flag for copied IO.
+	  fixed: [ruby-dev:27371]
+
+	* parse.y (rb_parser_malloc, rb_parser_free): manage parser stack on
+	  heap.  [ruby-list:41199]
+
+	* parse.y (ripper_initialize): use rb_respond_to().
+
+	* ext/ripper/depend (check): get rid of re-generating ripper.y always.
+
+	* ext/iconv/charset_alias.rb: parse config.charset_alias file directly.
+
+	* ext/nkf/lib/kconv.rb (Kconv.conv): get rid of nil.to_a.
+
+	* lib/scanf.rb (Scanf::FormatSpecifier#letter, #width): use matched
+	  substring directly.
+
+	* test/ruby/test_assignment.rb, test/ruby/test_iterator.rb: followed
+	  change of sample/test.rb.
+
+	* test/net/http/test_http.rb: removed superfluous splatting stars.</pre>
+<p>GNU スタイル. なかなか丁寧だ.</p>
+<h4>Mona</h4>
+<p>日本語の ChangeLog を探していたら Mona がそうだった. FS ChangeLog, GNU 式.</p>
+<p><a href="Mona/ChangeLog">http://cvs.sourceforge.jp/cgi-bin/viewcvs.cgi/mona/Mona/ChangeLog?rev=1.551&amp;content-type=text/vnd.viewcvs-markup</a> より.</p>
+<pre>
+2005-10-02  bayside
+
+        * include/gcj: JAVAde3D-2-fix 適用（staticフィールドの初期化と自動GC登録）
+
+        * include/java: JAVAde3D-2-fix 適用（staticフィールドの初期化と自動GC登録）
+
+        * src/lib/java: JAVAde3D-2-fix 適用（staticフィールドの初期化と自動GC登録）
+
+        * samples/java: JAVAde3D-2-fix 適用（staticフィールドの初期化と自動GC登録）
+
+2005-09-27  bayside
+
+        * include/java: 新規追加
+
+        * include/sms_gc: 新規追加
+
+        * src/lib/java: 新規追加
+
+        * src/lib/sms_gc: 新規追加
+
+2005-09-23  bayside
+
+        * samples/non-gui/gcj: 新規追加
+
+        * samples/non-gui/Makefile: gcj追加
+
+        * env/monapi.inc: Javaソース用記述追加
+
+2005-09-07  bayside
+
+        * tools/monafont/mona6x12.bit0: 6x12の固定幅表示をしたときに表示が乱れないよう調整
+</pre>
+<h4><a href="http://subversion.tigris.org/">Subversion</a></h4>
+<p>SCM を作っている人達の流儀も気になってきた. 使いこなしているはずだ. Subversion 見てみよう. 書式は GNU ChageLog 書式を採用している. 媒体は SCM ChangeLog. </p>
+<p><a href="http://svn.collab.net/viewcvs/svn/">/svn/trunk</a> より.</p>
+<pre>------------------------------------------------------------------------
+r16652 | djames | 2005-10-12 00:01:32 +0900 (Wed, 12 Oct 2005) | 5 lines
+Changed paths:
+   M /trunk/subversion/include/svn_opt.h
+
+* subversion/include/svn_opt.h
+  (svn_opt_revision_value): Add documentation, fix formatting. Followup to
+  r16649.
+
+
+------------------------------------------------------------------------
+r16650 | fabien | 2005-10-11 21:39:31 +0900 (Tue, 11 Oct 2005) | 5 lines
+Changed paths:
+   M /trunk/subversion/po/fr.po
+
+French translation update.
+
+* subversion/po/fr.po:
+  Merged .pot file. Some fixes to the translation.
+
+------------------------------------------------------------------------
+r16649 | cmpilato | 2005-10-11 21:38:25 +0900 (Tue, 11 Oct 2005) | 17 lines
+Changed paths:
+   M /trunk/build/generator/swig/header_wrappers.py
+   M /trunk/subversion/bindings/swig/python/tests/pool.py
+   M /trunk/subversion/include/svn_opt.h
+
+Upgrade Python bindings to automatically create proxy objects for unions.
+Change svn_opt.h to use explicitly declared unions instead of anonymous
+unions, so that our SWIG bindings can wrap these unions correctly.
+
+Patch by: David James &lt;james82@gmail.com&gt;
+
+* subversion/include/svn_opt.h
+  (svn_opt_revision_value): New.
+  (svn_opt_revision_t): Use svn_opt_revision_value instead of anonymous struct.
+
+* build/generator/swig/header_wrappers.py
+  (Generator._re_structs, Generator._re_callbacks): Adjust regexp to
+    accept unions, and types without the _t suffix.
+
+* subversion/python/tests/pool.py
+  (PoolTestCase.test_integer_struct_members): Test svn_opt_revision_value.
+
+------------------------------------------------------------------------</pre>
+<p>一箇所リビジョン番号が書いてあのがわかるだろうか. こうしたリビジョンの参照はよく見られる. ひとまとまりの変更をリビジョンで識別できるのが Subversion の強みだ.</p>
+<h4><a href="http://www.nongnu.org/cvs/">CVS</a></h4>
+<p>CVS はどうかというと, 堅実な GNU スタイルだった. 媒体も GCC などと同じ FS ChangeLog. </p>
+<p><a href="http://savannah.nongnu.org/cgi-bin/viewcvs/cvs/ccvs/src/ChangeLog?rev=1.3303&amp;content-type=text/vnd.viewcvs-markup">cvs/ccvs/src/ChangeLog</a> より.</p>
+<pre>2005-10-04  Derek Price  &lt;derek@ximbiot.com&gt;
+
+	* sanity.sh (diff_u_test, diff_recursive_test): New functions.
+	(directory_cmp): Use GNU diff -ur when possible.
+	(find_tool): Catch stderr output from tests.  Count MARGINAL test
+	results and prefer tools with more PASSes.
+	(*): Replace use of cmp to $diff_u where possbile.
+
+2005-10-04  Mark D. Baushke  &lt;mdb@gnu.org&gt;
+
+	* sanity.sh (watch6-0): Avoid use of GNU grep -qE extensions for
+	anchored search.
+
+2005-10-04  Derek Price  &lt;derek@ximbiot.com&gt;
+
+	* sanity.sh (find_tool): Accept tool name for error messages.  Change
+	all callers.
+
+	* run.c: Assume unistd.h.
+
+2005-10-03  Derek Price  &lt;derek@ximbiot.com&gt;
+
+	* sanity.sh (sshstdio-6): Use diff -u instead of cmp so that errors
+	show up in the automated nightly testing emails.
+
+	* run.c (piped_child): Close original dup'd descriptors.  Add comments.
+
+	* server.c: #include "setenv.h" to eliminate a Solaris warning.
+</pre>
+<p>ファイルが巨大になりすぎたらしく, 昔の ChaneLog が名前をかえて置かれている.</p>
+<h4><a href="http://projects.edgewall.com/trac">Trac</a></h4>
+<p>Subversion の frontend である Trac. 当然 Subversion を使い, 媒体は SCM ChangeLog.</p>
+<p><a href="http://projects.edgewall.com/trac/browser/trunk/trac">trunk/trac</a> より.</p>
+<pre>------------------------------------------------------------------------
+r2350 | cmlenz | 2005-10-12 23:51:19 +0900 (Wed, 12 Oct 2005) | 1 line
+Changed paths:
+   M /trunk/trac/loader.py
+
+Fix unit tests broken in [2349].
+------------------------------------------------------------------------
+r2349 | cmlenz | 2005-10-12 23:24:22 +0900 (Wed, 12 Oct 2005) | 1 line
+Changed paths:
+   M /trunk/trac/loader.py
+
+Automatically enable plugins loaded from the environment plugins directory.
+Can of course still be disabled explicitly.
+------------------------------------------------------------------------
+r2347 | cmlenz | 2005-10-12 19:18:13 +0900 (Wed, 12 Oct 2005) | 1 line
+Changed paths:
+   M /trunk/trac/env.py
+
+Lowercase classname for component enablement check, to fix enabling
+built-in components in WebAdmin.
+------------------------------------------------------------------------
+r2346 | cmlenz | 2005-10-12 04:24:35 +0900 (Wed, 12 Oct 2005) | 1 line
+Changed paths:
+   M /trunk/trac/mimeview/api.py
+
+Display download link instead of empty content table for
+binary attachments/files. Fixes #2144.
+</pre>
+<p>カギカッコつきの数字や "#" で始まる数字は, それぞれリビジョンとバグの番号をあらわしている. Trac を使ってウェブブラウザでリビジョン情報をみると, ここがリンクになって表示される仕組み.</p>
+<h4>変更履歴を書く動機 (につづくかも)</h4>
+<p>はー. そもそもなんで ChangeLog を書くのかという話をしたかったのだけれど, 色々集めて満腹です.
+でも気がむいたら続く.</p>
