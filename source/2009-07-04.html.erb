@@ -42,7 +42,7 @@ interface AddressBook {
 使われることが多いと思う. 足回りに使う通信フレームワークの流儀に合わせることもある. 
 古の <a href="http://en.wikipedia.org/wiki/ONC_RPC">ONC RPC</a> はどちらもサポートしている. 
 (<a data:asin='0201563185' href='http://www.amazon.co.jp/Network-Programming-Addison-Wesley-Professional-Computing/dp/0201563185%3FSubscriptionId%3D0SRV0GVS2Q5FGJTWHV82%26tag%3Dstepstophanta-22%26linkCode%3Dxm2%26camp%3D2025%26creative%3D165953%26creativeASIN%3D0201563185'>教科書</a>ではそれぞれ nonblock rpc, callback rpc と呼ばれていた.)</p>
-<p><img src='/images/20090704_0.png' class='diagram'></p>
+<p><img src='/bn/images/20090704_0.png' class='diagram'></p>
 <p>私の仕事はノンブロッキング主体のコードベースが相手だから, 
 とりあえずコールバック派に限って話を進めたい. </p>
 <p>コールバック派の中にもコールバック関数の登録方法でバリエーションがある. 
@@ -85,7 +85,7 @@ RPC の実装メソッド (上の例だと AddressBookServiceImpl.findByAddress(
 たとえばデータベースの処理をワーカスレッドに任せ, 自分自身は処理を終えたい. 
 そして計算の終わったワーカから戻り値を返したい. 
 あるいは別のサーバに(非同期で)問合せた結果を自身の戻り値に利用したい. </p>
-<p><img src='/images/20090704_1.png' class='diagram'></p>
+<p><img src='/bn/images/20090704_1.png' class='diagram'></p>
 <p>けれど素朴なブロッキングスタイルでサーバを実装すると, こうした期待は叶わない. </p>
 <pre>
 public class AddressBookServiceImpl implements IAddressBookService {
@@ -400,7 +400,7 @@ abstract public void findByAddress(Response&lt; Future&lt; List&lt;Person&gt; &g
 ...</pre>
 <p>つまりテストしたいクライアント C は, 実際にはプロキシ用インターフェイス Ip を参照しており, 
 一方でサービスの実装 S はサーバ用インターフェイス Is を実装している. そして Ip と Is は互換性がない. </p>
-<p><img src='/images/20090704_2.png' class='diagram'></p>
+<p><img src='/bn/images/20090704_2.png' class='diagram'></p>
 <p>ブロッキングスタイルだと Is と Ip は同じになることが多いけれど, 
 ノンブロッキングスタイルでこの二つを揃えるのは案外難しい. 
 仕方ないので M を Ip にあわせるややこしいアダプタを作るか, インプロセスに M をホストして通信するか, 

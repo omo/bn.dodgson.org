@@ -27,7 +27,7 @@ nanojit に引き渡して JIT を行う. この hotpath の識別や構造化�
 "<a href="http://www.ics.uci.edu/%7Efranz/Site/pubs-pdf/ICS-TR-06-16.pdf">Tracing Tree (PDF)</a>" という
 アルゴリズムが使われている. </p>
 <p>こんなかんじ:</p>
-<p><img src='/images/20080506_0.png' class='diagram'></p>
+<p><img src='/bn/images/20080506_0.png' class='diagram'></p>
 <h4>Forth VM としての AVM</h4>
 <p>先に書いたとおり. TT のインタプリタは ABC をコンパイルした IL を評価, 実行する. 
 ABC から変換してできた IL は自己完結しておらず, ランタイムの関数を呼び出す. 
@@ -35,7 +35,7 @@ ABC から変換してできた IL は自己完結しておらず, ランタイ�
 <p>ランタイムの IL は, もともと Forth で書かれている. (vm.fs など.) 
 その Forth スクリプトが VM のビルド時に IL へとコンパイル (fc.py) され, VM の中に埋め込まれる. 
 VM は ABC から生成された IL とランタイムの IL をリンク(というほど大袈裟じゃないけど)して実行する: </p>
-<p><img src='/images/20080506_1.png' class='diagram'></p>
+<p><img src='/bn/images/20080506_1.png' class='diagram'></p>
 <h4>IL 命令の実装</h4>
 <p>ランタイム関数だけでなく, IL のインタプリタ(評価ループ)自体も Forth の支援をうけて半自動生成される. 
 このへんはコードをみた方がわかりやすいかもしれない. </p>

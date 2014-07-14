@@ -22,7 +22,7 @@ ICompiler インターフェイスの実装がこの構文木をコンパイル,
 バイトコードの処理系は IMachineFactory を実装し, IMachineFactory#NewInstance() で
 IMachine をつくる. IMachine が java なんかでいうところ Matcher オブジェクト. 状態を持ち, 
 文字列をパターンにマッチする. IMachine には Scan(), Split(), Replace() といったメソッドがある. </p>
-<p><img src='/images/20080621_0.png' class='diagram'></p>
+<p><img src='/bn/images/20080621_0.png' class='diagram'></p>
 <p>コードもちょっとみてみる. 
 文字列をコンパイルして MachineFactory をつくるところ:</p>
 <pre>

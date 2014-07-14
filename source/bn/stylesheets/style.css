@@ -5,16 +5,29 @@ body, html {
   font-family: verdana;
 }
 
+em {
+  font-weight: bold;
+  font-style: normal;
+}
+
 @media (max-width: 640px) {
 
 #main {
-  font-size: 10pt;
-  margin: 1em;
+  font-size: 12pt;
+  margin: 1em 1.5em 1em 1.5em;
   max-width: 95%;
 }
 
 img {
    max-width: 95%;
+}
+
+ul.toc-list li {
+  padding: 0.3em;
+}
+
+.article-link .article-date {
+  font-size: 10pt;
 }
 
 }
@@ -28,11 +41,19 @@ img {
   font-size: 12pt;
 }
 
+ul.toc-list li {
+  padding: 0.2em;
+}
+
+.article-link .article-date {
+  font-size: 10pt;
+}
+
 }
 
 #main {
   margin-bottom: 5em;
-  line-height: 170%;
+  line-height: 180%;
 }
 
 #main .bookcover {
@@ -84,7 +105,7 @@ img {
 }
 
 
-.article-date {
+#main .article-date {
   font-family: 'Vollkorn', serif;
   color: #888;
   font-size: 14pt;
@@ -94,6 +115,7 @@ ul.toc-list {
   margin: 0px;
   padding-left: 0px;
   list-style-type: none;
+  line-height: initial;
 }
 
 .article-date a {
@@ -106,5 +128,6 @@ ul.toc-list {
 }
 
 .article-link .article-date {
-  font-size: 10pt;
+  display: block;
 }
+

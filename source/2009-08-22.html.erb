@@ -57,7 +57,7 @@ Core Animation では <strong>CALayer</strong> クラスがツリーのノード
 <p>ディスプレイリストを評価する際には, 透明度や回転, 
 スケーリングなどの特性を適用することができる. 
 つまりノード単位で透明度を変えたり, 回転拡大縮小などの 3D 効果を加えることができる. </p>
-<p><img src='/images/20090822_0.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_0.png' class='diagram'></p>
 <p>素朴なディスプレイリスト+ツリーは, だいたいこんなかんじで動く. </p>
 <h5>ハードウェアの支援</h5>
 <p>ディスプレイリスト+ツリーのモデルは GPU との親和性が高く. 性能上の利点がある. 
@@ -68,7 +68,7 @@ CPU 時間を浪費せずに描画ができるかもしれない.
 アプリケーションの描画コードは経由しないぶん速くなる. 
 たとえば各アルバム画像をノードに割り振り Cover Flow 風にページをめくるアニメーションは, 
 典型的な "ノードの中身を変えない再描画" になるだろう. </p>
-<p><img src='/images/20090822_1.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_1.png' class='diagram'></p>
 <p>ノードに半透明表示の指定をもつ描画も, GPU 支援を受けるディプレイリスト+ツリーに分がある. 
 ノードが半透明指定を持つとき, そのノードの描画結果は
 一旦独立したオフスクリーンのビットマップに描画され, 
@@ -94,7 +94,7 @@ Flash Player が使う GPU 支援の範囲は画像合成の計算に限られ�
 また <a href="http://www.adobe.com/products/flashplayer/features/all_features/">リリースノート</a> 
 に見られる bitmap cache 云々の記述や上の blog にある描画結果の乱れに関する注意書きから, 
 描画結果を使い回す工夫をしている様子もある. </p>
-<p><img src='/images/20090822_2.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_2.png' class='diagram'></p>
 <p>今日の主役は Core Animation と GPU 支援なので, 
 ノードを描画したビットマップだけを VRAM 側に置く Flash Player 10 のモデルは 
 <strong>ビットマップ+ツリー</strong> と呼んでおこう. 
@@ -119,7 +119,7 @@ NSView の特別なメソッドを呼び出すと Cocoa のビューツリーに
 と呼んでいる. (<a href="http://developer.apple.com/documentation/GraphicsImaging/Conceptual/Animation_Overview/ChooseAnimTech/ChooseAnimTech.html">紹介資料</a>.) 
 Layer Backed View のウィジェットには回転やドロップシャドウなど Core Animation 由来のエフェクトを適用することができる. 
 Core Animation との統合を通じて既存のアプリケーションもミタメをよくしろということなんだろうね. </p>
-<p><img src='/images/20090822_3.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_3.png' class='diagram'></p>
 <p><strong>追記: この節の内容は間違っていました. 記事末尾を参照ください.</strong></p>
 <h4>Safari/WebKit と Core Animation の統合</h4>
 <p>うっかり復習が長びいてしまった. ようやく本題.</p>
@@ -166,7 +166,7 @@ Render Tree 上で表現されていない描画順や暗黙の親子関係を�
 WebKit は RenderLayer のツリーを作る. 
 各 RenderLayer は, 通常のトラバースで描画できる Render Tree のサブツリーをあらわしている. 
 木の中に木があるのはちょっとややこしいけれど, ブラウザのコードではよくある話.</p>
-<p><img src='/images/20090822_4.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_4.png' class='diagram'></p>
 <p>ひとつの RenderLayer が受け持つ各サブツリーの中は通常のトラバース順で描画され, 
 RenderNode(仮) が責任を持つ. 
 サブツリー間の描画順は RenderLayer が決める. </p>
@@ -306,17 +306,17 @@ bool RenderLayer::isSelfPaintingLayer() const
 &lt;video&gt; 要素のノード, などが該当している. 
 そのほか mask とか reflection は webkit 拡張. 
 opacity が考慮されないところ, table の行が入っているところは意外. </p>
-<p><img src='/images/20090822_5.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_5.png' class='diagram'></p>
 <h4>描画シーケンスの変更</h4>
 <p>ゼロ+ツリーからディスプレイリスト+ツリーへの変更は, 描画コードの実行順序にも大きく影響する. 
 従来の WebKit は, ページを表示しているウィンドウ (Mac OS だと NSView) からの要求に応じてページ全体を再描画していた. 
 描画時は再描画範囲をあらわす矩形が与えられるから実際に全画面を書き直すわけではないけれど, 
 Render Tree をルートからトラバースして個々の RenderNode を描画しようとするのは確かだ. 
 Mac OS での描画結果は NSView の GraphicsContext に書き込まれる. </p>
-<p><img src='/images/20090822_6.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_6.png' class='diagram'></p>
 <p>accelerated compositing パッチでは, 描画を RenderLayer 単位で行う. 
 つまり RenderLayer 毎に割り付けられた CALayer に描画を行う. 描画は CALayer から要求される. </p>
-<p><img src='/images/20090822_7.png' class='diagram'></p>
+<p><img src='/bn/images/20090822_7.png' class='diagram'></p>
 <p>結果として, accelerated compositing を有効にした WebKit は従来の描画パスで何も描画しない. </p>
 <pre>
 void RenderLayer::paintLayer(RenderLayer* rootLayer, GraphicsContext* p,

@@ -29,7 +29,7 @@ Sema は semantic action として手書きするコードにあたる.
 コンパイラの各フェーズを受け持つモジュールとは別に, 
 構文木周辺のデータ構造は <a href="http://llvm.org/viewvc/llvm-project/cfe/trunk/include/clang/AST/">AST</a> モジュールとして独立している. 
 Parse からのコールバックに応じてSema が  AST モジュールのデータ構造(型注釈つき構文木)を構築, CodeGen はそれを受け取って解釈する.</p>
-<p><img src='/images/20110426_0.png' class='diagram'></p>
+<p><img src='/bn/images/20110426_0.png' class='diagram'></p>
 <h5>Frontend と Plugin</h5>
 <p>Lex, Parse, Sema, CodeGen といったモジュールを協調させるのは Frontend の仕事. 
 Frontend にはコンパイラの各フェーズをフックする 

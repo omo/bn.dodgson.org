@@ -45,7 +45,7 @@ var fn = function() { alert(el.innerHTML); };
 el.addEventListener("whatever", fn, false);
 // このあと el をツリーに append したり remove したりする.</pre>
 <p>このコードは以下のような巡回参照をつくる. </p>
-<p><img src='/images/20090531_0.png' class='diagram'></p>
+<p><img src='/bn/images/20090531_0.png' class='diagram'></p>
 <p>参照が JS と C++ をまたいでおり, 問題をややこしくしている. </p>
 <p>JS 上の DOM オブジェクト <strong>el</strong> (JSNode クラス) は, 
 C++ 上の DOM オブジェクエト <strong>node</strong> (Node クラス) への参照 (1) をもっている. 
@@ -66,7 +66,7 @@ fn は protect されているため回収され損なうう. とばっちりで
 めでたくリークがおこる. </p>
 <h4>JSObject::mark() のフックをつかった JS 側 GC とのインテグレーション</h4>
 <p>r42256 の修正は, 概念的には (2) の参照を特別な protect 参照から普通の JS の参照に変更する. (赤丸部分)</p>
-<p><img src='/images/20090531_1.png' class='diagram'></p>
+<p><img src='/bn/images/20090531_1.png' class='diagram'></p>
 <p>ただし listener は JS のオブジェクトではないから, GC のマークフェーズは (2) の参照に到達できない. 
 したがって fn はマークされようがない. 
 そこで r42256 では, <strong>el がマークされる際のフック処理</strong> の中で el -&gt; node -&gt; listener と参照をたどり, 
@@ -116,7 +116,7 @@ void JSEventListener::markJSFunction()
 <p>この懸念は "node cache" という別の仕組みで回避されている. 
 node cache は, DOM のノード (上の図だと node オブジェクト) に対応する JS のオブジェクト (図の el) を
 Document オブジェクトに付属した(C++ 内の)連想配列に保存する. </p>
-<p><img src='/images/20090531_2.png' class='diagram'></p>
+<p><img src='/bn/images/20090531_2.png' class='diagram'></p>
 <p>document.getElementById() のように C++ の DOM から JS のオブジェクトを取り出す操作では, 
 まずこのキャッシュを検索してヒットすればその結果を返す. 
 node cache のおかげで複数の独立した document.getElementById("foo") 呼び出しが

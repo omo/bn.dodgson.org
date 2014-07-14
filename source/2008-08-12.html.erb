@@ -29,7 +29,7 @@ disque と命名. (名前つけるような規模じゃないけどね...)</p>
 動かしてみると色々面白かった. いくつか紹介. </p>
 <p>まず, 一番素朴な待ち行列網から. 
 こんなグラフが...:</p>
-<p><img src='/images/20080812_0.png' class='diagram'></p>
+<p><img src='/bn/images/20080812_0.png' class='diagram'></p>
 <p>こんなコードになる.</p>
 <pre>
 engine = Engine.new
@@ -57,13 +57,13 @@ Disque::write_csv(STDOUT, engine.samplers, :nwait)</pre>
 Queue の要素数(=待ち行列の長さ!) などを 1000ms 間隔で記録する. 
 もちろんほんとに 5 分かかるわけではない. 計算はすぐおわる. </p>
 <p>実行結果のチャートはこんなかんじ:</p>
-<p><img src='/images/20080812_1.png' class='diagram'></p>
+<p><img src='/bn/images/20080812_1.png' class='diagram'></p>
 <p>横軸が時間で, 縦軸がキューの待ち時間(秒). 
 1 リクエストあたり 100ms しかかからないサーバを相手に, ある瞬間は 70 秒も待っている. 
 これはサーバの処理性能とリクエストの到着率(どちらも毎秒 10 リクエスト)が拮抗しているためだ. 
 それにしても折れ線の挙動が妙に生々しいなあ... </p>
 <p>ためしにサーバをちょっと速く(80ms)してみる:</p>
-<p><img src='/images/20080812_2.png' class='diagram'></p>
+<p><img src='/bn/images/20080812_2.png' class='diagram'></p>
 <p>ピークが 18 秒まで減った. でも結構遅い. 分散が大きすぎるのかも...
 という風に色々わかる. </p>
 <p>ところで, 確率分布であっさり正規分布を使えるのは数値計算のいいところ. 
@@ -73,7 +73,7 @@ Queue の要素数(=待ち行列の長さ!) などを 1000ms 間隔で記録す�
 スーパーのレジや銀行の ATM に並ぶとき, 
 全体で一列に並ぶのとレジ毎でバラバラに並ぶのとではどちらが早いかという分析の結果だろう. 
 左が一列ならび, 右がバラバラ並びね:</p>
-<p><img src='/images/20080812_3.png' class='diagram'></p>
+<p><img src='/bn/images/20080812_3.png' class='diagram'></p>
 <p>disque で書くとこうなる:</p>
 <pre>
 nemitters = 4
@@ -100,7 +100,7 @@ nemitters.times do |i|
   cs.connect_to(cr)
 end</pre>
 <p>結果は...:</p>
-<p><img src='/images/20080812_4.png' class='diagram'></p>
+<p><img src='/bn/images/20080812_4.png' class='diagram'></p>
 <p>埋もれてしまってわかりにくいけど, 青い "fork" という線が一列並びの待ち時間を表す. 
 スパイクもなく, バラバラ並び ("cs") と比べても少い値を維持しているのがわかる. 
 ちゃんと解析の結果と一致している.</p>
