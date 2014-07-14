@@ -9,7 +9,7 @@ activate :blog do |blog|
   # blog.prefix = "blog"
 
   # blog.permalink = "{year}/{month}/{day}/{title}.html"
-  blog.permalink = "{year}/{month}/{day}/index.html"
+  blog.permalink = "bn/{year}/{month}/{day}/index.html"
   # Matcher for blog source files
   blog.sources = "{year}-{month}-{day}.html"
   # blog.taglink = "tags/{tag}.html"
@@ -104,4 +104,9 @@ configure :build do
 
   # Or use a different image path
   # set :http_prefix, "/Content/images/"
+end
+
+# https://github.com/fredjean/middleman-s3_sync
+activate :s3_sync do |s3_sync|
+  s3_sync.bucket = 'bn.dodgson.org'
 end
