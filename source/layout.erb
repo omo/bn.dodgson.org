@@ -11,7 +11,7 @@
 <%= feed_tag :atom, "#{blog.options.prefix.to_s}/feed.xml", title: "Atom Feed" %>
 </head>
 <body>
-<div id="nav"><a href="/bn/"><i class="fa fa-archive"></i>.dodgson.org</a></div>
+<div id="nav"><a href="/bn/">steps <i class="fa fa-archive"></i> phantasien</a></div>
 <div id="main" role="main">
 <% unless current_article.nil? %>
 <h2 class="article-date"><%= link_to current_article.date.strftime('%Y-%m-%d'), current_article %></h2>

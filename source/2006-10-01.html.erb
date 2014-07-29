@@ -71,7 +71,7 @@ create table recipe_term(term text, segment integer, doclist blob,
 <p>全文検索の基本的なアイデアを知っていれば, 仕組みはだいたいわかると思う. 
 仮想テーブル recipe は, recipe_content にテキスト本体を, 
 recipe_term に転置インデクスを保存している. </p>
-<p><img src="http://dodgson.org/omo/t/images/20061001_0.png" style="display;block" /></p>
+<p><img src="/bn/images/20061001_0.png" style="display;block" /></p>
 <p>今のところスコアなどへの配慮はない. 
 ごく素朴な実装だと想像がつく. (余分なテーブルがないもんね.) 
 update のフックで転置インデクスを作り, 
@@ -95,7 +95,7 @@ update や insert は無視し, select してもいつも同じ結果が戻る�
 <p>コードを削りながら眺めた結果, 
 仮想テーブルの周りはおおよそこんなかんじの構成になっていることがわかった. 
 (C にはオブジェクトっぽくない部分もあるため, コードとの対応は心の目でみてください.)</p>
-<p><img src="http://dodgson.org/omo/t/images/20061001_1.png" style="display;block" /></p>
+<p><img src="/bn/images/20061001_1.png" style="display;block" /></p>
 <p>要するに Virtual Table が Collection で Cursor は Iterator ね. 
 仮想テーブルの実装者はこれらの API (仮想関数) を作っていけばいい. 
 もっとも大半はお約束の boilerplate code. Cursor を作るのが主な仕事になる. </p>

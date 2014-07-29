@@ -14,7 +14,7 @@ GPU ではまず geometry ステージ (vertex shader とか) が頂点情報を
 それを rasterize ステージ (pixel shader とか) がピクセルに変換, 
 frame buffer に書き込む. 
 データは図の左から右に流れる. この流れっぷりがパイプラインと呼ばれる所以. </p>
-<p><img src="http://dodgson.org/omo/t/images/20070715_0.png" class="diagram" /></p>
+<p><img src="/bn/images/20070715_0.png" class="diagram" /></p>
 <p>パイプラインの各ステージは基本的に並列して動く. 
 だから全体の実行時間は最も遅いステージの所要時間になる. 
 各ステージの合計ではない. 
@@ -28,7 +28,7 @@ frame buffer に書き込む.
 ボトルネックの世界では合計に意味がない. 
 逆に暇なステージは足並みが揃うまで負荷を増やすことができる. 
 geometry ステージがボトルネックなら pixel shader を派手にしてもいい. </p>
-<p><img src="http://dodgson.org/omo/t/images/20070715_1.png" class="diagram" /></p>
+<p><img src="/bn/images/20070715_1.png" class="diagram" /></p>
 <p>ボトルネックの世界では,
 CPU プロファイラの上位リストを潰していく伝統的な高速化だけだと歯が立たない. 以前 
 "CPU レベルで頑張る人が多いんだけど, 全然意味ないんだよねえ..." 
@@ -40,7 +40,7 @@ CPU ステージを調べるのは比較的簡単だ.
 ダミーを使っても速度が変わらなかったら CPU がボトルネックだとわかる. 
 ただし, ステージそのものではなくステージ間の通信(CPU と GPU の通信)が
 ボトルネックになることもある. その判断には素朴な API 差し替え以上の工夫が必要になる. </p>
-<p><img src="http://dodgson.org/omo/t/images/20070715_2.png" class="diagram" /></p>
+<p><img src="/bn/images/20070715_2.png" class="diagram" /></p>
 <p>GPU の各ステージを調べるのはもう少し難しい. 
 GPU を測りたいからといって CPU ステージを無効にはできない. 入力がなくなってしまう. 
 geometry ステージは特に難しい. 先の問題に加え, 

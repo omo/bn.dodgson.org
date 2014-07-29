@@ -18,7 +18,7 @@ date: 2006-09-22
 <p>そもそもデスクトップの中味はどんな構成をとっているのか. ざっと眺めておこう. 
 典型的なデスクトップ処理系のアーキテクチャはだいたいこんなかんじになる: 
 (名前や構成にはバリエーションがある. 自分の使ってるのは違う! という人は大目に見てください.)</p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_0.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_0.png" style="display;block" /></p>
 <p>階層構造になっていると主張しているつもりです. </p>
 <p>一番下のレイヤは Graphics Device Driver .... なのはまあ割と当たり前だよね. 
 何かしらハードウェアを抽象化する手段がないと困ってしまう. 
@@ -65,7 +65,7 @@ win32 の WindowProc が代表例.
 <p>古典的な Window Management はこんな風に行われている. 
 思いきって単純化すると, 古典的なシステムにおけるウィンドウとは
 クリッピング領域とイベントハンドラの対だと言える. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_1.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_1.png" style="display;block" /></p>
 <p>見え隠れするたびにウィンドウを描き直すのは苦労が多い. 性能上の問題もある. 
 内容を書き終える前に画面が更新されてしまうと, 
 描画途中の半端な状態がユーザに見えてしまう. 要するにチラつく. 
@@ -78,7 +78,7 @@ win32 の WindowProc が代表例.
 画像のコピーだけなら一連の描画処理よりずっと速い. 
 だからオフスクリーンを使うと画面のチラつきをふせぐことができる. 
 プログラムも楽になる. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_10.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_10.png" style="display;block" /></p>
 <p>ただ, この方法は性能面に限界がある. 
 主記憶上のオフスクリーンはすべて CPU を使って描画する必要がある. 
 グラフィクス・カード (GPU) の高速描画機能は利用できない. 
@@ -92,7 +92,7 @@ win32 の WindowProc が代表例.
 今やオフスクリーンはテクスチャと同じ扱いになる. 
 DirectX や OpenGL でじゃんじゃか絵を描けばいい. 
 同じ VRAM 同士だからフレームバッファへのコピーも速い. 一件落着. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_11.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_11.png" style="display;block" /></p>
 <p>ただし, 単純に VRAM に置くだけでは問題が残る. 
 VRAM が足りなくなったらどうしよう. 
 すべてのアプリケーションがウィンドウを置くには, とても広い VRAM が必要だ. 
@@ -107,7 +107,7 @@ VRAM が足りなくなったらどうしよう.
 Windows Vista や最近の Mac OS はグラフィクスドライバにこの仕組みを要求している. 
 今までのアプリケーションがオーバーレイみたいな仕組みでがんばっていた部分を
 処理系が肩代りしてくれるようになったというわけ. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_13.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_13.png" style="display;block" /></p>
 <p>この方法が現実的になったのは VRAM の容量が十分大きくなったからだろう. 
 たとえば 4MB の VRAM を仮想化してもきっとスラッシングがひどくて使いものにならない. 
 主記憶版の仮想記憶と同じ. 
@@ -162,7 +162,7 @@ OS の支援がある(だろう)とはいえ, なかなか難儀な話だとお�
 オフスクリーンを持つトップレベル・ウィンドウと, 
 トップレベル・ウィンドウに所属する子ウィンドウ. 
 子ウィンドウの描画先はトップレベル・ウィンドウのオフスクリーンになる. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_12.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_12.png" style="display;block" /></p>
 <p>このように, 典型的な処理系はトップレベル・ウィンドウだけが実体を持つ. 
 トップレベル・ウィンドウだけに VRAM を割り当てるのは現実的な妥協だろう. 
 すべてのウィンドウに VRAM を割り振ってしまうのはさすがに容量が厳しそうだけれど, 
@@ -202,7 +202,7 @@ XGL と連携して各種の画面効果を実現する.
 (実物の動画は 
 <a href="http://gigazine.net/index.php?/news/comments/20060917_xgl/">gigazine の記事</a> 
 などを参照.) </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_6.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_6.png" style="display;block" /></p>
 <p>XGL は速いんだろうか? 実際に動かしている人は教えてください. 
 理屈の上では, OpenGL の恩恵でこれまでよりは速くなるだろう. 
 一方で X のボトルネックは Client-Server モデルのようにも思える. 
@@ -219,7 +219,7 @@ XGL はオフスクリーンの FBO に絵を描いてほしいのに,
 Direct Rendering のアプリケーションは画面に直接描画をしてしまうからだ. 
 結果としてウィンドウの合成がうまくいかず, 
 件のアプリケーションは画面にぽっかり穴をあけてしまう. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_7.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_7.png" style="display;block" /></p>
 <p>これを回避するためにはアプリケーションの描画を FBO にリダイレクトする必要がある. 
 今のところそうした実装はされていないらしい. 
 アプリケーション用の OpenGL をフックするんだろうか, 
@@ -245,7 +245,7 @@ XGL のオフスクリーン(FBO)へ描画してほしい.
 <p>XGL も glitz も同じ人物, Novell の David Reveman によって実装されている. 
 私は glitz が捨てられないか気が気でない. うまくやってほしいと思う. 
 他力本願でごめんなさい... (Novell が雇ってくれたらがんばる :D)</p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_8.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_8.png" style="display;block" /></p>
 <h3>いまどきの Toolkit : ウェブの台頭</h3>
 <p>ようやく一番上の層, Toolkit まで辿りついた. 長くてすんません. </p>
 <p>今時の Toolkit は二つの面で進歩している. 
@@ -312,7 +312,7 @@ LL はもともと文字列処理を得意としており,
 <p>Windows 上で動く .NET アプリケーションでの Toolkit と
 Mozilla で動く ウェブ・アプリケーションの Toolkit を並べて図にしてみた. 
 一番右は昔ながらの GNOME アプリのつもり. </p>
-<p><img src="http://dodgson.org/omo/t/images/20060922_5.png" style="display;block" /></p>
+<p><img src="/bn/images/20060922_5.png" style="display;block" /></p>
 <p>Toolkit の内部は図の左にあるような階層構造として理解できる. 
 絵を描く機能 (Drawing) を使ってボタンとかを作り (Widget), 
 それをうまい具合に並べられるようにする (Layout) . 
